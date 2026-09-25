@@ -19,13 +19,36 @@ export class ApiRequestError extends Error {
   }
 }
 
-/** Fetches JSON from our API. Every failure becomes an ApiRequestError with a readable message. */
-export async function apiRequest<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+interface AuthHooks {
+  /** The signed-in user's access token, or null. Asked for on every request, so it's never stale. */
+  getAccessToken(): Promise<string | null>;
+  /** The API stopped accepting the sign-in (expired or revoked). */
+  onUnauthorized(): void;
+}
+
+let authHooks: AuthHooks = { getAccessToken: async () => null, onUnauthorized: () => {} };
+
+/** Set by AuthProvider once Supabase Auth has loaded. Until then (and in tests) requests carry no token. */
+export function setAuthHooks(hooks: AuthHooks): void {
+  authHooks = hooks;
+}
+
+/** The header that tells our API who is asking, if anyone is signed in. */
+export async function authHeaders(): Promise<Record<string, string>> {
+  const token = await authHooks.getAccessToken();
+  return token ? { authorization: `Bearer ${token}` } : {};
+}
+
+/** Calls our API as the signed-in user. Every failure becomes an ApiRequestError with a readable message. */
+export async function apiFetch(path: string, init: { method?: string; body?: unknown } = {}): Promise<Response> {
+  const headers = await authHeaders();
+  if (init.body !== undefined) headers['content-type'] = 'application/json';
+
   let response: Response;
   try {
     response = await fetch(path, {
       method: init.method ?? 'GET',
-      headers: init.body === undefined ? undefined : { 'content-type': 'application/json' },
+      headers,
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
     });
   } catch {
@@ -33,6 +56,7 @@ export async function apiRequest<T>(path: string, init: { method?: string; body?
   }
 
   if (!response.ok) {
+    if (response.status === 401) authHooks.onUnauthorized();
     const body = (await response.json().catch(() => null)) as Partial<ApiErrorBody> | null;
     // Our API always sends { error: { code, message } }. No body means something in front of it
     // (proxy, load balancer) answered instead — usually because the API is down or restarting.
@@ -42,7 +66,12 @@ export async function apiRequest<T>(path: string, init: { method?: string; body?
         : `The request failed (HTTP ${response.status}).`;
     throw new ApiRequestError(response.status, body?.error?.code ?? 'HTTP_ERROR', body?.error?.message ?? fallback);
   }
-  return (await response.json()) as T;
+  return response;
+}
+
+/** Calls our API and reads the JSON response. */
+export async function apiRequest<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+  return (await (await apiFetch(path, init)).json()) as T;
 }
 
 /** A message suitable for showing to the user, whatever was thrown. */
