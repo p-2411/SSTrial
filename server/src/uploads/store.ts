@@ -5,14 +5,20 @@ import type {
   UploadErrorCode,
   UploadStatus,
 } from '@label-extractor/shared';
-import { labelExtractionSchema, storedErrorCode } from '@label-extractor/shared';
+import {
+  labelExtractionSchema,
+  storedErrorCode,
+  UPLOAD_TRANSITIONS,
+  type UploadTransition,
+} from '@label-extractor/shared';
 import type { UploadJobs } from './jobs.ts';
 
 /**
  * All reads and writes of the `uploads` table.
  *
- * Every status change is a *guarded transition*: `UPDATE … WHERE status IN (<allowed from-states>)`.
- * If the row isn't in an allowed state the update matches nothing and the method returns `null`.
+ * Every status change is a *guarded transition* from shared/src/lifecycle.ts:
+ * `UPDATE … WHERE status = any(<allowed from-states>)`. If the row isn't in an allowed state the
+ * update matches nothing and the method returns `null`.
  * That makes every operation idempotent and race-safe without explicit locks — e.g. a
  * double-clicked "complete", or the same job delivered twice, simply becomes a no-op.
  *
@@ -93,7 +99,7 @@ export interface UploadIntake {
    * `failed|completed → queued` with attempts and any result cleared, and enqueue a fresh job,
    * atomically. `from` is the status the caller saw, so a concurrent change makes this a no-op.
    */
-  requeue(id: string, from: 'failed' | 'completed'): Promise<UploadRecord | null>;
+  requeue(id: string, from: (typeof UPLOAD_TRANSITIONS.rerun.from)[number]): Promise<UploadRecord | null>;
 }
 
 /** Processing attempts, for the worker. Every write after startAttempt needs its claim token. */
@@ -133,6 +139,12 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
     const [row] = await query;
     return row ? toRecord(row) : null;
   }
+
+  /** SQL guard for a lifecycle transition: the row must be in one of its from-statuses. */
+  const allowedFrom = (transition: UploadTransition) =>
+    sql`status = any(${[...UPLOAD_TRANSITIONS[transition].from]}::upload_status[])`;
+  /** The status a lifecycle transition leads to. */
+  const statusAfter = (transition: Exclude<UploadTransition, 'discard'>) => UPLOAD_TRANSITIONS[transition].to;
 
   return {
     async create(upload) {
@@ -206,8 +218,8 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
       // row that has no job (stuck forever) or a job for a row that isn't `queued`.
       return sql.begin(async (tx) => {
         const record = await oneRecord(tx`
-          update uploads set status = 'queued', mime_type = ${mimeType}
-          where id = ${id} and status = 'uploading'
+          update uploads set status = ${statusAfter('confirm')}, mime_type = ${mimeType}
+          where id = ${id} and ${allowedFrom('confirm')}
           returning *`);
         if (record) {
           await jobs.enqueueExtraction(id, tx);
@@ -219,7 +231,7 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
 
     discardUnfinished(id, options) {
       return sql.begin(async (tx) => {
-        const record = await oneRecord(tx`delete from uploads where id = ${id} and status = 'uploading' returning *`);
+        const record = await oneRecord(tx`delete from uploads where id = ${id} and ${allowedFrom('discard')} returning *`);
         if (record && options?.cancelFinalise) await jobs.cancelFinalise(id, tx);
         return record;
       });
@@ -229,8 +241,9 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
       return sql.begin(async (tx) => {
         const record = await oneRecord(tx`
           update uploads
-          set status = 'queued', attempts = 0, error_code = null, result = null, completed_at = null, claim_token = null
-          where id = ${id} and status = ${from}
+          set status = ${statusAfter('rerun')}, attempts = 0, error_code = null, result = null, completed_at = null,
+              claim_token = null
+          where id = ${id} and status = ${from} and ${allowedFrom('rerun')}
           returning *`);
         if (record) await jobs.enqueueExtraction(id, tx);
         return record;
@@ -240,38 +253,38 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
     startAttempt(id) {
       return oneRecord(sql`
         update uploads
-        set status = 'processing', attempts = attempts + 1, error_code = null, claim_token = gen_random_uuid()
-        where id = ${id} and status in ('queued', 'processing')
+        set status = ${statusAfter('claim')}, attempts = attempts + 1, error_code = null, claim_token = gen_random_uuid()
+        where id = ${id} and ${allowedFrom('claim')}
         returning *`);
     },
 
     complete(id, claimToken, result) {
       return oneRecord(sql`
         update uploads
-        set status = 'completed', result = ${sql.json(result as postgres.JSONValue)}, completed_at = now(),
+        set status = ${statusAfter('complete')}, result = ${sql.json(result as postgres.JSONValue)}, completed_at = now(),
             error_code = null, claim_token = null
-        where id = ${id} and status = 'processing' and claim_token = ${claimToken}
+        where id = ${id} and ${allowedFrom('complete')} and claim_token = ${claimToken}
         returning *`);
     },
 
     scheduleRetry(id, claimToken, code) {
       return oneRecord(sql`
-        update uploads set status = 'queued', error_code = ${code}, claim_token = null
-        where id = ${id} and status = 'processing' and claim_token = ${claimToken}
+        update uploads set status = ${statusAfter('retryLater')}, error_code = ${code}, claim_token = null
+        where id = ${id} and ${allowedFrom('retryLater')} and claim_token = ${claimToken}
         returning *`);
     },
 
     fail(id, claimToken, code) {
       return oneRecord(sql`
-        update uploads set status = 'failed', error_code = ${code}, claim_token = null
-        where id = ${id} and status = 'processing' and claim_token = ${claimToken}
+        update uploads set status = ${statusAfter('fail')}, error_code = ${code}, claim_token = null
+        where id = ${id} and ${allowedFrom('fail')} and claim_token = ${claimToken}
         returning *`);
     },
 
     failAbandoned(id, code) {
       return oneRecord(sql`
-        update uploads set status = 'failed', error_code = ${code}, claim_token = null
-        where id = ${id} and status in ('queued', 'processing')
+        update uploads set status = ${statusAfter('abandon')}, error_code = ${code}, claim_token = null
+        where id = ${id} and ${allowedFrom('abandon')}
         returning *`);
     },
   };

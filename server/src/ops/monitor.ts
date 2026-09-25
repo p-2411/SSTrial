@@ -1,7 +1,7 @@
 import type { Logger } from '../infra/logger.ts';
 import { logEvents } from '../logs/events.ts';
 import type { EventLog } from '../logs/store.ts';
-import { EXTRACTION_EXPIRY_SECONDS } from '../uploads/jobs.ts';
+import { RETRY_POLICY } from '../extraction/retry-policy.ts';
 import type { FiringAlert, MonitorSignals, OpsStore } from './store.ts';
 
 /**
@@ -18,7 +18,7 @@ export const MONITOR_RULES = {
   stalledAfterSeconds: 10 * 60,
   backlogSize: 500,
   /** Several times longer than a single attempt can run before it's presumed dead. */
-  stuckAfterMinutes: Math.ceil((3 * EXTRACTION_EXPIRY_SECONDS) / 60),
+  stuckAfterMinutes: Math.ceil((3 * RETRY_POLICY.attemptTimeoutSeconds) / 60),
   failureRate: 0.25,
   /** Too few results to judge a failure rate below this. */
   failureRateMinimumSample: 4,

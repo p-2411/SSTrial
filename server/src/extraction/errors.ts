@@ -1,18 +1,5 @@
 import { uploadErrorMessage, type UploadErrorCode } from '@label-extractor/shared';
-
-/** Failures worth another attempt later: the cause is likely to have passed by then. */
-const RETRYABLE_CODES: ReadonlySet<UploadErrorCode> = new Set<UploadErrorCode>([
-  'LLM_TIMEOUT',
-  'LLM_RATE_LIMITED',
-  'LLM_UNAVAILABLE',
-  'LLM_INVALID_RESPONSE', // output varies from run to run
-  'INTERNAL_ERROR', // most likely a passing hiccup (storage, network); a real bug fails on the last attempt
-]);
-
-/** Whether a failure with this code is worth another attempt (see RETRYABLE_CODES). */
-export function isRetryableCode(code: UploadErrorCode): boolean {
-  return RETRYABLE_CODES.has(code);
-}
+import { isRetryableCode } from './retry-policy.ts';
 
 /**
  * Every way extraction can fail, reduced to what the worker needs to know:
@@ -37,6 +24,7 @@ export class ExtractionError extends Error {
     this.providerBackoffMs = options?.providerBackoffMs;
   }
 
+  /** See retry-policy.ts. */
   get retryable(): boolean {
     return isRetryableCode(this.code);
   }

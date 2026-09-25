@@ -1,4 +1,5 @@
 import type { PgBoss, QueueOptions } from 'pg-boss';
+import { RETRY_POLICY, type RetryPolicy } from '../extraction/retry-policy.ts';
 import type { Db } from '../infra/db.ts';
 import { asPgBossDb } from '../infra/queue.ts';
 import { SIGNED_UPLOAD_URL_TTL_SECONDS } from '../infra/storage.ts';
@@ -34,23 +35,16 @@ export interface ExtractionJobData {
 
 export type FinaliseJobData = ExtractionJobData;
 
-/**
- * Retry policy for extraction jobs. Retryable failures (timeouts, rate limits, 5xx, malformed
- * output) back off exponentially with jitter, so a struggling LLM provider isn't hammered by every
- * worker at once:  attempt 1 → ~15s → 2 → ~30s → 3 → ~60s → 4 → ~120s → 5.
- */
-const EXTRACTION_RETRY_POLICY = {
-  retryLimit: 4,
-  retryDelay: 15,
-  retryBackoff: true,
-  retryDelayMax: 300,
-  // An attempt still "active" after this long is presumed dead (worker crashed or hung) and is
-  // failed/retried by pg-boss. Must exceed the LLM timeout plus download time.
-  expireInSeconds: 180,
-} satisfies QueueOptions;
-
-/** The longest a single extraction attempt can run before pg-boss presumes it dead. */
-export const EXTRACTION_EXPIRY_SECONDS = EXTRACTION_RETRY_POLICY.expireInSeconds;
+/** The retry policy (extraction/retry-policy.ts) as pg-boss queue settings. */
+function extractionQueueOptions(policy: RetryPolicy) {
+  return {
+    retryLimit: policy.maxAttempts - 1,
+    retryDelay: policy.firstDelaySeconds,
+    retryBackoff: true, // exponential, with jitter
+    retryDelayMax: policy.longestDelaySeconds,
+    expireInSeconds: policy.attemptTimeoutSeconds,
+  } satisfies QueueOptions;
+}
 
 /**
  * A worker processing an extraction job refreshes its claim this often (pg-boss sends the
@@ -60,14 +54,12 @@ export const EXTRACTION_EXPIRY_SECONDS = EXTRACTION_RETRY_POLICY.expireInSeconds
  */
 export const EXTRACTION_HEARTBEAT_SECONDS = 30;
 
-/** Total attempts including the first: retries + 1. Shown in the UI ("attempt 2 of 5"). */
-export const MAX_EXTRACTION_ATTEMPTS = EXTRACTION_RETRY_POLICY.retryLimit + 1;
-
 /**
  * Creates the upload queues if needed, and applies the current retry policy to an existing
- * extraction queue. `retryPolicy` is overridable so integration tests can retry in milliseconds.
+ * extraction queue. `policy` is overridable so integration tests can retry in seconds.
  */
-export async function createUploadQueues(boss: PgBoss, retryPolicy: QueueOptions = EXTRACTION_RETRY_POLICY): Promise<void> {
+export async function createUploadQueues(boss: PgBoss, policy: RetryPolicy = RETRY_POLICY): Promise<void> {
+  const retryPolicy = extractionQueueOptions(policy);
   // The dead-letter queue must exist before a queue that references it.
   if (!(await boss.getQueue(EXTRACTION_DEAD_LETTER_QUEUE))) {
     await boss.createQueue(EXTRACTION_DEAD_LETTER_QUEUE);

@@ -108,12 +108,13 @@ The LLM is never called from tests. The worker depends on a `LabelExtractor` int
 ## Project structure
 
 ```
-shared/          Types, Zod schemas and rules used by all three: file rules, extraction schema, HTTP contract
+shared/          Types, Zod schemas and rules used by all three: file rules, upload lifecycle, extraction
+                 schema, HTTP contract
 server/
   src/api/       HTTP API process (Fastify): routes that turn use-case outcomes into responses, errors
-  src/worker/    Worker process: the extraction job (retry decisions) and a handler per queue
-  src/extraction/ LLM integration: interface, errors, OpenAI implementation and its error mapping,
-                 prompt, shared rate limiter
+  src/worker/    Worker process: the extraction job and a handler per queue
+  src/extraction/ LLM integration: interface, errors, retry policy, OpenAI implementation and its
+                 error mapping, prompt, shared rate limiter
   src/uploads/   The uploads domain: the table's guarded transitions, the use cases (intake, finalise,
                  retry), its queues, exports and response mapping
   src/logs/      The activity log: the events table, the catalogue of events (wording in one place)

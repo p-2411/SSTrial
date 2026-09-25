@@ -1,6 +1,9 @@
 import { pino } from 'pino';
 import {
+  canTransition,
   LOG_LEVELS,
+  UPLOAD_TRANSITIONS,
+  type UploadTransition,
   type HealthReport,
   type LabelExtraction,
   type LogEventType,
@@ -115,21 +118,21 @@ export class InMemoryUploadStore implements UploadStore {
     yield* completed;
   }
   async markUploaded(id: string, mimeType: SupportedMimeType, options?: SettleOptions) {
-    const row = this.transition(id, ['uploading'], { status: 'queued', mimeType });
+    const row = this.transition(id, 'confirm', { mimeType });
     if (row) this.enqueued.push(id);
     if (row && options?.cancelFinalise) this.finaliseCancelled.push(id);
     return row;
   }
   async discardUnfinished(id: string, options?: SettleOptions) {
     const row = this.rows.get(id);
-    if (!row || row.status !== 'uploading') return null;
+    if (!row || !canTransition('discard', row.status)) return null;
     this.rows.delete(id);
     if (options?.cancelFinalise) this.finaliseCancelled.push(id);
     return row;
   }
   async requeue(id: string, from: 'failed' | 'completed') {
-    const row = this.transition(id, [from], {
-      status: 'queued',
+    if (this.rows.get(id)?.status !== from) return null;
+    const row = this.transition(id, 'rerun', {
       attempts: 0,
       error: null,
       result: null,
@@ -142,32 +145,36 @@ export class InMemoryUploadStore implements UploadStore {
   }
   async startAttempt(id: string) {
     const row = this.rows.get(id);
-    return this.transition(id, ['queued', 'processing'], {
-      status: 'processing',
+    return this.transition(id, 'claim', {
       attempts: (row?.attempts ?? 0) + 1,
       error: null,
       claimToken: crypto.randomUUID(),
     });
   }
   async complete(id: string, claimToken: string, result: LabelExtraction) {
-    return this.transition(id, ['processing'], { status: 'completed', result, error: null, completedAt: new Date(), claimToken: null }, claimToken);
+    return this.transition(id, 'complete', { result, error: null, completedAt: new Date(), claimToken: null }, claimToken);
   }
   async scheduleRetry(id: string, claimToken: string, code: UploadErrorCode) {
-    return this.transition(id, ['processing'], { status: 'queued', error: { code }, claimToken: null }, claimToken);
+    return this.transition(id, 'retryLater', { error: { code }, claimToken: null }, claimToken);
   }
   async fail(id: string, claimToken: string, code: UploadErrorCode) {
-    return this.transition(id, ['processing'], { status: 'failed', error: { code }, claimToken: null }, claimToken);
+    return this.transition(id, 'fail', { error: { code }, claimToken: null }, claimToken);
   }
   async failAbandoned(id: string, code: UploadErrorCode) {
-    return this.transition(id, ['queued', 'processing'], { status: 'failed', error: { code }, claimToken: null });
+    return this.transition(id, 'abandon', { error: { code }, claimToken: null });
   }
 
-  /** A guarded update: only from the given statuses and, when `claimToken` is given, only if it's current. */
-  private transition(id: string, from: UploadRecord['status'][], changes: Partial<UploadRecord>, claimToken?: string) {
+  /** A lifecycle transition (shared/src/lifecycle.ts) and, when `claimToken` is given, only if it's current. */
+  private transition(
+    id: string,
+    transition: Exclude<UploadTransition, 'discard'>,
+    changes: Partial<UploadRecord>,
+    claimToken?: string,
+  ) {
     const row = this.rows.get(id);
-    if (!row || !from.includes(row.status)) return null;
+    if (!row || !canTransition(transition, row.status)) return null;
     if (claimToken !== undefined && row.claimToken !== claimToken) return null;
-    const updated = { ...row, ...changes, updatedAt: new Date() };
+    const updated = { ...row, ...changes, status: UPLOAD_TRANSITIONS[transition].to, updatedAt: new Date() };
     this.rows.set(id, updated);
     return updated;
   }

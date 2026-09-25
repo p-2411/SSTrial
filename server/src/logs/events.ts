@@ -6,9 +6,8 @@ import {
   type SupportedMimeType,
   type UploadErrorCode,
 } from '@label-extractor/shared';
-import { isRetryableCode } from '../extraction/errors.ts';
+import { isRetryableCode, RETRY_POLICY } from '../extraction/retry-policy.ts';
 import type { FiringAlert } from '../ops/store.ts';
-import { MAX_EXTRACTION_ATTEMPTS } from '../uploads/jobs.ts';
 import type { UploadRecord } from '../uploads/store.ts';
 import type { NewLogEvent } from './store.ts';
 
@@ -26,7 +25,7 @@ function aboutUpload(upload: UploadRef) {
 }
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
-const attemptOf = (attempt: number) => `attempt ${attempt} of ${MAX_EXTRACTION_ATTEMPTS}`;
+const attemptOf = (attempt: number) => `attempt ${attempt} of ${RETRY_POLICY.maxAttempts}`;
 const fileTypeLabel = (mimeType: SupportedMimeType) => SUPPORTED_FILE_TYPES[mimeType].label;
 
 export const logEvents = {

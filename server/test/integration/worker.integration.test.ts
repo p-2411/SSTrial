@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type postgres from 'postgres';
 import type { PgBoss } from 'pg-boss';
+import { canTransition, UPLOAD_STATUSES, UPLOAD_TRANSITIONS, type UploadStatus, type UploadTransition } from '@label-extractor/shared';
 import { ExtractionError } from '../../src/extraction/errors.ts';
+import type { RetryPolicy } from '../../src/extraction/retry-policy.ts';
 import type { LabelExtractor } from '../../src/extraction/extractor.ts';
 import { listenForChanges } from '../../src/infra/change-feed.ts';
 import { createDb } from '../../src/infra/db.ts';
@@ -39,7 +41,7 @@ const DATABASE_URL = process.env.TEST_DATABASE_URL;
 const uniquePng = () => new Uint8Array([...FILE_BYTES.png, ...crypto.getRandomValues(new Uint8Array(16))]);
 
 // Fast policy so the whole retry cycle takes seconds: 3 attempts, 1s apart, 2s expiry.
-const RETRY_LIMIT = 2;
+const TEST_POLICY: RetryPolicy = { maxAttempts: 3, firstDelaySeconds: 1, longestDelaySeconds: 1, attemptTimeoutSeconds: 2 };
 const TEST_SCHEMA = 'pgboss_test'; // isolated from a dev worker that may be running on `pgboss`
 
 type Step = typeof SAMPLE_EXTRACTION | Error | 'hang';
@@ -78,7 +80,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       logger: silentLogger,
       overrides: { schema: TEST_SCHEMA, superviseIntervalSeconds: 1, monitorIntervalSeconds: 1 },
     });
-    await createUploadQueues(boss, { retryLimit: RETRY_LIMIT, retryDelay: 1, retryBackoff: false, expireInSeconds: 2 });
+    await createUploadQueues(boss, TEST_POLICY);
     uploads = createUploadStore(sql, createUploadJobs(boss));
     events = createEventStore(sql, { source: 'worker', logger: silentLogger });
     await startFinaliseWorker({ boss, uploads, storage, events, logger: silentLogger });
@@ -169,14 +171,14 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
 
     const upload = await waitForStatus(id, 'failed');
     expect(upload).toMatchObject({
-      attempts: RETRY_LIMIT + 1,
+      attempts: TEST_POLICY.maxAttempts,
       error: { code: 'LLM_TIMEOUT' },
     });
     await expect.poll(() => boss.findJobs(EXTRACTION_DEAD_LETTER_QUEUE, { data: { uploadId: id } })).toHaveLength(1);
     await expect
       .poll(() => eventTypes(id))
       .toEqual([
-        ...Array.from({ length: RETRY_LIMIT }, () => ['extraction.started', 'extraction.retry_scheduled']).flat(),
+        ...Array.from({ length: TEST_POLICY.maxAttempts - 1 }, () => ['extraction.started', 'extraction.retry_scheduled']).flat(),
         'extraction.started',
         'extraction.failed',
       ]);
@@ -225,7 +227,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
     // job and the dead-letter handler fails the upload that would otherwise be stuck "processing".
     const upload = await waitForStatus(id, 'failed', 40_000);
     expect(upload.error?.code).toBe('PROCESSING_TIMEOUT');
-    expect(scripts.get(`${id}.png`)!.calls).toBe(RETRY_LIMIT + 1);
+    expect(scripts.get(`${id}.png`)!.calls).toBe(TEST_POLICY.maxAttempts);
     await expect.poll(() => eventTypes(id)).toContain('extraction.abandoned');
   }, 45_000);
 
@@ -514,6 +516,61 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       expect(signals).toEqual(expect.objectContaining({ waiting: expect.any(Number), recentCompleted: expect.any(Number) }));
       const snapshot = await ops().snapshot();
       expect(snapshot.recent.completed).toBeGreaterThan(0); // earlier tests completed uploads
+    });
+  });
+
+  describe('upload lifecycle guards (real SQL)', () => {
+    // Every store write, as the lifecycle transition it performs. Claim-fenced writes get the
+    // row's current token, so only the status guard decides.
+    const writes: Record<UploadTransition, (id: string, claim: string, status: UploadStatus) => Promise<UploadRecord | null>> = {
+      confirm: (id) => uploads.markUploaded(id, 'image/png'),
+      discard: (id) => uploads.discardUnfinished(id),
+      claim: (id) => uploads.startAttempt(id),
+      complete: (id, claim) => uploads.complete(id, claim, SAMPLE_EXTRACTION),
+      retryLater: (id, claim) => uploads.scheduleRetry(id, claim, 'LLM_TIMEOUT'),
+      fail: (id, claim) => uploads.fail(id, claim, 'LLM_REFUSED'),
+      abandon: (id) => uploads.failAbandoned(id, 'PROCESSING_TIMEOUT'),
+      // requeue takes the status the caller saw; pass the real one, so only the guard decides.
+      rerun: (id, _claim, status) => uploads.requeue(id, status as 'failed' | 'completed'),
+    };
+
+    /**
+     * An upload in `status` as the app would leave it (a completed one has a result, a failed one a
+     * reason), with a claim token, and no job for a running worker to pick up.
+     */
+    async function uploadIn(status: UploadStatus) {
+      const id = crypto.randomUUID();
+      createdIds.push(id);
+      await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png`, contentSha256: null });
+      const [row] = await sql`
+        update uploads
+        set status = ${status}, claim_token = gen_random_uuid(),
+            result = ${status === 'completed' ? sql.json(SAMPLE_EXTRACTION) : null},
+            error_code = ${status === 'failed' ? 'LLM_REFUSED' : null}
+        where id = ${id}
+        returning claim_token`;
+      return { id, claim: row!.claim_token as string };
+    }
+
+    const cases = Object.keys(UPLOAD_TRANSITIONS).flatMap((transition) =>
+      UPLOAD_STATUSES.map((status) => [transition as UploadTransition, status] as const),
+    );
+
+    it.each(cases)('%s from %s happens only if shared/src/lifecycle.ts allows it', async (transition, status) => {
+      const { id, claim } = await uploadIn(status);
+      const allowed = canTransition(transition, status);
+
+      const written = await writes[transition](id, claim, status);
+
+      if (!allowed) {
+        expect(written).toBeNull();
+        expect((await uploads.findById(id))?.status).toBe(status);
+      } else if (transition === 'discard') {
+        expect(await uploads.findById(id)).toBeNull();
+      } else {
+        // Checked on the returned row: a queued upload may be picked up by the running worker at once.
+        expect(written?.status).toBe(UPLOAD_TRANSITIONS[transition].to);
+      }
     });
   });
 

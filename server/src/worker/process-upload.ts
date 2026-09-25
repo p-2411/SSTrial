@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { isEmptyExtraction, type LabelExtraction, type UploadErrorCode } from '@label-extractor/shared';
 import { ExtractionError } from '../extraction/errors.ts';
+import { decideAfterFailure } from '../extraction/retry-policy.ts';
 import type { LabelExtractor } from '../extraction/extractor.ts';
 import type { RateLimiter } from '../extraction/rate-limiter.ts';
 import type { Logger } from '../infra/logger.ts';
@@ -112,7 +113,7 @@ async function extractOrReuse(
   return { result, durationMs: Math.round(performance.now() - started) };
 }
 
-/** Records a failed attempt: retried later if that could help and attempts remain, otherwise final. */
+/** Carries out what the retry policy decides for a failed attempt (see decideAfterFailure). */
 async function recordFailure(
   deps: ProcessUploadDeps,
   { upload, claim, log }: Attempt,
@@ -120,15 +121,15 @@ async function recordFailure(
   isFinalAttempt: boolean,
 ): Promise<JobOutcome> {
   const logContext = { code: error.code, detail: error.detail, err: error.cause ?? error };
+  const decision = decideAfterFailure(error, isFinalAttempt);
 
-  // The provider asked us to slow down: pause every worker, for as long as it asked, not just this job.
-  if (error.providerBackoffMs !== undefined) {
-    await deps.rateLimiter.pauseFor(error.providerBackoffMs);
-    log.warn({ pauseMs: error.providerBackoffMs }, 'Provider asked us to back off; paused all LLM requests');
-    await deps.events.record(logEvents.rateLimitPaused(upload, error.providerBackoffMs));
+  if (decision.pauseAllMs !== undefined) {
+    await deps.rateLimiter.pauseFor(decision.pauseAllMs);
+    log.warn({ pauseMs: decision.pauseAllMs }, 'Provider asked us to back off; paused all LLM requests');
+    await deps.events.record(logEvents.rateLimitPaused(upload, decision.pauseAllMs));
   }
 
-  if (error.retryable && !isFinalAttempt) {
+  if (decision.next === 'retry') {
     const queued = await deps.uploads.scheduleRetry(upload.id, claim, error.code);
     if (!queued) return lostClaim(log);
     log.warn(logContext, 'Attempt failed with a transient error; will retry');

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ExtractionError } from '../../src/extraction/errors.ts';
 import type { LabelExtractor } from '../../src/extraction/extractor.ts';
 import { createOpenAIExtractor, type ModelResponse } from '../../src/extraction/openai-extractor.ts';
-import { MAX_EXTRACTION_ATTEMPTS } from '../../src/uploads/jobs.ts';
+import { RETRY_POLICY } from '../../src/extraction/retry-policy.ts';
 import { processUpload, type ExtractionJob, type JobOutcome } from '../../src/worker/process-upload.ts';
 import {
   FakeRateLimiter,
@@ -63,8 +63,8 @@ function run(extractor: LabelExtractor, job: Partial<ExtractionJob> = {}) {
  */
 async function runLikeTheQueue(extractor: LabelExtractor): Promise<JobOutcome[]> {
   const outcomes: JobOutcome[] = [];
-  for (let attempt = 1; attempt <= MAX_EXTRACTION_ATTEMPTS; attempt++) {
-    const outcome = await run(extractor, { attempt, isFinalAttempt: attempt === MAX_EXTRACTION_ATTEMPTS });
+  for (let attempt = 1; attempt <= RETRY_POLICY.maxAttempts; attempt++) {
+    const outcome = await run(extractor, { attempt, isFinalAttempt: attempt === RETRY_POLICY.maxAttempts });
     outcomes.push(outcome);
     if (outcome.status !== 'retry') break;
   }
@@ -123,16 +123,16 @@ describe('processUpload — retry behaviour', () => {
 
     const outcomes = await runLikeTheQueue(extractor);
 
-    expect(extractor.calls).toBe(MAX_EXTRACTION_ATTEMPTS);
+    expect(extractor.calls).toBe(RETRY_POLICY.maxAttempts);
     expect(outcomes.at(-1)).toMatchObject({ status: 'failed', code: 'LLM_TIMEOUT' });
     expect(uploads.get(UPLOAD_ID)).toMatchObject({
       status: 'failed',
-      attempts: MAX_EXTRACTION_ATTEMPTS,
+      attempts: RETRY_POLICY.maxAttempts,
       error: { code: 'LLM_TIMEOUT' },
     });
     const failed = events.events.at(-1)!;
     expect(failed).toMatchObject({ type: 'extraction.failed', level: 'error', data: { code: 'LLM_TIMEOUT' } });
-    expect(failed.message).toContain(`Gave up after ${MAX_EXTRACTION_ATTEMPTS} attempts`);
+    expect(failed.message).toContain(`Gave up after ${RETRY_POLICY.maxAttempts} attempts`);
   });
 
   it('fails immediately, without retrying, when the error is not transient', async () => {
