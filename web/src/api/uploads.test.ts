@@ -27,4 +27,22 @@ describe('downloadExport', () => {
     expect((init.headers as Record<string, string>).authorization).toBe('Bearer token');
     expect((click.mock.instances[0] as HTMLAnchorElement).download).toBe('label-extractions-2026-09-26.csv');
   });
+
+  it('keeps the file available until the browser has started saving it', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('a,b\n')));
+    const revokeObjectURL = vi.fn();
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:x'), revokeObjectURL });
+    let inPage = false;
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      inPage = document.body.contains(this); // some browsers only download links that are in the page
+    });
+
+    await downloadExport('json');
+    expect(inPage).toBe(true);
+    expect(revokeObjectURL).not.toHaveBeenCalled(); // revoking at once can cancel it in Firefox and Safari
+    vi.runAllTimers();
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:x');
+    vi.useRealTimers();
+  });
 });

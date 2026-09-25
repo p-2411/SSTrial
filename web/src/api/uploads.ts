@@ -100,6 +100,10 @@ export async function downloadExport(format: 'csv' | 'json'): Promise<void> {
   const link = document.createElement('a');
   link.href = url;
   link.download = fileName;
+  // In the page while clicked (some browsers ignore detached links), and the file kept a moment
+  // longer: revoking it straight away can cancel the download in Firefox and Safari.
+  document.body.append(link);
   link.click();
-  URL.revokeObjectURL(url);
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
