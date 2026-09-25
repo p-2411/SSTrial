@@ -44,6 +44,7 @@ export type ApiErrorCode =
   | 'BAD_REQUEST'
   | 'NOT_FOUND'
   | 'STORAGE_UNAVAILABLE'
+  | 'AUTH_UNAVAILABLE' // Supabase Auth couldn't be reached to check the sign-in
   | 'INTERNAL_ERROR';
 
 /** Every non-2xx response has this shape. */

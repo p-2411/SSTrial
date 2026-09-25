@@ -1,5 +1,6 @@
 import type { FastifyError, FastifyReply, FastifyRequest } from 'fastify';
 import type { ApiErrorBody, ApiErrorCode } from '@label-extractor/shared';
+import { AuthUnavailableError } from '../auth/supabase-tokens.ts';
 import { StorageUnavailableError } from '../infra/storage.ts';
 
 /**
@@ -30,6 +31,10 @@ export function handleError(error: FastifyError | Error, request: FastifyRequest
 
   if (error instanceof ApiError) {
     return send(error.statusCode, error.code, error.message);
+  }
+  if (error instanceof AuthUnavailableError) {
+    request.log.error({ err: error }, 'Sign-in check unavailable');
+    return send(503, 'AUTH_UNAVAILABLE', "Sign-in can't be checked right now. Please try again in a moment.");
   }
   if (error instanceof StorageUnavailableError) {
     request.log.error({ err: error }, 'Storage unavailable');

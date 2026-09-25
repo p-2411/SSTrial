@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp, type App } from '../../src/api/app.ts';
 import { createAuthenticator } from '../../src/auth/authenticator.ts';
+import { AuthUnavailableError } from '../../src/auth/supabase-tokens.ts';
 import { ADMIN, MEMBER, TEST_PUBLIC_CONFIG, testAppDeps } from '../fakes.ts';
 
 // The real header parsing and member check; tokens are plain strings mapped to users.
@@ -32,6 +33,16 @@ describe('signing in', () => {
     for (const url of ['/%61pi/uploads', '/a%70i/uploads/counts', '/%61pi/exports/uploads.csv', '/%61pi/me']) {
       expect((await get(url)).statusCode, url).toBe(401);
     }
+  });
+
+  it("answers 503 when sign-ins can't be checked, so a Supabase Auth outage doesn't sign everyone out", async () => {
+    await app.close();
+    const down = { authenticate: async () => Promise.reject(new AuthUnavailableError('Auth is down')) };
+    app = await buildApp(testAppDeps({ authenticator: down }));
+
+    const response = await get('/api/uploads', 'member-token');
+    expect(response.statusCode).toBe(503);
+    expect(response.json().error.code).toBe('AUTH_UNAVAILABLE');
   });
 
   it('refuses a valid sign-in that has no access', async () => {
