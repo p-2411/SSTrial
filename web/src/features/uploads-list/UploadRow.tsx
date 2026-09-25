@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { NavLink, useLocation } from 'react-router';
 import type { UploadSummary } from '@label-extractor/shared';
+import { UploadConfidence } from '@/components/Confidence';
 import { FileTypeTile } from '@/components/FileTypeTile';
 import { RelativeTime } from '@/components/RelativeTime';
 import { StatusPill } from '@/components/StatusPill';
@@ -49,7 +50,10 @@ export const UploadRow = memo(function UploadRow({ upload, now }: { upload: Uplo
           )}
         </div>
         <div className="flex flex-col items-end gap-1.5">
-          <StatusPill status={upload.status} />
+          <div className="flex items-center gap-1.5">
+            <UploadConfidence score={upload.confidence} />
+            <StatusPill status={upload.status} />
+          </div>
           <RelativeTime className="text-xs text-muted-foreground tabular-nums" iso={upload.createdAt} now={now} />
         </div>
       </NavLink>

@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import type { LabelExtraction } from '@label-extractor/shared';
+import type { ExtractionConfidence, LabelExtraction } from '@label-extractor/shared';
 import { CoreInformationCard } from './CoreInformationCard';
 
 const full: LabelExtraction = {
@@ -17,8 +17,8 @@ const full: LabelExtraction = {
 
 const empty: LabelExtraction = { productName: null, brand: null, ingredients: [], allergens: [], netWeight: null };
 
-function renderCard(result: LabelExtraction) {
-  render(<CoreInformationCard result={result} />);
+function renderCard(result: LabelExtraction, confidence: ExtractionConfidence | null = null) {
+  render(<CoreInformationCard result={result} confidence={confidence} />);
   return screen.getByRole('region', { name: 'Core information' });
 }
 
@@ -72,5 +72,30 @@ describe('CoreInformationCard', () => {
     expect(screen.getByText('None declared on label')).toBeInTheDocument();
     expect(screen.getByText('No ingredient list found on label')).toBeInTheDocument();
     expect(screen.queryByText(/Highlighted ingredients/)).not.toBeInTheDocument();
+  });
+
+  describe('confidence', () => {
+    const confidence: ExtractionConfidence = {
+      productName: { score: 97, reasons: [] },
+      brand: { score: 95, reasons: [] },
+      netWeight: { score: 72, reasons: ['Partly hidden by a fold.'] },
+      allergens: { score: 45, reasons: ['No ingredient contains milk.'] },
+      ingredients: { score: 90, reasons: [] },
+    };
+
+    it('scores every field, and says why for any that need checking', () => {
+      const card = renderCard(full, confidence);
+
+      expect(within(card).getByText('Confidence 97 out of 100')).toBeInTheDocument();
+      expect(within(card).getByText('Confidence 72 out of 100, check this field')).toBeInTheDocument();
+      expect(within(card).getByText('Confidence 45 out of 100, low')).toBeInTheDocument();
+      expect(within(card).getByText('Partly hidden by a fold.')).toBeInTheDocument();
+      expect(within(card).getByText('No ingredient contains milk.')).toBeInTheDocument();
+    });
+
+    it('shows no scores for an extraction that was never scored', () => {
+      const card = renderCard(full, null);
+      expect(within(card).queryByText(/^Confidence/)).not.toBeInTheDocument();
+    });
   });
 });

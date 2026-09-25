@@ -1,6 +1,13 @@
 import type { ReactNode } from 'react';
 import { ShieldCheck, Sparkles } from 'lucide-react';
-import { isVolumeUnit, type Ingredient, type LabelExtraction } from '@label-extractor/shared';
+import {
+  isVolumeUnit,
+  type ExtractionConfidence,
+  type FieldConfidence,
+  type Ingredient,
+  type LabelExtraction,
+} from '@label-extractor/shared';
+import { confidenceDotClass, ConfidenceScore } from '@/components/Confidence';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatQuantity } from '@/lib/quantity';
 import { TONE_CLASSES } from '@/lib/tone';
@@ -11,8 +18,17 @@ import { cn } from '@/lib/utils';
  * screens: a green-edged "Core information" card with verified values in green and a validated
  * footer. Anything the label didn't show is said explicitly, so "not found" is never mistaken for
  * "not loaded".
+ *
+ * When the extraction was scored, each field's marker takes its confidence colour, its score sits
+ * on the right, and the reasons for any doubt are spelled out under it.
  */
-export function CoreInformationCard({ result }: { result: LabelExtraction }) {
+export function CoreInformationCard({
+  result,
+  confidence,
+}: {
+  result: LabelExtraction;
+  confidence: ExtractionConfidence | null;
+}) {
   const { productName, brand, netWeight, allergens, ingredients } = result;
   const quantityLabel = netWeight && isVolumeUnit(netWeight.unit) ? 'Net volume' : 'Net weight';
 
@@ -28,9 +44,9 @@ export function CoreInformationCard({ result }: { result: LabelExtraction }) {
 
       <CardContent className="pb-5">
         <dl className="grid gap-3.5">
-          <Field label="Product name">{productName ? <Value>{productName}</Value> : <Missing>Not found on label</Missing>}</Field>
-          <Field label="Brand">{brand ? <Value>{brand}</Value> : <Missing>Not found on label</Missing>}</Field>
-          <Field label={quantityLabel}>
+          <Field label="Product name" confidence={confidence?.productName}>{productName ? <Value>{productName}</Value> : <Missing>Not found on label</Missing>}</Field>
+          <Field label="Brand" confidence={confidence?.brand}>{brand ? <Value>{brand}</Value> : <Missing>Not found on label</Missing>}</Field>
+          <Field label={quantityLabel} confidence={confidence?.netWeight}>
             {netWeight ? (
               <>
                 <Value>{formatQuantity(netWeight)}</Value>
@@ -43,7 +59,7 @@ export function CoreInformationCard({ result }: { result: LabelExtraction }) {
               <Missing>Not found on label</Missing>
             )}
           </Field>
-          <Field label="Allergens">
+          <Field label="Allergens" confidence={confidence?.allergens}>
             {allergens.length > 0 ? <AllergenChips allergens={allergens} /> : <Missing>None declared on label</Missing>}
           </Field>
         </dl>
@@ -51,10 +67,16 @@ export function CoreInformationCard({ result }: { result: LabelExtraction }) {
         {/* Ingredients get the full card width: they're the longest and most-checked part of a label. */}
         <section aria-labelledby="ingredients-heading" className="mt-4 border-t pt-4">
           <h3 id="ingredients-heading" className="flex items-center gap-2.5 text-sm font-medium">
-            <span aria-hidden className="size-2 rounded-full bg-success" />
+            <span aria-hidden className={cn('size-2 rounded-full', confidenceDotClass(confidence?.ingredients.score ?? null))} />
             Ingredients
             {ingredients.length > 0 && <span className="font-normal text-muted-foreground">({ingredients.length})</span>}
+            {confidence && (
+              <span className="ml-auto">
+                <ConfidenceScore score={confidence.ingredients.score} />
+              </span>
+            )}
           </h3>
+          {confidence && <Reasons confidence={confidence.ingredients} className="pl-[18px]" />}
           {ingredients.length > 0 ? (
             <IngredientList ingredients={ingredients} />
           ) : (
@@ -74,13 +96,29 @@ export function CoreInformationCard({ result }: { result: LabelExtraction }) {
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({ label, confidence, children }: { label: string; confidence?: FieldConfidence; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-[auto_8rem_1fr] items-baseline gap-x-2.5">
-      <span aria-hidden className="size-2 translate-y-[-1px] rounded-full bg-success" />
+    <div className="grid grid-cols-[auto_8rem_1fr_auto] items-baseline gap-x-2.5">
+      <span aria-hidden className={cn('size-2 translate-y-[-1px] rounded-full', confidenceDotClass(confidence?.score ?? null))} />
       <dt className="text-sm font-medium">{label}</dt>
-      <dd className="min-w-0 text-sm">{children}</dd>
+      <dd className="min-w-0 text-sm">
+        {children}
+        {confidence && <Reasons confidence={confidence} />}
+      </dd>
+      {confidence ? <ConfidenceScore score={confidence.score} /> : <span />}
     </div>
+  );
+}
+
+/** Why a field's score isn't higher: the model's own reason, and any check it failed. */
+function Reasons({ confidence, className }: { confidence: FieldConfidence; className?: string }) {
+  if (confidence.reasons.length === 0) return null;
+  return (
+    <ul className={cn('mt-1 grid gap-0.5 text-xs text-muted-foreground', className)}>
+      {confidence.reasons.map((reason) => (
+        <li key={reason}>{reason}</li>
+      ))}
+    </ul>
   );
 }
 

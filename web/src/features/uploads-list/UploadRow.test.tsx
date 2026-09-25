@@ -46,4 +46,14 @@ describe('UploadRow', () => {
 
     expect(lines).toEqual({ first: 'back-of-pack.pngPNG, 1 KB', second: 'No product name on label' });
   });
+
+  it('flags a completed upload that needs checking with its confidence, and says nothing otherwise', () => {
+    renderRow(summary({ confidence: 58 }));
+    expect(screen.getByText('Confidence 58')).toBeInTheDocument();
+  });
+
+  it.each([92, null])('shows no confidence for a score of %s', (confidence) => {
+    renderRow(summary({ confidence }));
+    expect(screen.queryByText(/Confidence/)).not.toBeInTheDocument();
+  });
 });
