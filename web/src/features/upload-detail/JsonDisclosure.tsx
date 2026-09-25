@@ -30,7 +30,8 @@ export function JsonDisclosure({ data }: { data: LabelExtraction }) {
       </CollapsibleTrigger>
       {/* The copy button sits inside the JSON box, top right, so it stays attached to what it copies. */}
       <CollapsibleContent className="relative mt-2">
-        <pre className="max-h-80 overflow-auto rounded-lg border bg-card p-3 pr-24 text-xs leading-relaxed">{json}</pre>
+        {/* No inner scrolling (the detail pane already scrolls), so the button never sits on a scrollbar. */}
+        <pre className="rounded-lg border bg-card p-3 pr-24 text-xs leading-relaxed break-words whitespace-pre-wrap">{json}</pre>
         <Button
           variant="outline"
           size="sm"
