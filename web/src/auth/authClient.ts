@@ -51,7 +51,9 @@ async function createAuthClient(): Promise<AuthClient> {
       return error.code === 'invalid_credentials' ? 'Wrong email or password.' : error.message;
     },
     async signOut() {
-      await auth.signOut();
+      // This browser only. Supabase's default signs the account out everywhere, which would also
+      // sign out anyone else using the same account (such as a shared demo login).
+      await auth.signOut({ scope: 'local' });
     },
     onSignedOut(listener) {
       const { data } = auth.onAuthStateChange((event) => {
