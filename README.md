@@ -61,6 +61,10 @@ uploading ─(browser confirms)─► queued ─(worker claims)─► processing
 - **Rejected files aren't kept.** Content that isn't really a JPEG, PNG, WebP or PDF is deleted with its upload; the browser shows why, with "Try again".
 - **Duplicates are recognised.** An identical file (same SHA-256) points to the existing upload instead of being processed again.
 
+### Confidence scores
+
+Every field gets a score out of 100 for how sure the extraction is, with the reasons for any doubt. The model scores each field in the same call; plain checks cap a score at 60 when the data contradicts itself (the net amount missing from its printed text, a declared allergen no ingredient contains, percentages over 100%). The detail panel shows each field's score, fine (85+), check (60–84) or low; the list flags uploads whose least certain field is below 85. How it works and its limits: [DECISIONS.md](DECISIONS.md#confidence-scores).
+
 ### Monitoring
 
 Both pages are for admins only.

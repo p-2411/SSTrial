@@ -32,6 +32,13 @@ The LLM sits behind a `LabelExtractor` interface. Every failure becomes an `Extr
 - **Idempotency.** Every status change is a guarded `UPDATE … WHERE status = any(…)`, so duplicate deliveries, double clicks and races are no-ops. The allowed changes are declared once, in `shared/src/lifecycle.ts`; the store builds its guards from that table, and an integration test tries every change from every status against real Postgres.
 - **Manual retry.** Users can retry failures that aren't caused by the file itself (e.g. after credit is topped up).
 
+## Confidence scores
+
+- **From the model, in the same call.** It scores each field 0–100 and gives a reason for anything below 85 ("partly hidden by a fold"). That costs a few output tokens rather than a second call. Alternatives considered: token log-probabilities (not available for the GPT-5 family or reasoning models), extracting twice and comparing (a real measure of disagreement, but double the cost and time), and a separate verifier model (TypeSafe's Jev returns calibrated probabilities, but takes text only, and our input is images).
+- **Plain checks correct it.** A model's own score ranks fields well but isn't a calibrated probability, and models are most overconfident exactly where they're wrong. So `applyConfidenceChecks` caps a field at 60 where the data contradicts itself: the net amount isn't in its own printed text, a declared allergen is in no ingredient, or the percentages add up to more than 100%. Checks only lower scores and add their own reason.
+- **Bands, not decimals.** The UI works in three bands (85+ fine, 60–84 check, below 60 low), because the difference between 88 and 92 means nothing. An upload's score is its least certain field: one bad field is what makes a label need review, and an average would hide it.
+- **Advisory, so lenient.** The label data is validated strictly and retried if malformed; the scores aren't worth a retry. Missing or malformed scores are stored as "not scored", and uploads from before scoring existed simply show none. Scores live in their own column, apart from the result that's exported.
+
 ## 50,000 uploads at once
 
 1. **Ingest.** Bytes never pass through our servers; storage absorbs them. The API does two small JSON requests per file and is stateless, so it scales horizontally. At that volume I'd add a batch endpoint that signs many URLs per request.
