@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { APIConnectionError, APIConnectionTimeoutError, APIError, APIUserAbortError } from 'openai';
-import { classifyOpenAIError, ExtractionError } from '../../src/extraction/errors.ts';
+import { classifyOpenAIError, ExtractionError, parseRetryAfter } from '../../src/extraction/errors.ts';
 
 /** Builds the same error subclass the SDK throws for an HTTP error response with this body. */
 function httpError(status: number, code?: string) {
@@ -39,5 +39,31 @@ describe('classifyOpenAIError', () => {
   it('keeps the original error as the cause, for logs', () => {
     const original = httpError(500);
     expect(classifyOpenAIError(original).cause).toBe(original);
+  });
+});
+
+describe('Retry-After', () => {
+  const headers = (entries: Record<string, string>) => new Headers(entries);
+
+  it.each([
+    ['retry-after-ms (OpenAI)', { 'retry-after-ms': '1500' }, 1500],
+    ['retry-after in seconds', { 'retry-after': '7' }, 7000],
+    ['retry-after as an HTTP date', { 'retry-after': new Date(Date.UTC(2026, 0, 1, 0, 0, 30)).toUTCString() }, 30_000],
+    ['an absurdly long wait, capped at 10 minutes', { 'retry-after': '86400' }, 600_000],
+  ])('reads %s', (_label, entries, expected) => {
+    expect(parseRetryAfter(headers(entries), Date.UTC(2026, 0, 1))).toBe(expected);
+  });
+
+  it('ignores missing or unreadable values', () => {
+    expect(parseRetryAfter(headers({}))).toBeUndefined();
+    expect(parseRetryAfter(headers({ 'retry-after': 'soon' }))).toBeUndefined();
+  });
+
+  it('carries the wait on rate-limit and unavailable errors', () => {
+    const limited = APIError.generate(429, { error: { code: 'rate_limit_exceeded', message: 'x' } }, undefined, new Headers({ 'retry-after-ms': '2500' }));
+    expect(classifyOpenAIError(limited)).toMatchObject({ code: 'LLM_RATE_LIMITED', retryAfterMs: 2500 });
+
+    const overloaded = APIError.generate(503, { error: { message: 'x' } }, undefined, new Headers({ 'retry-after': '3' }));
+    expect(classifyOpenAIError(overloaded)).toMatchObject({ code: 'LLM_UNAVAILABLE', retryAfterMs: 3000 });
   });
 });

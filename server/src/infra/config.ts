@@ -39,6 +39,8 @@ const workerSchema = z.object({
   OPENAI_MODEL: z.string().min(1).default('gpt-5.4-mini'),
   /** Per-request timeout for the LLM call. Must stay well under the job's expiry (see queue.ts). */
   OPENAI_TIMEOUT_MS: z.coerce.number().int().positive().default(90_000),
+  /** Requests per minute allowed to the LLM across *all* workers together (shared rate limiter). */
+  OPENAI_REQUESTS_PER_MINUTE: z.coerce.number().positive().default(120),
   /** How many jobs this worker process handles at once. Scale out with more processes. */
   WORKER_CONCURRENCY: z.coerce.number().int().positive().default(4),
 });

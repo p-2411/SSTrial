@@ -1,5 +1,6 @@
 import { pino } from 'pino';
 import type { LabelExtraction, SupportedMimeType, UploadErrorCode } from '@label-extractor/shared';
+import { RateLimitWaitTooLong, type RateLimiter } from '../src/extraction/rate-limiter.ts';
 import { StorageUnavailableError, type FileStorage } from '../src/infra/storage.ts';
 import type { NewUpload, UploadRecord, UploadStore } from '../src/uploads/store.ts';
 
@@ -143,6 +144,21 @@ export class InMemoryUploadStore implements UploadStore {
     const updated = { ...row, ...changes, updatedAt: new Date() };
     this.rows.set(id, updated);
     return updated;
+  }
+}
+
+/** Records what the worker asked of the shared rate limiter. Set `refuse` to simulate a full bucket. */
+export class FakeRateLimiter implements RateLimiter {
+  acquired = 0;
+  readonly pauses: number[] = [];
+  refuse = false;
+
+  async acquire() {
+    if (this.refuse) throw new RateLimitWaitTooLong(60_000);
+    this.acquired += 1;
+  }
+  async pauseFor(ms: number) {
+    this.pauses.push(ms);
   }
 }
 

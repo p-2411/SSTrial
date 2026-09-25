@@ -6,6 +6,7 @@
  * the queue guarantees each job goes to only one of them at a time.
  */
 import { createOpenAIExtractor, createOpenAIResponses } from '../extraction/openai-extractor.ts';
+import { createPostgresRateLimiter } from '../extraction/rate-limiter.ts';
 import { loadWorkerConfig } from '../infra/config.ts';
 import { createDb } from '../infra/db.ts';
 import { createLogger } from '../infra/logger.ts';
@@ -30,6 +31,7 @@ await startExtractionWorker({
     secretKey: config.SUPABASE_SECRET_KEY,
     bucket: config.STORAGE_BUCKET,
   }),
+  rateLimiter: createPostgresRateLimiter(sql, { key: 'openai', requestsPerMinute: config.OPENAI_REQUESTS_PER_MINUTE }),
   extractor: createOpenAIExtractor({
     model: config.OPENAI_MODEL,
     createResponse: createOpenAIResponses({ apiKey: config.OPENAI_API_KEY, timeoutMs: config.OPENAI_TIMEOUT_MS }),

@@ -19,13 +19,40 @@ export class ExtractionError extends Error {
   readonly code: UploadErrorCode;
   readonly retryable: boolean;
   readonly detail: string | undefined;
+  /** How long the provider asked us to wait before trying again (from its Retry-After headers). */
+  readonly retryAfterMs: number | undefined;
 
-  constructor(code: UploadErrorCode, retryable: boolean, detail?: string, options?: ErrorOptions) {
+  constructor(
+    code: UploadErrorCode,
+    retryable: boolean,
+    detail?: string,
+    options?: ErrorOptions & { retryAfterMs?: number },
+  ) {
     super(uploadErrorMessage(code), options);
     this.code = code;
     this.retryable = retryable;
     this.detail = detail;
+    this.retryAfterMs = options?.retryAfterMs;
   }
+}
+
+/** Longest back-off we'll accept from a provider header, so a bad value can't stall us for hours. */
+const MAX_RETRY_AFTER_MS = 10 * 60 * 1000;
+
+/**
+ * Reads how long the provider wants us to wait: OpenAI's `retry-after-ms`, or the standard
+ * `retry-after` in seconds or as an HTTP date.
+ */
+export function parseRetryAfter(headers: Headers | undefined, now = Date.now()): number | undefined {
+  const clamp = (ms: number) => (Number.isFinite(ms) && ms >= 0 ? Math.min(ms, MAX_RETRY_AFTER_MS) : undefined);
+  const milliseconds = headers?.get('retry-after-ms');
+  if (milliseconds) return clamp(Number(milliseconds));
+  const value = headers?.get('retry-after');
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (!Number.isNaN(seconds)) return clamp(seconds * 1000);
+  const date = Date.parse(value);
+  return Number.isNaN(date) ? undefined : clamp(date - now);
 }
 
 /** Maps anything thrown while calling the OpenAI API to an ExtractionError. */
@@ -44,12 +71,13 @@ export function classifyOpenAIError(error: unknown): ExtractionError {
   if (error instanceof APIError) {
     const detail = `HTTP ${error.status ?? '?'} ${error.code ?? ''} ${error.message}`.trim();
     const status = error.status ?? 0;
+    const retryAfter = { ...cause, retryAfterMs: parseRetryAfter(error.headers) };
 
     if (status === 429) {
       // OpenAI uses 429 both for "slow down" (transient) and "out of credit" (not transient).
       return error.code === 'insufficient_quota'
         ? new ExtractionError('LLM_QUOTA_EXCEEDED', false, detail, cause)
-        : new ExtractionError('LLM_RATE_LIMITED', true, detail, cause);
+        : new ExtractionError('LLM_RATE_LIMITED', true, detail, retryAfter);
     }
     if (status === 401 || status === 403 || status === 404) {
       // Bad key, no access, or unknown model: retrying won't help until someone fixes config.
@@ -59,8 +87,8 @@ export function classifyOpenAIError(error: unknown): ExtractionError {
       // The request itself was refused, most often because the file couldn't be decoded.
       return new ExtractionError('LLM_REJECTED_INPUT', false, detail, cause);
     }
-    // 408, 409, 5xx and anything unexpected: assume transient.
-    return new ExtractionError('LLM_UNAVAILABLE', true, detail, cause);
+    // 408, 409, 5xx and anything unexpected: assume transient. A 503 may also say when to come back.
+    return new ExtractionError('LLM_UNAVAILABLE', true, detail, retryAfter);
   }
 
   // Not an API error at all — most likely a bug. Retrying is safe and sometimes helps.

@@ -6,16 +6,18 @@ import type { LabelExtractor } from '../../src/extraction/extractor.ts';
 import { createOpenAIExtractor, type ModelResponse } from '../../src/extraction/openai-extractor.ts';
 import { MAX_EXTRACTION_ATTEMPTS } from '../../src/infra/queue.ts';
 import { processUpload, type ExtractionJob, type JobOutcome } from '../../src/worker/process-upload.ts';
-import { FILE_BYTES, InMemoryStorage, InMemoryUploadStore, SAMPLE_EXTRACTION, silentLogger } from '../fakes.ts';
+import { FakeRateLimiter, FILE_BYTES, InMemoryStorage, InMemoryUploadStore, SAMPLE_EXTRACTION, silentLogger } from '../fakes.ts';
 
 const UPLOAD_ID = '6f1c2f1e-0000-4000-8000-000000000001';
 
 let uploads: InMemoryUploadStore;
 let storage: InMemoryStorage;
+let rateLimiter: FakeRateLimiter;
 
 beforeEach(() => {
   uploads = new InMemoryUploadStore();
   storage = new InMemoryStorage();
+  rateLimiter = new FakeRateLimiter();
   const upload = uploads.seed({ id: UPLOAD_ID, status: 'queued' });
   storage.put(upload.storagePath, FILE_BYTES.png);
 });
@@ -36,7 +38,7 @@ function scriptedExtractor(...script: Array<typeof SAMPLE_EXTRACTION | Error>): 
 
 function run(extractor: LabelExtractor, job: Partial<ExtractionJob> = {}) {
   return processUpload(
-    { uploads, storage, extractor, logger: silentLogger },
+    { uploads, storage, extractor, rateLimiter, logger: silentLogger },
     { uploadId: UPLOAD_ID, attempt: 1, isFinalAttempt: false, ...job },
   );
 }
@@ -239,3 +241,41 @@ describe('processUpload — identical files', () => {
     expect(extractor.calls).toBe(1);
   });
 });
+
+describe('processUpload — shared rate limiting', () => {
+  it('takes a slot from the shared limiter before each LLM call', async () => {
+    await run(scriptedExtractor(SAMPLE_EXTRACTION));
+    expect(rateLimiter.acquired).toBe(1);
+  });
+
+  it('pauses every worker for as long as the provider asked, and retries the job', async () => {
+    const limited = APIError.generate(429, { error: { code: 'rate_limit_exceeded', message: 'slow down' } }, undefined, new Headers({ 'retry-after': '7' }));
+
+    await expect(run(scriptedExtractor(limited))).resolves.toMatchObject({ status: 'retry', code: 'LLM_RATE_LIMITED' });
+    expect(rateLimiter.pauses).toEqual([7000]);
+  });
+
+  it('pauses for a default time when a rate limit gives no Retry-After', async () => {
+    const limited = APIError.generate(429, { error: { code: 'rate_limit_exceeded', message: 'slow down' } }, undefined, new Headers());
+    await run(scriptedExtractor(limited));
+    expect(rateLimiter.pauses).toEqual([10_000]);
+  });
+
+  it('gives the job back to the queue, without calling the LLM or pausing, when our own limiter is full', async () => {
+    rateLimiter.refuse = true;
+    const extractor = scriptedExtractor(SAMPLE_EXTRACTION);
+
+    await expect(run(extractor)).resolves.toMatchObject({ status: 'retry', code: 'LLM_RATE_LIMITED' });
+    expect(extractor.calls).toBe(0);
+    expect(rateLimiter.pauses).toEqual([]);
+  });
+
+  it("does not take a slot when an identical file's result is reused", async () => {
+    const hash = createHash('sha256').update(FILE_BYTES.png).digest('hex');
+    uploads.seed({ id: 'twin', status: 'completed', contentSha256: hash, result: SAMPLE_EXTRACTION });
+
+    await run(scriptedExtractor(SAMPLE_EXTRACTION));
+    expect(rateLimiter.acquired).toBe(0);
+  });
+});
+

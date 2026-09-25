@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { isEmptyExtraction, type UploadErrorCode } from '@label-extractor/shared';
 import { classifyOpenAIError, ExtractionError } from '../extraction/errors.ts';
 import type { LabelExtractor } from '../extraction/extractor.ts';
+import { RateLimitWaitTooLong, type RateLimiter } from '../extraction/rate-limiter.ts';
 import type { Logger } from '../infra/logger.ts';
 import { StorageUnavailableError, type FileStorage } from '../infra/storage.ts';
 import type { UploadStore } from '../uploads/store.ts';
@@ -18,8 +19,13 @@ export interface ProcessUploadDeps {
   uploads: Pick<UploadStore, 'startAttempt' | 'complete' | 'scheduleRetry' | 'fail' | 'recordContentHash' | 'findCompletedTwin'>;
   storage: Pick<FileStorage, 'download'>;
   extractor: LabelExtractor;
+  /** Shared across all workers, so together they stay under the provider's request rate. */
+  rateLimiter: RateLimiter;
   logger: Logger;
 }
+
+/** How long every worker holds off after a rate limit that didn't say how long to wait. */
+const DEFAULT_RATE_LIMIT_PAUSE_MS = 10_000;
 
 export interface ExtractionJob {
   uploadId: string;
@@ -71,6 +77,7 @@ export async function processUpload(deps: ProcessUploadDeps, job: ExtractionJob)
       return { status: 'completed' };
     }
 
+    await deps.rateLimiter.acquire(job.signal);
     const started = performance.now();
     const result = await deps.extractor.extract(
       { bytes, mimeType: upload.mimeType, fileName: upload.fileName },
@@ -93,6 +100,14 @@ export async function processUpload(deps: ProcessUploadDeps, job: ExtractionJob)
   } catch (thrown) {
     const error = toExtractionError(thrown);
     const logContext = { code: error.code, detail: error.detail, err: error.cause ?? error };
+
+    // The provider asked us to slow down: pause every worker, for as long as it asked, not just this job.
+    const providerSaidWait = error.retryAfterMs !== undefined || error.code === 'LLM_RATE_LIMITED';
+    if (providerSaidWait && !(error instanceof RateLimitWaitTooLong)) {
+      const pauseMs = error.retryAfterMs ?? DEFAULT_RATE_LIMIT_PAUSE_MS;
+      await deps.rateLimiter.pauseFor(pauseMs);
+      log.warn({ pauseMs }, 'Provider asked us to back off; paused all LLM requests');
+    }
 
     if (error.retryable && !job.isFinalAttempt) {
       await deps.uploads.scheduleRetry(upload.id, error.code);

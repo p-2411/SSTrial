@@ -13,6 +13,7 @@ import {
   startQueue,
 } from '../../src/infra/queue.ts';
 import { createUploadStore, type UploadRecord, type UploadStore } from '../../src/uploads/store.ts';
+import { createPostgresRateLimiter } from '../../src/extraction/rate-limiter.ts';
 import { startExtractionWorker } from '../../src/worker/worker.ts';
 import { FILE_BYTES, InMemoryStorage, SAMPLE_EXTRACTION, silentLogger } from '../fakes.ts';
 
@@ -78,6 +79,8 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       uploads,
       storage,
       extractor,
+      // Real shared limiter, generous enough not to slow these tests down.
+      rateLimiter: createPostgresRateLimiter(sql, { key: `test-${crypto.randomUUID()}`, requestsPerMinute: 60_000 }),
       logger: silentLogger,
       concurrency: 4,
       pollingIntervalSeconds: 0.5,
@@ -291,4 +294,45 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       await expect(waitForStatus(id, 'completed')).resolves.toMatchObject({ resultUnreadable: false, result: SAMPLE_EXTRACTION });
     }, 30_000);
   });
+
+  describe('shared rate limiter (real Postgres)', () => {
+    const limiter = (options: { requestsPerMinute: number; maxWaitMs?: number; key?: string }) =>
+      createPostgresRateLimiter(sql, { key: options.key ?? `test-${crypto.randomUUID()}`, ...options });
+
+    async function timeAcquires(target: ReturnType<typeof limiter>, count: number): Promise<number> {
+      const started = Date.now();
+      for (let i = 0; i < count; i++) await target.acquire();
+      return Date.now() - started;
+    }
+
+    it('allows a short burst, then paces requests to the configured rate', async () => {
+      // 60/minute = 1 per second, with a burst of 5.
+      const limited = limiter({ requestsPerMinute: 60 });
+      expect(await timeAcquires(limited, 5)).toBeLessThan(1000);
+      expect(await timeAcquires(limited, 2)).toBeGreaterThanOrEqual(1500);
+    }, 15_000);
+
+    it('is shared: two workers together get the one budget', async () => {
+      const key = `test-${crypto.randomUUID()}`;
+      const workerA = limiter({ requestsPerMinute: 60, key });
+      const workerB = limiter({ requestsPerMinute: 60, key });
+      await timeAcquires(workerA, 5); // uses the whole burst
+      expect(await timeAcquires(workerB, 1)).toBeGreaterThanOrEqual(700);
+    }, 15_000);
+
+    it('holds every request back while paused', async () => {
+      const limited = limiter({ requestsPerMinute: 60_000 });
+      await limited.pauseFor(1500);
+      expect(await timeAcquires(limited, 1)).toBeGreaterThanOrEqual(1300);
+    }, 15_000);
+
+    it('gives up (so the job can back off in the queue) rather than wait longer than allowed', async () => {
+      const limited = limiter({ requestsPerMinute: 60_000, maxWaitMs: 500 });
+      await limited.pauseFor(5000);
+      const started = Date.now();
+      await expect(limited.acquire()).rejects.toMatchObject({ code: 'LLM_RATE_LIMITED', retryable: true });
+      expect(Date.now() - started).toBeLessThan(1000);
+    }, 15_000);
+  });
 });
+
