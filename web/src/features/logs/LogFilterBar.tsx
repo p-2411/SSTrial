@@ -10,7 +10,6 @@ import {
   type LogEventType,
 } from '@label-extractor/shared';
 import type { LogFilters } from '@/api/logs';
-import { SegmentedTabsList, SegmentedTabsTrigger } from '@/components/SegmentedTabs';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -31,21 +30,13 @@ interface LogFilterBarProps {
 }
 
 /**
- * The log's filters: minimum level (segmented tabs), type of event (a menu), and the upload it's
- * narrowed to, if any (a chip, removable). Must be rendered inside the page's <Tabs>, which holds
- * the level.
+ * The log's filters: what to show (one menu), and the upload it's narrowed to, if any (a chip,
+ * removable).
  */
 export function LogFilterBar({ filters, onChange, uploadName }: LogFilterBarProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <SegmentedTabsList aria-label="Filter events by level">
-        {LOG_LEVEL_FILTER_IDS.map((id) => (
-          <SegmentedTabsTrigger key={id} value={id}>
-            {LOG_LEVEL_FILTERS[id]}
-          </SegmentedTabsTrigger>
-        ))}
-      </SegmentedTabsList>
-      <EventTypeMenu value={filters.type} onChange={(type) => onChange({ type })} />
+      <ShowMenu filters={filters} onChange={onChange} />
       {filters.upload && <UploadChip id={filters.upload} name={uploadName} onClear={() => onChange({ upload: null })} />}
     </div>
   );
@@ -68,7 +59,7 @@ const TYPE_GROUP = {
   'process.started': 'System',
 } satisfies Record<LogEventType, string>;
 
-/** The menu's sections, in shared's order. */
+/** The menu's sections of event types, in shared's order. */
 const TYPE_MENU: Array<{ heading: string; types: LogEventType[] }> = [];
 for (const type of LOG_EVENT_TYPE_IDS) {
   const heading = TYPE_GROUP[type];
@@ -77,25 +68,35 @@ for (const type of LOG_EVENT_TYPE_IDS) {
   else TYPE_MENU.push({ heading, types: [type] });
 }
 
-/** The radio value for "no type filter": the menu's values are strings. */
-const ALL_TYPES = 'all';
+/**
+ * What to show: everything, a minimum level, or one type of event. One menu rather than two
+ * filters, because each type of event always has the same level ("Errors only" is just the failed
+ * and abandoned extractions), so the two would only ever narrow the same thing. Choosing one
+ * clears the other.
+ */
+function ShowMenu({ filters, onChange }: { filters: LogFilters; onChange: (changes: Partial<LogFilters>) => void }) {
+  const select = (value: string) => {
+    if (isLogEventType(value)) return onChange({ type: value, level: 'all' });
+    const level = LOG_LEVEL_FILTER_IDS.find((id) => id === value);
+    if (level) onChange({ level, type: null });
+  };
 
-function EventTypeMenu({ value, onChange }: { value: LogEventType | null; onChange: (type: LogEventType | null) => void }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" className="h-9">
           <ListFilter data-icon="inline-start" aria-hidden />
-          {value ? LOG_EVENT_TYPES[value] : 'All event types'}
+          Show {midSentence(filters.type ? LOG_EVENT_TYPES[filters.type] : LOG_LEVEL_FILTERS[filters.level])}
           <ChevronDown data-icon="inline-end" aria-hidden />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
-        <DropdownMenuRadioGroup
-          value={value ?? ALL_TYPES}
-          onValueChange={(next) => onChange(isLogEventType(next) ? next : null)}
-        >
-          <DropdownMenuRadioItem value={ALL_TYPES}>All event types</DropdownMenuRadioItem>
+        <DropdownMenuRadioGroup value={filters.type ?? filters.level} onValueChange={select}>
+          {LOG_LEVEL_FILTER_IDS.map((id) => (
+            <DropdownMenuRadioItem key={id} value={id}>
+              {LOG_LEVEL_FILTERS[id]}
+            </DropdownMenuRadioItem>
+          ))}
           {TYPE_MENU.map(({ heading, types }) => (
             <Fragment key={heading}>
               <DropdownMenuSeparator />
@@ -111,6 +112,12 @@ function EventTypeMenu({ value, onChange }: { value: LogEventType | null; onChan
       </DropdownMenuContent>
     </DropdownMenu>
   );
+}
+
+/** A label as it reads after "Show": "Errors only" → "errors only", but "AI requests paused" stays. */
+function midSentence(label: string): string {
+  const firstWord = label.split(' ')[0]!;
+  return firstWord === firstWord.toUpperCase() ? label : label.charAt(0).toLowerCase() + label.slice(1);
 }
 
 function UploadChip({ id, name, onClear }: { id: string; name: string | null; onClear: () => void }) {

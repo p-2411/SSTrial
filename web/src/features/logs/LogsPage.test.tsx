@@ -82,16 +82,24 @@ describe('LogsPage', () => {
     expect(screen.getByText(/"attempt": 2/)).toBeInTheDocument();
   });
 
-  it('asks the server for the chosen level', async () => {
+  it('shows a minimum level or one type of event, chosen from one menu', async () => {
     const user = userEvent.setup();
     const requested = stubLogs({ events: [event({ id: '1', message: 'Reading oat-milk.png.' })], nextCursor: null });
     renderPage();
     await screen.findByText('Reading oat-milk.png.');
 
-    await user.click(screen.getByRole('tab', { name: 'Errors only' }));
+    await user.click(screen.getByRole('button', { name: 'Show everything' }));
+    await user.click(screen.getByRole('menuitemradio', { name: 'Errors only' }));
 
-    expect(screen.getByRole('tab', { name: 'Errors only' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('button', { name: 'Show errors only' })).toBeInTheDocument();
     await vi.waitFor(() => expect(requested.at(-1)).toBe('/api/logs?level=error'));
+
+    // Choosing a type replaces the level rather than combining with it.
+    await user.click(screen.getByRole('button', { name: 'Show errors only' }));
+    await user.click(screen.getByRole('menuitemradio', { name: 'Retry scheduled' }));
+
+    await vi.waitFor(() => expect(requested.at(-1)).toBe('/api/logs?type=extraction.retry_scheduled'));
+    expect(screen.getByRole('button', { name: 'Show retry scheduled' })).toBeInTheDocument();
   });
 
   it('applies the filters in the URL, naming the upload, and can drop the upload filter', async () => {
@@ -100,7 +108,7 @@ describe('LogsPage', () => {
     renderPage(`/logs?type=extraction.failed&upload=${UPLOAD}`);
 
     expect(await screen.findByRole('link', { name: 'oat-milk.png' })).toHaveAttribute('href', `/uploads/${UPLOAD}`);
-    expect(screen.getByRole('button', { name: /Extraction failed/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show extraction failed' })).toBeInTheDocument();
     expect(requested[0]).toBe(`/api/logs?type=extraction.failed&upload=${UPLOAD}`);
 
     await user.click(screen.getByRole('button', { name: 'Show events for every upload' }));
