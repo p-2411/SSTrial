@@ -3,10 +3,11 @@ import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import type { Logger } from '../infra/logger.ts';
 import { handleError, notFound } from './errors.ts';
+import { eventRoutes, type EventRoutesDeps } from './routes/events.ts';
 import { exportRoutes } from './routes/exports.ts';
 import { uploadRoutes, type UploadRoutesDeps } from './routes/uploads.ts';
 
-export interface AppDeps extends UploadRoutesDeps {
+export interface AppDeps extends UploadRoutesDeps, EventRoutesDeps {
   logger: Logger;
   /** Built web app to serve alongside the API (production). Omit in development: Vite serves it. */
   webDistDir?: string;
@@ -28,6 +29,7 @@ export async function buildApp(deps: AppDeps) {
   app.get('/api/health', async () => ({ status: 'ok' }));
   await app.register(uploadRoutes, deps);
   await app.register(exportRoutes, deps);
+  await app.register(eventRoutes, deps);
 
   if (deps.webDistDir) {
     // Serve the single-page app; any non-API path falls back to index.html for client routing.

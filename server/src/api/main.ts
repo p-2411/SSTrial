@@ -11,6 +11,7 @@ import { createUploadJobs, startQueue } from '../infra/queue.ts';
 import { createSupabaseStorage, syncBucketSettings } from '../infra/storage.ts';
 import { createUploadStore } from '../uploads/store.ts';
 import { buildApp } from './app.ts';
+import { listenForUploadChanges } from './upload-changes.ts';
 
 const config = loadApiConfig();
 const logger = createLogger({ name: 'api', level: config.LOG_LEVEL, pretty: config.NODE_ENV === 'development' });
@@ -23,6 +24,7 @@ const boss = await startQueue({ connectionString: config.DATABASE_URL, role: 'ap
 
 const app = await buildApp({
   logger,
+  changes: await listenForUploadChanges(sql, logger),
   webDistDir: config.WEB_DIST_DIR,
   uploads: createUploadStore(sql, createUploadJobs(boss)),
   storage: createSupabaseStorage({

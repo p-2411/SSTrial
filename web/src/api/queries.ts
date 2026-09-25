@@ -1,6 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isActiveStatus, type UploadDetail, type UploadFilter } from '@label-extractor/shared';
 import { ApiRequestError } from './client.ts';
+import { isLiveConnected } from './liveConnection.ts';
 import { getUpload, getUploadCounts, listUploads, retryUpload } from './uploads.ts';
 
 /**
@@ -8,8 +9,16 @@ import { getUpload, getUploadCounts, listUploads, retryUpload } from './uploads.
  * components only deal with "loading / error / data".
  */
 
-/** How often to poll while something is still queued or processing. */
+/**
+ * How often to poll while something is still queued or processing — only as a fallback: while the
+ * live update stream is connected, the server pushes changes and nothing polls.
+ */
 export const POLL_INTERVAL_MS = 2_000;
+
+/** Poll interval for a query: never while live updates are connected, otherwise while `active`. */
+function pollWhile(active: boolean): number | false {
+  return active && !isLiveConnected() ? POLL_INTERVAL_MS : false;
+}
 
 export const uploadKeys = {
   all: ['uploads'] as const,
@@ -38,9 +47,7 @@ export function useUploadList(filter: UploadFilter) {
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     retry: retryUnlessClientError,
     refetchInterval: (query) =>
-      query.state.data?.pages.some((page) => page.uploads.some((upload) => isActiveStatus(upload.status)))
-        ? POLL_INTERVAL_MS
-        : false,
+      pollWhile(query.state.data?.pages.some((page) => page.uploads.some((upload) => isActiveStatus(upload.status))) ?? false),
   });
 }
 
@@ -50,7 +57,7 @@ export function useUploadCounts() {
     queryKey: uploadKeys.counts(),
     queryFn: getUploadCounts,
     retry: retryUnlessClientError,
-    refetchInterval: (query) => ((query.state.data?.['in-progress'] ?? 0) > 0 ? POLL_INTERVAL_MS : false),
+    refetchInterval: (query) => pollWhile((query.state.data?.['in-progress'] ?? 0) > 0),
   });
 }
 
@@ -62,7 +69,7 @@ export function useUploadDetail(id: string) {
     retry: retryUnlessClientError,
     refetchInterval: (query) => {
       const upload = query.state.data as UploadDetail | undefined;
-      return upload && isActiveStatus(upload.status) ? POLL_INTERVAL_MS : false;
+      return pollWhile(upload !== undefined && isActiveStatus(upload.status));
     },
   });
 }

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { MAX_FILE_SIZE_BYTES } from '@label-extractor/shared';
 import { buildApp, type App } from '../../src/api/app.ts';
-import { FILE_BYTES, InMemoryStorage, InMemoryUploadStore, SAMPLE_EXTRACTION, silentLogger } from '../fakes.ts';
+import { FakeChangeFeed, FILE_BYTES, InMemoryStorage, InMemoryUploadStore, SAMPLE_EXTRACTION, silentLogger } from '../fakes.ts';
 
 // HTTP-level tests: real routing, validation and error handling via Fastify's `inject()`, with
 // in-memory fakes in place of Postgres, the queue and Supabase Storage.
@@ -13,7 +13,7 @@ let storage: InMemoryStorage;
 beforeEach(async () => {
   uploads = new InMemoryUploadStore();
   storage = new InMemoryStorage();
-  app = await buildApp({ uploads, storage, logger: silentLogger });
+  app = await buildApp({ uploads, storage, changes: new FakeChangeFeed(), logger: silentLogger });
 });
 
 afterEach(() => app.close());

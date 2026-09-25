@@ -1,4 +1,5 @@
 import { createBrowserRouter, Link, Outlet } from 'react-router';
+import { useLiveUpdates } from '@/api/useLiveUpdates';
 import { AppSidebar } from '@/components/AppSidebar';
 import { Separator } from '@/components/ui/separator';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
@@ -29,6 +30,7 @@ export const router = createBrowserRouter([
 /** App shell in the SupplyScope layout: dark sidebar, white top bar, warm off-white workspace. */
 function Workspace() {
   const { uploads: pending, addFiles, retry, dismiss } = useFileUploads();
+  useLiveUpdates();
 
   return (
     <SidebarProvider>

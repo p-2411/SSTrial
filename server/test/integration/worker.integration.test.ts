@@ -14,6 +14,7 @@ import {
 } from '../../src/infra/queue.ts';
 import { createUploadStore, type UploadRecord, type UploadStore } from '../../src/uploads/store.ts';
 import { createPostgresRateLimiter } from '../../src/extraction/rate-limiter.ts';
+import { listenForUploadChanges } from '../../src/api/upload-changes.ts';
 import { startExtractionWorker } from '../../src/worker/worker.ts';
 import { FILE_BYTES, InMemoryStorage, SAMPLE_EXTRACTION, silentLogger } from '../fakes.ts';
 
@@ -333,6 +334,25 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       await expect(limited.acquire()).rejects.toMatchObject({ code: 'LLM_RATE_LIMITED', retryable: true });
       expect(Date.now() - started).toBeLessThan(1000);
     }, 15_000);
+  });
+
+  describe('upload change notifications (real Postgres trigger)', () => {
+    it('announces visible changes, and stays quiet for uploads still being uploaded', async () => {
+      const feed = await listenForUploadChanges(sql, silentLogger);
+      const seen: string[] = [];
+      const id = crypto.randomUUID();
+      const unsubscribe = feed.subscribe((change) => {
+        if (change.type === 'upload' && change.id === id) seen.push(change.status);
+      });
+
+      createdIds.push(id);
+      await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png`, contentSha256: null });
+      await uploads.markUploaded(id, 'image/png');
+
+      await expect.poll(() => seen, { timeout: 5000 }).toContain('queued');
+      expect(seen[0]).toBe('queued'); // the 'uploading' insert was not announced
+      unsubscribe();
+    });
   });
 });
 

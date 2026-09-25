@@ -1,5 +1,6 @@
 import { pino } from 'pino';
 import type { LabelExtraction, SupportedMimeType, UploadErrorCode } from '@label-extractor/shared';
+import type { UploadChange, UploadChangeFeed } from '../src/api/upload-changes.ts';
 import { RateLimitWaitTooLong, type RateLimiter } from '../src/extraction/rate-limiter.ts';
 import { StorageUnavailableError, type FileStorage } from '../src/infra/storage.ts';
 import type { NewUpload, UploadRecord, UploadStore } from '../src/uploads/store.ts';
@@ -144,6 +145,21 @@ export class InMemoryUploadStore implements UploadStore {
     const updated = { ...row, ...changes, updatedAt: new Date() };
     this.rows.set(id, updated);
     return updated;
+  }
+}
+
+/** A change feed the test drives by hand with `publish()`. */
+export class FakeChangeFeed implements UploadChangeFeed {
+  private readonly listeners = new Set<(change: UploadChange) => void>();
+  get subscribers() {
+    return this.listeners.size;
+  }
+  subscribe(listener: (change: UploadChange) => void) {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+  publish(change: UploadChange) {
+    this.listeners.forEach((listener) => listener(change));
   }
 }
 
