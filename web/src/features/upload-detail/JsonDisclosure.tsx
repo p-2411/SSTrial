@@ -19,7 +19,8 @@ export function JsonDisclosure({ data }: { data: LabelExtraction }) {
   }
 
   return (
-    <Collapsible className="group/json">
+    // min-w-0: as a grid item this would otherwise grow to fit the longest JSON line.
+    <Collapsible className="group/json min-w-0">
       <CollapsibleTrigger asChild>
         <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground">
           {/* Points right when collapsed, down when open. */}
@@ -27,12 +28,18 @@ export function JsonDisclosure({ data }: { data: LabelExtraction }) {
           Structured data (JSON)
         </Button>
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-2 space-y-2">
-        <Button variant="outline" size="sm" onClick={() => void copy()}>
+      {/* The copy button sits inside the JSON box, top right, so it stays attached to what it copies. */}
+      <CollapsibleContent className="relative mt-2">
+        <pre className="max-h-80 overflow-auto rounded-lg border bg-card p-3 pr-24 text-xs leading-relaxed">{json}</pre>
+        <Button
+          variant="outline"
+          size="sm"
+          className="absolute top-2 right-2 bg-card hover:bg-muted"
+          onClick={() => void copy()}
+        >
           <Copy data-icon="inline-start" aria-hidden />
-          Copy JSON
+          Copy
         </Button>
-        <pre className="max-h-80 overflow-auto rounded-lg border bg-card p-3 text-xs leading-relaxed">{json}</pre>
       </CollapsibleContent>
     </Collapsible>
   );
