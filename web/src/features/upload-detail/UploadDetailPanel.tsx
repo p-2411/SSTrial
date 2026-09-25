@@ -65,8 +65,9 @@ export function UploadDetailPanel() {
           >
             <X aria-hidden />
           </Button>
-          {/* Fixed at the open width, so content doesn't reflow while the panel animates. */}
-          <div className="h-full w-[min(42rem,55cqw)] overflow-y-auto p-6">
+          {/* Fixed at the open width, so content doesn't reflow while the panel animates. The
+              scrollbar's space is reserved too, so short and long uploads line up the same. */}
+          <div className="h-full w-[min(42rem,55cqw)] overflow-y-auto p-6 [scrollbar-gutter:stable]">
             <UploadDetailView id={shownId} />
           </div>
         </>

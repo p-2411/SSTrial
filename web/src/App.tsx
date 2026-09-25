@@ -31,17 +31,20 @@ function Workspace() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      {/* Full-height shell: the list and the detail panel scroll independently. */}
+      {/* Full-height shell: the list and the detail panel scroll independently. SidebarInset renders
+          the page's <main> element, so nothing inside it is another <main>. */}
       <SidebarInset className="h-svh overflow-hidden bg-background">
         <TopBar />
         {/* @container: the detail panel sizes itself as a share of this row's width. */}
         <div className="@container flex min-h-0 flex-1">
-          <main className="min-w-0 flex-1 overflow-y-auto">
+          {/* The scrollbar's space is always reserved, on both sides so the centred content stays
+              centred: switching to a short filter mustn't make everything shift sideways. */}
+          <div data-slot="list-scroller" className="min-w-0 flex-1 overflow-y-auto [scrollbar-gutter:stable_both-edges]">
             <div className="mx-auto grid max-w-4xl content-start gap-4 p-6">
               <Dropzone onFiles={addFiles} />
               <UploadList pending={pending} onRetryPending={retry} onDismissPending={dismiss} />
             </div>
-          </main>
+          </div>
           <UploadDetailPanel />
         </div>
       </SidebarInset>
