@@ -1,4 +1,4 @@
-import { PgBoss, type QueueOptions } from 'pg-boss';
+import { PgBoss, type ConstructorOptions, type QueueOptions } from 'pg-boss';
 import type { Db } from './db.ts';
 import { asPgBossDb } from './db.ts';
 import type { Logger } from './logger.ts';
@@ -53,6 +53,8 @@ export interface StartQueueOptions {
   retryPolicy?: QueueOptions;
   /** pg-boss's own connection pool size. Kept small: Supabase's free tier caps connections. */
   poolMax?: number;
+  /** Extra pg-boss settings. Integration tests use a separate schema and faster supervision. */
+  overrides?: Partial<ConstructorOptions>;
 }
 
 export async function startQueue(options: StartQueueOptions): Promise<PgBoss> {
@@ -64,6 +66,7 @@ export async function startQueue(options: StartQueueOptions): Promise<PgBoss> {
     // purely a producer. We don't use cron scheduling at all.
     supervise: options.role === 'worker',
     schedule: false,
+    ...options.overrides,
   });
 
   // pg-boss emits errors from its background loops; unhandled, they'd crash the process.
