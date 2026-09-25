@@ -47,6 +47,26 @@ export type UploadErrorCode =
   | 'PROCESSING_TIMEOUT' // worker died or hung on every attempt
   | 'INTERNAL_ERROR';
 
+/** Failures caused by the file itself: running it through the pipeline again can't help. */
+const FILE_PROBLEMS: readonly UploadErrorCode[] = [
+  'UNSUPPORTED_FILE_TYPE',
+  'FILE_TOO_LARGE',
+  'EMPTY_FILE',
+  'INVALID_FILE_NAME',
+  'FILE_NOT_UPLOADED',
+  'FILE_CONTENT_MISMATCH',
+  'FILE_MISSING',
+];
+
+/**
+ * Whether the user may retry a failed upload. Used by the UI (to show the button) and the API
+ * (to enforce it). Everything else — including permanent LLM failures like a refusal — can be
+ * retried by hand, since the cause may have been fixed (credit topped up, key rotated…).
+ */
+export function canRetryUpload(upload: { status: UploadStatus; error: { code: UploadErrorCode } | null }): boolean {
+  return upload.status === 'failed' && upload.error !== null && !FILE_PROBLEMS.includes(upload.error.code);
+}
+
 /** One upload as shown in the list. Dates are ISO-8601 strings (JSON has no Date type). */
 export interface UploadSummary {
   id: string;
