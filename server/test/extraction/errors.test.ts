@@ -32,7 +32,7 @@ describe('classifyOpenAIError', () => {
   });
 
   it('passes ExtractionErrors through unchanged', () => {
-    const original = new ExtractionError('LLM_REFUSED', 'nope', false);
+    const original = new ExtractionError('LLM_REFUSED', false);
     expect(classifyOpenAIError(original)).toBe(original);
   });
 

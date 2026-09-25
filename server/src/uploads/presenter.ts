@@ -1,4 +1,4 @@
-import type { UploadDetail, UploadSummary } from '@label-extractor/shared';
+import { uploadErrorMessage, type UploadDetail, type UploadSummary } from '@label-extractor/shared';
 import { MAX_EXTRACTION_ATTEMPTS } from '../infra/queue.ts';
 import type { UploadRecord } from './store.ts';
 
@@ -16,7 +16,8 @@ export function toUploadSummary(record: UploadRecord): UploadSummary {
     status: record.status,
     attempts: record.attempts,
     maxAttempts: MAX_EXTRACTION_ATTEMPTS,
-    error: record.error,
+    // The message is rendered from the code at response time, so rewording never touches stored data.
+    error: record.error && { code: record.error.code, message: uploadErrorMessage(record.error.code) },
     productName: record.result?.productName ?? null,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),

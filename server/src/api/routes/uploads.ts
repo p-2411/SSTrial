@@ -4,7 +4,6 @@ import {
   canRetryUpload,
   createUploadRequestSchema,
   SUPPORTED_FILE_TYPES,
-  SUPPORTED_TYPES_LABEL,
   validateFileMetadata,
   type CreateUploadResponse,
   type ListUploadsResponse,
@@ -104,10 +103,7 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage }: U
     // The name and MIME type were claims; the bytes are the truth.
     const detected = detectFileType(head);
     if (!detected) {
-      const rejected = await uploads.rejectUpload(upload.id, {
-        code: 'FILE_CONTENT_MISMATCH',
-        message: `Unsupported file type. Must be ${SUPPORTED_TYPES_LABEL}.`,
-      });
+      const rejected = await uploads.rejectUpload(upload.id, 'FILE_CONTENT_MISMATCH');
       return detailResponse(rejected ?? (await loadUpload(request.params)));
     }
     if (detected !== upload.mimeType) {

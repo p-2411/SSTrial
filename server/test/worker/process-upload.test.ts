@@ -82,7 +82,7 @@ describe('processUpload — retry behaviour', () => {
     expect(uploads.get(UPLOAD_ID)).toMatchObject({
       status: 'queued',
       attempts: 1,
-      error: { code: 'LLM_TIMEOUT', message: 'The AI service took too long to respond.' },
+      error: { code: 'LLM_TIMEOUT' },
     });
   });
 
@@ -106,10 +106,7 @@ describe('processUpload — retry behaviour', () => {
     expect(uploads.get(UPLOAD_ID)).toMatchObject({
       status: 'failed',
       attempts: MAX_EXTRACTION_ATTEMPTS,
-      error: {
-        code: 'LLM_TIMEOUT',
-        message: 'The AI service took too long to respond.',
-      },
+      error: { code: 'LLM_TIMEOUT' },
     });
   });
 
@@ -120,7 +117,7 @@ describe('processUpload — retry behaviour', () => {
     const outcomes = await runLikeTheQueue(extractor);
 
     expect(extractor.calls).toBe(1);
-    expect(outcomes).toEqual([{ status: 'failed', code: 'LLM_MISCONFIGURED', message: expect.any(String) }]);
+    expect(outcomes).toEqual([{ status: 'failed', code: 'LLM_MISCONFIGURED' }]);
     expect(uploads.get(UPLOAD_ID)).toMatchObject({ status: 'failed', attempts: 1 });
   });
 
@@ -132,8 +129,8 @@ describe('processUpload — retry behaviour', () => {
   it('retries an unexpected bug rather than losing the upload', async () => {
     const outcome = await run(scriptedExtractor(new TypeError("Cannot read properties of undefined (reading 'x')")));
     expect(outcome).toMatchObject({ status: 'retry', code: 'INTERNAL_ERROR' });
-    // The raw exception text is for logs; users get a plain-language message.
-    expect(uploads.get(UPLOAD_ID).error?.message).toBe('Something went wrong while processing this file.');
+    // Only the code is stored; the raw exception text goes to the logs, never to users.
+    expect(uploads.get(UPLOAD_ID).error).toEqual({ code: 'INTERNAL_ERROR' });
   });
 });
 
@@ -181,11 +178,11 @@ describe('processUpload — permanent failures', () => {
   it('fails when the model finds nothing label-like in the file', async () => {
     const nothing = { productName: null, brand: null, ingredients: [], allergens: [], netWeight: null };
     await expect(run(scriptedExtractor(nothing))).resolves.toMatchObject({ status: 'failed', code: 'NO_LABEL_DATA' });
-    expect(uploads.get(UPLOAD_ID).error?.message).toMatch(/couldn't find any product label/i);
+    expect(uploads.get(UPLOAD_ID).error).toEqual({ code: 'NO_LABEL_DATA' });
   });
 
   it('does not retry a refusal', async () => {
-    const refusal = new ExtractionError('LLM_REFUSED', 'The AI service declined to process this file.', false);
+    const refusal = new ExtractionError('LLM_REFUSED', false);
     await expect(run(scriptedExtractor(refusal))).resolves.toMatchObject({ status: 'failed', code: 'LLM_REFUSED' });
   });
 });

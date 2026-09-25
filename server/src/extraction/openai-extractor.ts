@@ -79,48 +79,41 @@ export function parseModelResponse(response: ModelResponse): LabelExtraction {
   if (response.status === 'failed') {
     throw new ExtractionError(
       'LLM_UNAVAILABLE',
-      'The AI service failed to produce a response.',
       true,
-      response.error ? `${response.error.code}: ${response.error.message}` : 'status=failed',
+      response.error ? `Response failed: ${response.error.code}: ${response.error.message}` : 'Response status: failed',
     );
   }
 
   if (response.status === 'incomplete') {
     const reason = response.incomplete_details?.reason ?? 'unknown';
     if (reason === 'content_filter') {
-      throw new ExtractionError('LLM_REFUSED', 'The AI service declined to process this file.', false, reason);
+      throw new ExtractionError('LLM_REFUSED', false, `Incomplete: ${reason}`);
     }
     // Usually hitting max_output_tokens mid-JSON. Output length varies run to run, so retry.
-    throw new ExtractionError('LLM_INVALID_RESPONSE', 'The AI response was cut off before it finished.', true, reason);
+    throw new ExtractionError('LLM_INVALID_RESPONSE', true, `Response cut off: ${reason}`);
   }
 
   const refusal = findRefusal(response);
   if (refusal !== null) {
-    throw new ExtractionError('LLM_REFUSED', 'The AI service declined to process this file.', false, refusal);
+    throw new ExtractionError('LLM_REFUSED', false, `Refusal: ${refusal}`);
   }
 
   const text = response.output_text?.trim();
   if (!text) {
-    throw new ExtractionError('LLM_INVALID_RESPONSE', 'The AI service returned an empty response.', true);
+    throw new ExtractionError('LLM_INVALID_RESPONSE', true, 'Empty response');
   }
 
   let json: unknown;
   try {
     json = JSON.parse(text);
   } catch {
-    throw new ExtractionError(
-      'LLM_INVALID_RESPONSE',
-      'The AI service returned malformed data.',
-      true,
-      `Not valid JSON: ${text.slice(0, 200)}`,
-    );
+    throw new ExtractionError('LLM_INVALID_RESPONSE', true, `Not valid JSON: ${text.slice(0, 200)}`);
   }
 
   const parsed = labelExtractionSchema.safeParse(json);
   if (!parsed.success) {
     throw new ExtractionError(
       'LLM_INVALID_RESPONSE',
-      "The AI service returned data that doesn't match the expected format.",
       true,
       parsed.error.issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`).join('; '),
     );

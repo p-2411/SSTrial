@@ -36,9 +36,9 @@ export type JobOutcome =
   /** Nothing to do: the upload is already finished (duplicate delivery) or no longer exists. */
   | { status: 'skipped'; reason: string }
   /** This attempt failed with a transient error; the queue should retry after back-off. */
-  | { status: 'retry'; code: UploadErrorCode; message: string }
+  | { status: 'retry'; code: UploadErrorCode }
   /** Permanently failed: the error isn't transient, or this was the final attempt. */
-  | { status: 'failed'; code: UploadErrorCode; message: string };
+  | { status: 'failed'; code: UploadErrorCode };
 
 export async function processUpload(deps: ProcessUploadDeps, job: ExtractionJob): Promise<JobOutcome> {
   const log = deps.logger.child({ uploadId: job.uploadId, attempt: job.attempt });
@@ -54,7 +54,7 @@ export async function processUpload(deps: ProcessUploadDeps, job: ExtractionJob)
   try {
     const bytes = await deps.storage.download(upload.storagePath);
     if (!bytes) {
-      throw new ExtractionError('FILE_MISSING', 'The uploaded file could not be found.', false);
+      throw new ExtractionError('FILE_MISSING', false, `No object at ${upload.storagePath}`);
     }
 
     const started = performance.now();
@@ -67,11 +67,7 @@ export async function processUpload(deps: ProcessUploadDeps, job: ExtractionJob)
     // A well-formed answer that contains nothing means this isn't a readable label (a photo of a
     // cat, a blank page). Asking again won't change that, so it's a permanent failure.
     if (isEmptyExtraction(result)) {
-      throw new ExtractionError(
-        'NO_LABEL_DATA',
-        "Couldn't find any product label information in this file.",
-        false,
-      );
+      throw new ExtractionError('NO_LABEL_DATA', false, 'Every extracted field was empty');
     }
 
     if (!(await deps.uploads.complete(upload.id, result))) {
@@ -85,15 +81,15 @@ export async function processUpload(deps: ProcessUploadDeps, job: ExtractionJob)
     const logContext = { code: error.code, detail: error.detail, err: error.cause ?? error };
 
     if (error.retryable && !job.isFinalAttempt) {
-      await deps.uploads.scheduleRetry(upload.id, { code: error.code, message: error.message });
+      await deps.uploads.scheduleRetry(upload.id, error.code);
       log.warn(logContext, 'Attempt failed with a transient error; will retry');
-      return { status: 'retry', code: error.code, message: error.message };
+      return { status: 'retry', code: error.code };
     }
 
     // Attempt counts go to the logs, not the user: the reason is what they can act on.
-    await deps.uploads.fail(upload.id, { code: error.code, message: error.message });
+    await deps.uploads.fail(upload.id, error.code);
     log.error(logContext, 'Extraction failed permanently');
-    return { status: 'failed', code: error.code, message: error.message };
+    return { status: 'failed', code: error.code };
   }
 }
 
@@ -101,9 +97,7 @@ export async function processUpload(deps: ProcessUploadDeps, job: ExtractionJob)
 function toExtractionError(error: unknown): ExtractionError {
   if (error instanceof ExtractionError) return error;
   if (error instanceof StorageUnavailableError) {
-    return new ExtractionError('INTERNAL_ERROR', "Couldn't read the uploaded file from storage.", true, error.message, {
-      cause: error,
-    });
+    return new ExtractionError('INTERNAL_ERROR', true, `Storage read failed: ${error.message}`, { cause: error });
   }
   // OpenAI SDK errors (and, as a fallback, unexpected bugs → retryable INTERNAL_ERROR).
   return classifyOpenAIError(error);

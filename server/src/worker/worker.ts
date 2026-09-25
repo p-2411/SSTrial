@@ -54,10 +54,7 @@ export async function startExtractionWorker(deps: WorkerDeps): Promise<void> {
   // forever.
   await boss.work(EXTRACTION_DEAD_LETTER_QUEUE, { batchSize: 1 }, async ([job]: Job<ExtractionJobData>[]) => {
     if (!job) return;
-    const failed = await deps.uploads.fail(job.data.uploadId, {
-      code: 'PROCESSING_TIMEOUT',
-      message: "Processing didn't finish after several attempts.",
-    });
+    const failed = await deps.uploads.fail(job.data.uploadId, 'PROCESSING_TIMEOUT');
     if (failed) logger.error({ uploadId: job.data.uploadId }, 'Marked upload failed from the dead-letter queue');
   });
 

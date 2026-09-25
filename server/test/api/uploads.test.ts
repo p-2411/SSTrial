@@ -209,7 +209,7 @@ describe('POST /api/uploads/:id/retry — manual retry', () => {
       id: ID,
       status: 'failed',
       attempts: 5,
-      error: { code: 'LLM_TIMEOUT', message: 'The AI service took too long to respond. Gave up after 5 attempts.' },
+      error: { code: 'LLM_TIMEOUT' },
     });
 
     const response = await retry();
@@ -220,7 +220,7 @@ describe('POST /api/uploads/:id/retry — manual retry', () => {
   });
 
   it('refuses to retry a file that is itself the problem', async () => {
-    uploads.seed({ id: ID, status: 'failed', error: { code: 'FILE_CONTENT_MISMATCH', message: 'Not an image.' } });
+    uploads.seed({ id: ID, status: 'failed', error: { code: 'FILE_CONTENT_MISMATCH' } });
 
     const response = await retry();
 

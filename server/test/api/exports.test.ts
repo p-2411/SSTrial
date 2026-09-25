@@ -8,7 +8,7 @@ let uploads: InMemoryUploadStore;
 beforeEach(async () => {
   uploads = new InMemoryUploadStore();
   uploads.seed({ id: 'a0000000-0000-4000-8000-000000000001', fileName: 'done.png', status: 'completed', result: SAMPLE_EXTRACTION });
-  uploads.seed({ id: 'a0000000-0000-4000-8000-000000000002', fileName: 'broken.png', status: 'failed', error: { code: 'NO_LABEL_DATA', message: 'x' } });
+  uploads.seed({ id: 'a0000000-0000-4000-8000-000000000002', fileName: 'broken.png', status: 'failed', error: { code: 'NO_LABEL_DATA' } });
   uploads.seed({ id: 'a0000000-0000-4000-8000-000000000003', fileName: 'waiting.png', status: 'queued' });
   app = await buildApp({ uploads, storage: new InMemoryStorage(), logger: silentLogger });
 });

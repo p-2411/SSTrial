@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { LabelExtraction } from './extraction.ts';
-import type { FileValidationErrorCode, SupportedMimeType } from './files.ts';
+import { SUPPORTED_TYPES_LABEL, type SupportedMimeType } from './files.ts';
 
 /**
  * Lifecycle of an upload:
@@ -24,39 +24,37 @@ export function isActiveStatus(status: UploadStatus): boolean {
 }
 
 /**
- * Machine-readable reasons an upload failed (or, while `queued`, why its last attempt failed).
- * The human-readable message is stored alongside; these codes let the UI and logs group failures.
+ * Why an upload failed (or, while `queued`, why its last attempt failed). Only the code is stored;
+ * the message users see comes from UPLOAD_ERROR_MESSAGES, so rewording a message is a code change
+ * that applies to every upload at once — never a data migration.
  */
-export type UploadErrorCode =
-  // Rejected before processing
-  | FileValidationErrorCode
-  | 'FILE_NOT_UPLOADED' // browser said "done" but the object isn't in storage
-  | 'FILE_CONTENT_MISMATCH' // bytes don't match a supported type (e.g. renamed .exe)
-  // Processing — LLM problems (see server/src/extraction/errors.ts for retry policy)
-  | 'LLM_TIMEOUT'
-  | 'LLM_RATE_LIMITED'
-  | 'LLM_UNAVAILABLE'
-  | 'LLM_INVALID_RESPONSE'
-  | 'LLM_REFUSED'
-  | 'LLM_REJECTED_INPUT'
-  | 'LLM_QUOTA_EXCEEDED'
-  | 'LLM_MISCONFIGURED'
-  // Processing — everything else
-  | 'NO_LABEL_DATA' // model answered correctly, but found nothing label-like
-  | 'FILE_MISSING' // object disappeared from storage before the worker read it
-  | 'PROCESSING_TIMEOUT' // worker died or hung on every attempt
-  | 'INTERNAL_ERROR';
+export const UPLOAD_ERROR_MESSAGES = {
+  // The bytes aren't a supported type, whatever the name says (e.g. a renamed .exe)
+  FILE_CONTENT_MISMATCH: `Unsupported file type. Must be ${SUPPORTED_TYPES_LABEL}.`,
+  // LLM problems (see server/src/extraction/errors.ts for which are retried)
+  LLM_TIMEOUT: 'The AI service took too long to respond.',
+  LLM_RATE_LIMITED: 'The AI service is rate-limiting requests.',
+  LLM_UNAVAILABLE: 'The AI service is temporarily unavailable.',
+  LLM_INVALID_RESPONSE: "The AI service returned data that didn't match the expected format.",
+  LLM_REFUSED: 'The AI service declined to process this file.',
+  LLM_REJECTED_INPUT: "The AI service couldn't read this file.",
+  LLM_QUOTA_EXCEEDED: 'The AI service account has run out of credit.',
+  LLM_MISCONFIGURED: 'The AI service rejected our request because of a configuration problem.',
+  // Everything else
+  NO_LABEL_DATA: "Couldn't find any product label information in this file.", // answered, but nothing label-like
+  FILE_MISSING: 'The uploaded file could not be found.', // object gone from storage before the worker read it
+  PROCESSING_TIMEOUT: 'Processing stopped before it could finish.', // worker died or hung on every attempt
+  INTERNAL_ERROR: 'Something went wrong while processing this file.',
+} as const;
+
+export type UploadErrorCode = keyof typeof UPLOAD_ERROR_MESSAGES;
+
+export function uploadErrorMessage(code: UploadErrorCode): string {
+  return UPLOAD_ERROR_MESSAGES[code] ?? UPLOAD_ERROR_MESSAGES.INTERNAL_ERROR;
+}
 
 /** Failures caused by the file itself: running it through the pipeline again can't help. */
-const FILE_PROBLEMS: readonly UploadErrorCode[] = [
-  'UNSUPPORTED_FILE_TYPE',
-  'FILE_TOO_LARGE',
-  'EMPTY_FILE',
-  'INVALID_FILE_NAME',
-  'FILE_NOT_UPLOADED',
-  'FILE_CONTENT_MISMATCH',
-  'FILE_MISSING',
-];
+const FILE_PROBLEMS: readonly UploadErrorCode[] = ['FILE_CONTENT_MISMATCH', 'FILE_MISSING'];
 
 /**
  * Whether the user may retry a failed upload. Used by the UI (to show the button) and the API

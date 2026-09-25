@@ -32,9 +32,9 @@ export interface UploadRecord {
   completedAt: Date | null;
 }
 
+/** Only the code is stored; the shared catalogue turns it into the message users see. */
 export interface UploadFailure {
   code: UploadErrorCode;
-  message: string;
 }
 
 export interface NewUpload {
@@ -56,7 +56,7 @@ export interface UploadStore {
   /** `uploading → queued` and enqueue the job, atomically. `mimeType` is the type sniffed from the bytes. */
   markUploaded(id: string, mimeType: SupportedMimeType): Promise<UploadRecord | null>;
   /** `uploading → failed`, for files rejected after upload (e.g. content isn't really an image). */
-  rejectUpload(id: string, failure: UploadFailure): Promise<UploadRecord | null>;
+  rejectUpload(id: string, code: UploadErrorCode): Promise<UploadRecord | null>;
   /** `failed → queued` with attempts reset, and enqueue a fresh job, atomically. */
   requeueFailed(id: string): Promise<UploadRecord | null>;
 
@@ -69,9 +69,9 @@ export interface UploadStore {
   /** `processing → completed` with the validated result. */
   complete(id: string, result: LabelExtraction): Promise<UploadRecord | null>;
   /** `processing → queued`, recording why this attempt failed; the queue will retry it. */
-  scheduleRetry(id: string, failure: UploadFailure): Promise<UploadRecord | null>;
+  scheduleRetry(id: string, code: UploadErrorCode): Promise<UploadRecord | null>;
   /** `queued|processing → failed` — permanent. */
-  fail(id: string, failure: UploadFailure): Promise<UploadRecord | null>;
+  fail(id: string, code: UploadErrorCode): Promise<UploadRecord | null>;
 }
 
 export function createUploadStore(sql: postgres.Sql, queue: ExtractionQueue): UploadStore {
@@ -127,9 +127,9 @@ export function createUploadStore(sql: postgres.Sql, queue: ExtractionQueue): Up
       });
     },
 
-    rejectUpload(id, failure) {
+    rejectUpload(id, code) {
       return transition(sql`
-        update uploads set status = 'failed', error_code = ${failure.code}, error_message = ${failure.message}
+        update uploads set status = 'failed', error_code = ${code}
         where id = ${id} and status = 'uploading'
         returning *`);
     },
@@ -138,7 +138,7 @@ export function createUploadStore(sql: postgres.Sql, queue: ExtractionQueue): Up
       return sql.begin(async (tx) => {
         const record = await transition(tx`
           update uploads
-          set status = 'queued', attempts = 0, error_code = null, error_message = null
+          set status = 'queued', attempts = 0, error_code = null
           where id = ${id} and status = 'failed'
           returning *`);
         if (record) await queue.enqueue(id, tx);
@@ -149,7 +149,7 @@ export function createUploadStore(sql: postgres.Sql, queue: ExtractionQueue): Up
     startAttempt(id) {
       return transition(sql`
         update uploads
-        set status = 'processing', attempts = attempts + 1, error_code = null, error_message = null
+        set status = 'processing', attempts = attempts + 1, error_code = null
         where id = ${id} and status in ('queued', 'processing')
         returning *`);
     },
@@ -158,21 +158,21 @@ export function createUploadStore(sql: postgres.Sql, queue: ExtractionQueue): Up
       return transition(sql`
         update uploads
         set status = 'completed', result = ${sql.json(result as postgres.JSONValue)}, completed_at = now(),
-            error_code = null, error_message = null
+            error_code = null
         where id = ${id} and status = 'processing'
         returning *`);
     },
 
-    scheduleRetry(id, failure) {
+    scheduleRetry(id, code) {
       return transition(sql`
-        update uploads set status = 'queued', error_code = ${failure.code}, error_message = ${failure.message}
+        update uploads set status = 'queued', error_code = ${code}
         where id = ${id} and status = 'processing'
         returning *`);
     },
 
-    fail(id, failure) {
+    fail(id, code) {
       return transition(sql`
-        update uploads set status = 'failed', error_code = ${failure.code}, error_message = ${failure.message}
+        update uploads set status = 'failed', error_code = ${code}
         where id = ${id} and status in ('queued', 'processing')
         returning *`);
     },
@@ -189,7 +189,7 @@ function toRecord(row: postgres.Row): UploadRecord {
     storagePath: row.storage_path,
     status: row.status,
     attempts: row.attempts,
-    error: row.error_code ? { code: row.error_code, message: row.error_message } : null,
+    error: row.error_code ? { code: row.error_code } : null,
     result: readStoredResult(row.result),
     createdAt: row.created_at,
     updatedAt: row.updated_at,

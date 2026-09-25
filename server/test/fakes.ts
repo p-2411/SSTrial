@@ -1,7 +1,7 @@
 import { pino } from 'pino';
-import type { LabelExtraction, SupportedMimeType } from '@label-extractor/shared';
+import type { LabelExtraction, SupportedMimeType, UploadErrorCode } from '@label-extractor/shared';
 import { StorageUnavailableError, type FileStorage } from '../src/infra/storage.ts';
-import type { NewUpload, UploadFailure, UploadRecord, UploadStore } from '../src/uploads/store.ts';
+import type { NewUpload, UploadRecord, UploadStore } from '../src/uploads/store.ts';
 
 /**
  * In-memory stand-ins for Postgres, the queue and Supabase Storage, so API and worker logic can be
@@ -77,8 +77,8 @@ export class InMemoryUploadStore implements UploadStore {
     if (row) this.enqueued.push(id);
     return row;
   }
-  async rejectUpload(id: string, failure: UploadFailure) {
-    return this.transition(id, ['uploading'], { status: 'failed', error: failure });
+  async rejectUpload(id: string, code: UploadErrorCode) {
+    return this.transition(id, ['uploading'], { status: 'failed', error: { code } });
   }
   async requeueFailed(id: string) {
     const row = this.transition(id, ['failed'], { status: 'queued', attempts: 0, error: null });
@@ -96,11 +96,11 @@ export class InMemoryUploadStore implements UploadStore {
   async complete(id: string, result: LabelExtraction) {
     return this.transition(id, ['processing'], { status: 'completed', result, error: null, completedAt: new Date() });
   }
-  async scheduleRetry(id: string, failure: UploadFailure) {
-    return this.transition(id, ['processing'], { status: 'queued', error: failure });
+  async scheduleRetry(id: string, code: UploadErrorCode) {
+    return this.transition(id, ['processing'], { status: 'queued', error: { code } });
   }
-  async fail(id: string, failure: UploadFailure) {
-    return this.transition(id, ['queued', 'processing'], { status: 'failed', error: failure });
+  async fail(id: string, code: UploadErrorCode) {
+    return this.transition(id, ['queued', 'processing'], { status: 'failed', error: { code } });
   }
 
   private transition(id: string, from: UploadRecord['status'][], changes: Partial<UploadRecord>) {
