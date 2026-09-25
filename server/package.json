@@ -9,6 +9,7 @@
     "dev:worker": "node --watch --env-file-if-exists=.env src/worker/main.ts",
     "start:api": "node --env-file-if-exists=.env src/api/main.ts",
     "start:worker": "node --env-file-if-exists=.env src/worker/main.ts",
+    "create-user": "node --env-file-if-exists=.env scripts/create-user.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json",
     "test:integration": "TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgresql://postgres:postgres@127.0.0.1:54322/postgres} vitest run test/integration"
