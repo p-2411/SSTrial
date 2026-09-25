@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { jsonResponse, renderWithProviders } from '@/test/render';
@@ -126,14 +126,18 @@ describe('UploadList', () => {
     expect(await screen.findByText('Nothing is being processed right now.')).toBeInTheDocument();
   });
 
-  it('offers CSV and JSON exports once something has completed', async () => {
-    stubApi([summary({ status: 'completed' })]);
+  it('offers CSV and JSON exports once something has completed, downloaded as the signed-in user', async () => {
+    const requested = stubApi([summary({ status: 'completed' })]);
+    // jsdom has no object URLs or real downloads.
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:x'), revokeObjectURL: vi.fn() });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     renderList();
 
     await userEvent.click(await screen.findByRole('button', { name: 'Export' }));
+    expect(screen.getByRole('menuitem', { name: /JSON/ })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('menuitem', { name: /CSV/ }));
 
-    expect(screen.getByRole('menuitem', { name: /CSV/ })).toHaveAttribute('href', '/api/exports/uploads.csv');
-    expect(screen.getByRole('menuitem', { name: /JSON/ })).toHaveAttribute('href', '/api/exports/uploads.json');
+    await waitFor(() => expect(requested).toContain('/api/exports/uploads.csv'));
   });
 
   it('hides the export menu when nothing has completed yet', async () => {

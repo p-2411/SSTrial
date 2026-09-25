@@ -1,4 +1,7 @@
 import { ChevronDown, Download, FileJson, FileSpreadsheet } from 'lucide-react';
+import { toast } from 'sonner';
+import { errorMessage } from '@/api/client';
+import { downloadExport } from '@/api/uploads';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -8,10 +11,15 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-/**
- * Downloads every completed extraction. Plain links: the API answers with a file attachment, so
- * the browser saves it without any JavaScript download handling.
- */
+async function save(format: 'csv' | 'json') {
+  try {
+    await downloadExport(format);
+  } catch (error) {
+    toast.error("Couldn't export", { description: errorMessage(error) });
+  }
+}
+
+/** Downloads every completed extraction, as CSV or JSON (see downloadExport). */
 export function ExportMenu() {
   return (
     <DropdownMenu>
@@ -24,17 +32,13 @@ export function ExportMenu() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
         <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">All completed uploads</DropdownMenuLabel>
-        <DropdownMenuItem asChild>
-          <a href="/api/exports/uploads.csv" download>
-            <FileSpreadsheet aria-hidden />
-            CSV
-          </a>
+        <DropdownMenuItem onSelect={() => void save('csv')}>
+          <FileSpreadsheet aria-hidden />
+          CSV
         </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <a href="/api/exports/uploads.json" download>
-            <FileJson aria-hidden />
-            JSON
-          </a>
+        <DropdownMenuItem onSelect={() => void save('json')}>
+          <FileJson aria-hidden />
+          JSON
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -8,7 +8,7 @@ import type {
   UploadFilter,
   UploadResponse,
 } from '@label-extractor/shared';
-import { apiRequest } from './client.ts';
+import { apiFetch, apiRequest } from './client.ts';
 
 /** Plain functions for each API endpoint. React Query hooks wrap these in queries.ts. */
 
@@ -87,4 +87,19 @@ function storageErrorMessage(status: number, responseText: string): string {
   if (code === '415') return "Storage didn't accept this file type.";
   if (code === '403' || code === '401') return 'The upload link expired. Please try again.';
   return `The upload failed (${code}). Please try again.`;
+}
+
+/**
+ * Downloads every completed extraction as CSV or JSON. Fetched, not linked: a plain link can't send
+ * the sign-in token. Saved under the file name the server chose.
+ */
+export async function downloadExport(format: 'csv' | 'json'): Promise<void> {
+  const response = await apiFetch(`/api/exports/uploads.${format}`);
+  const fileName = /filename="([^"]+)"/.exec(response.headers.get('content-disposition') ?? '')?.[1] ?? `uploads.${format}`;
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
 }
