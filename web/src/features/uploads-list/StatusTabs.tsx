@@ -11,7 +11,7 @@ import { STATUS_FILTERS } from './statusFilters';
  */
 export function StatusTabs({ counts }: { counts: UploadCountsResponse['counts'] | undefined }) {
   return (
-    <TabsList aria-label="Filter uploads by status" className="h-9 w-full">
+    <TabsList aria-label="Filter uploads by status" className="h-9">
       {STATUS_FILTERS.map((filter) => (
         <TabsTrigger
           key={filter.id}

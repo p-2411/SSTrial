@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
-import { useParams } from 'react-router';
 import { formatBytes, type UploadDetail } from '@label-extractor/shared';
 import { ApiRequestError, errorMessage } from '@/api/client';
 import { useUploadDetail } from '@/api/queries';
 import { InlineError } from '@/components/InlineError';
+import { SheetTitle } from '@/components/ui/sheet';
 import { StatusPill } from '@/components/StatusPill';
 import { Skeleton } from '@/components/ui/skeleton';
 import { fileTypeLabel, formatDateTime, formatRelativeTime } from '@/lib/format';
@@ -12,28 +12,38 @@ import { JsonDisclosure } from './JsonDisclosure';
 import { SourceDocumentCard } from './SourceDocumentCard';
 import { StatusNotice } from './StatusNotice';
 
-/** Route: /uploads/:id — everything about one upload. */
-export function UploadDetailView() {
-  const { id = '' } = useParams();
+/**
+ * Everything about one upload, shown inside UploadDetailSheet. Its heading is the sheet's title, so
+ * screen readers announce the panel by the file's name.
+ */
+export function UploadDetailView({ id }: { id: string }) {
   const { data: upload, isPending, isError, error, refetch, isRefetching } = useUploadDetail(id);
 
   return (
     <div className="grid min-w-0 gap-5">
-      {isPending && <DetailSkeleton />}
+      {isPending && (
+        <>
+          <SheetTitle className="sr-only">Loading upload</SheetTitle>
+          <DetailSkeleton />
+        </>
+      )}
 
       {isError && !upload &&
         (error instanceof ApiRequestError && error.status === 404 ? (
           <div className="grid gap-1">
-            <h2 className="text-2xl font-semibold">Upload not found</h2>
+            <SheetTitle className="text-2xl font-semibold">Upload not found</SheetTitle>
             <p className="text-muted-foreground">This upload doesn't exist. Check the link, or pick an upload from the list.</p>
           </div>
         ) : (
-          <InlineError
-            title="Couldn't load this upload"
-            message={errorMessage(error)}
-            onRetry={() => void refetch()}
-            retrying={isRefetching}
-          />
+          <>
+            <SheetTitle className="sr-only">Upload</SheetTitle>
+            <InlineError
+              title="Couldn't load this upload"
+              message={errorMessage(error)}
+              onRetry={() => void refetch()}
+              retrying={isRefetching}
+            />
+          </>
         ))}
 
       {upload && <Detail upload={upload} />}
@@ -45,11 +55,12 @@ function Detail({ upload }: { upload: UploadDetail }) {
   return (
     <>
       <header className="grid gap-2">
-        <div className="flex items-start justify-between gap-4">
-          <h2 className="min-w-0 text-2xl font-semibold break-words" title={upload.fileName}>
+        {/* pr-10 keeps the status clear of the sheet's close button. */}
+        <div className="flex items-start gap-3 pr-10">
+          <SheetTitle className="min-w-0 text-2xl font-semibold break-words" title={upload.fileName}>
             {upload.fileName}
-          </h2>
-          <StatusPill status={upload.status} className="mt-1" />
+          </SheetTitle>
+          <StatusPill status={upload.status} className="mt-1.5 shrink-0" />
         </div>
         <dl className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
           <Fact label="Uploaded">
