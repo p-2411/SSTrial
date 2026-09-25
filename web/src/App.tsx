@@ -5,15 +5,14 @@ import { Separator } from '@/components/ui/separator';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { Dropzone } from '@/features/upload/Dropzone';
 import { useFileUploads } from '@/features/upload/useFileUploads';
-import { NothingSelected } from '@/features/upload-detail/NothingSelected';
-import { UploadDetailView } from '@/features/upload-detail/UploadDetailView';
+import { UploadDetailPanel } from '@/features/upload-detail/UploadDetailPanel';
 import { UploadList } from '@/features/uploads-list/UploadList';
 import { SystemStatusPage } from '@/features/system-status/SystemStatusPage';
 
 /**
  * Routes, all inside the app shell (sidebar + top bar):
- *   /             upload + list, with a placeholder where the detail goes
- *   /uploads/:id  upload + list, with that upload's detail alongside
+ *   /             upload + list
+ *   /uploads/:id  the same page, with that upload's details in a panel beside the list
  *   /status       system status: health, queue, throughput and the alert log
  * The upload routes accept ?status=… to filter the list (see statusFilters.ts). Desktop layout only.
  */
@@ -24,10 +23,9 @@ export const router = createBrowserRouter([
       {
         path: '/',
         element: <Workspace />,
-        children: [
-          { index: true, element: <NothingSelected /> },
-          { path: 'uploads/:id', element: <UploadDetailView /> },
-        ],
+        // Renders nothing itself: the route only has to match. UploadDetailPanel (always mounted, so
+        // it can animate open and closed) reads it.
+        children: [{ path: 'uploads/:id', element: null }],
       },
       { path: '/status', element: <SystemStatusPage /> },
     ],
@@ -39,7 +37,8 @@ type FileUploads = ReturnType<typeof useFileUploads>;
 
 /**
  * App shell in the SupplyScope layout: dark sidebar, white top bar, warm off-white workspace.
- * Uploads in progress live here, so they carry on while you look at another page.
+ * Uploads in progress live here, so they carry on while you look at another page. SidebarInset
+ * renders the page's <main> element, so nothing inside it is another <main>.
  */
 function AppShell() {
   const fileUploads = useFileUploads();
@@ -56,20 +55,23 @@ function AppShell() {
   );
 }
 
-/** The uploads page: dropzone and list on the left, the open upload on the right. */
+/** The uploads page: dropzone and list, with the open upload in a panel beside them. */
 function Workspace() {
   const { uploads: pending, addFiles, retry, dismiss } = useOutletContext<FileUploads>();
   return (
-    // Full height: the list and the detail each scroll on their own.
-    <main className="grid min-h-0 flex-1 grid-cols-[minmax(20rem,26rem)_minmax(0,1fr)]">
-      <div className="grid min-w-0 content-start gap-4 overflow-y-auto p-6 pr-3">
-        <Dropzone onFiles={addFiles} />
-        <UploadList pending={pending} onRetryPending={retry} onDismissPending={dismiss} />
+    // Full height: the list and the detail panel each scroll on their own.
+    // @container: the detail panel sizes itself as a share of this row's width.
+    <div className="@container flex min-h-0 flex-1">
+      {/* The scrollbar's space is always reserved, on both sides so the centred content stays
+          centred: switching to a short filter mustn't make everything shift sideways. */}
+      <div data-slot="list-scroller" className="min-w-0 flex-1 overflow-y-auto [scrollbar-gutter:stable_both-edges]">
+        <div className="mx-auto grid max-w-4xl content-start gap-4 p-6">
+          <Dropzone onFiles={addFiles} />
+          <UploadList pending={pending} onRetryPending={retry} onDismissPending={dismiss} />
+        </div>
       </div>
-      <div className="min-w-0 overflow-y-auto p-6 pl-3">
-        <Outlet />
-      </div>
-    </main>
+      <UploadDetailPanel />
+    </div>
   );
 }
 

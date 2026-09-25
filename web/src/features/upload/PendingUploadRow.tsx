@@ -3,8 +3,9 @@ import { FileTypeTile } from '@/components/FileTypeTile';
 import { StatusPill } from '@/components/StatusPill';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { fileTypeLabel } from '@/lib/format';
 import type { PendingUpload } from './useFileUploads';
-import { rowClassName } from '@/features/uploads-list/UploadRow';
+import { rowClassName, RowTitle } from '@/features/uploads-list/UploadRow';
 
 interface PendingUploadRowProps {
   upload: PendingUpload;
@@ -12,40 +13,31 @@ interface PendingUploadRowProps {
   onDismiss: (localId: string) => void;
 }
 
-/** A file still on its way to the server: progress while sending, the reason if it failed. */
+/**
+ * A file still on its way to the server, laid out like UploadRow: name, type and size on the first
+ * line; progress (or why it failed) on the second.
+ */
 export function PendingUploadRow({ upload, onRetry, onDismiss }: PendingUploadRowProps) {
   const { file, phase } = upload;
   const hasError = phase === 'rejected' || phase === 'failed';
-  const mimeType = mimeTypeFromFileName(file.name) ?? 'image/png';
+  const mimeType = mimeTypeFromFileName(file.name);
+  const meta = mimeType ? `${fileTypeLabel(mimeType)}, ${formatBytes(file.size)}` : formatBytes(file.size);
 
   return (
     <li className={rowClassName}>
-      <FileTypeTile mimeType={mimeType} />
+      <FileTypeTile mimeType={mimeType ?? 'image/png'} />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold" title={file.name}>
-          {file.name}
-        </p>
+        <RowTitle name={file.name} meta={meta} />
         {hasError ? (
-          <>
-            <p role="alert" className="mt-0.5 text-sm text-danger">
-              {phase === 'rejected' ? upload.error : `Upload failed: ${upload.error}`}
-            </p>
-            <div className="mt-2 flex gap-2">
-              {phase === 'failed' && (
-                <Button size="xs" variant="outline" onClick={() => onRetry(upload)}>
-                  Try again
-                </Button>
-              )}
-              <Button size="xs" variant="ghost" className="text-muted-foreground" onClick={() => onDismiss(upload.localId)}>
-                Dismiss
-              </Button>
-            </div>
-          </>
+          <p role="alert" className="mt-0.5 text-sm text-danger">
+            {phase === 'rejected' ? upload.error : `Upload failed: ${upload.error}`}
+          </p>
         ) : (
-          <div className="mt-1 space-y-1.5">
-            <p className="text-sm text-muted-foreground">{phaseText(upload)}</p>
+          <div className="mt-0.5 flex items-center gap-3">
+            <span className="shrink-0 text-sm text-muted-foreground tabular-nums">{phaseText(upload)}</span>
             <Progress
               aria-label={`Uploading ${file.name}`}
+              className="flex-1"
               value={phase === 'uploading' ? Math.round(upload.progress * 100) : phase === 'confirming' ? 100 : 0}
             />
           </div>
@@ -53,7 +45,19 @@ export function PendingUploadRow({ upload, onRetry, onDismiss }: PendingUploadRo
       </div>
       <div className="flex flex-col items-end gap-1.5">
         <StatusPill status={hasError ? 'failed' : 'uploading'} />
-        <span className="text-xs text-muted-foreground tabular-nums">{formatBytes(file.size)}</span>
+        {/* Actions sit under the status, so a failed row stays two lines like the rest. */}
+        {hasError && (
+          <div className="flex gap-1">
+            {phase === 'failed' && (
+              <Button size="xs" variant="outline" onClick={() => onRetry(upload)}>
+                Try again
+              </Button>
+            )}
+            <Button size="xs" variant="ghost" className="text-muted-foreground" onClick={() => onDismiss(upload.localId)}>
+              Dismiss
+            </Button>
+          </div>
+        )}
       </div>
     </li>
   );

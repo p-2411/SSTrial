@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router';
-import { Activity, ScanText } from 'lucide-react';
+import { Activity, Files, ScanText } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -13,23 +13,19 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { useOpsStatus, useUploadCounts } from '@/api/queries';
+import { useOpsStatus } from '@/api/queries';
 import { cn } from '@/lib/utils';
-import { filterSearch, STATUS_FILTERS, useStatusFilter } from '@/features/uploads-list/statusFilters';
 
 /**
- * The app shell's dark sidebar, following the SupplyScope product layout. Its navigation is the
- * status filter for the upload list, with live counts.
+ * The app shell's dark sidebar, following the SupplyScope product layout. It holds destinations
+ * only: Uploads and System status. Filtering the upload list is not a destination, so its status
+ * tabs live in the list itself.
  */
 export function AppSidebar() {
-  const filter = useStatusFilter();
   const { pathname } = useLocation();
-  const { data: counts } = useUploadCounts();
   const { data: ops } = useOpsStatus();
 
   const onStatusPage = pathname === '/status';
-  // Filters apply to the uploads pages; from elsewhere they lead back to the list.
-  const filterPathname = onStatusPage ? '/' : pathname;
   const openAlerts = ops?.alerts.open ?? [];
   const worstAlert = openAlerts.some((alert) => alert.severity === 'critical') ? 'critical' : openAlerts.length ? 'warning' : null;
 
@@ -53,22 +49,15 @@ export function AppSidebar() {
           <SidebarGroupLabel className="text-sidebar-foreground/60">Label extraction</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {STATUS_FILTERS.map((item) => {
-                const count = counts?.[item.id];
-                const isActive = !onStatusPage && item === filter;
-                return (
-                  <SidebarMenuItem key={item.id}>
-                    <SidebarMenuButton asChild isActive={isActive}>
-                      {/* Keep the open upload (if any) when switching filters. */}
-                      <Link to={{ pathname: filterPathname, search: filterSearch(item) }} aria-current={isActive ? 'page' : undefined}>
-                        <item.icon aria-hidden />
-                        <span>{item.label}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                    {count !== undefined && <SidebarMenuBadge className="tabular-nums">{count}</SidebarMenuBadge>}
-                  </SidebarMenuItem>
-                );
-              })}
+              <SidebarMenuItem>
+                {/* The list and an open upload are both part of Uploads. */}
+                <SidebarMenuButton asChild isActive={!onStatusPage}>
+                  <Link to="/" aria-current={onStatusPage ? undefined : 'page'}>
+                    <Files aria-hidden />
+                    <span>Uploads</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

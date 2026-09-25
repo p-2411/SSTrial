@@ -8,9 +8,26 @@ import { cn } from '@/lib/utils';
 /** Shared by UploadRow and PendingUploadRow so both kinds of row line up in one list. */
 export const rowClassName = 'flex items-start gap-3 border-b border-border/70 px-4 py-3 last:border-b-0';
 
-/** One server-side upload. The whole row links to its detail view. */
+/** A row's first line: its name in bold, with smaller details (file type, size) right after it. */
+export function RowTitle({ name, meta }: { name: string; meta: string }) {
+  return (
+    <p className="flex min-w-0 items-baseline gap-2">
+      <span className="truncate text-sm font-semibold" title={name}>
+        {name}
+      </span>
+      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{meta}</span>
+    </p>
+  );
+}
+
+/**
+ * One server-side upload, in two lines. Once the label is read, the product is what people are
+ * looking for, so its name leads and the file name drops to the second line; until then the file
+ * name leads and the second line says what's happening. The whole row links to its detail view.
+ */
 export function UploadRow({ upload, now }: { upload: UploadSummary; now: number }) {
   const { search } = useLocation();
+  const productName = upload.status === 'completed' ? upload.productName : null;
   return (
     <li className="border-b border-border/70 last:border-b-0">
       <NavLink
@@ -27,13 +44,17 @@ export function UploadRow({ upload, now }: { upload: UploadSummary; now: number 
       >
         <FileTypeTile mimeType={upload.mimeType} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold" title={upload.fileName}>
-            {upload.fileName}
-          </p>
-          <StatusDetail upload={upload} />
-          <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
-            {fileTypeLabel(upload.mimeType)}, {formatBytes(upload.sizeBytes)}
-          </p>
+          <RowTitle
+            name={productName ?? upload.fileName}
+            meta={`${fileTypeLabel(upload.mimeType)}, ${formatBytes(upload.sizeBytes)}`}
+          />
+          {productName ? (
+            <p className="mt-0.5 truncate text-sm text-muted-foreground" title={upload.fileName}>
+              {upload.fileName}
+            </p>
+          ) : (
+            <StatusDetail upload={upload} />
+          )}
         </div>
         <div className="flex flex-col items-end gap-1.5">
           <StatusPill status={upload.status} />
@@ -46,28 +67,32 @@ export function UploadRow({ upload, now }: { upload: UploadSummary; now: number 
   );
 }
 
-/** The second line: what's happening, what was found, or why it failed. */
+/**
+ * The second line when there's no product name to lead with: what's happening, or why it failed.
+ * Kept to one line; the full message is in the tooltip and the detail panel.
+ */
 export function StatusDetail({ upload }: { upload: UploadSummary }) {
-  const base = 'mt-0.5 text-sm';
+  const line = (text: string, tone: string) => (
+    <p className={cn('mt-0.5 truncate text-sm', tone)} title={text}>
+      {text}
+    </p>
+  );
   switch (upload.status) {
     case 'completed':
-      return upload.resultUnreadable ? (
-        <p className={cn(base, 'text-warning')}>Saved result can't be displayed. Run it again to replace it.</p>
-      ) : (
-        <p className={cn(base, 'font-medium text-success')}>{upload.productName ?? 'Label read'}</p>
-      );
+      // No product name to lead with: either the saved result can't be read, or the label had none.
+      return upload.resultUnreadable
+        ? line("Saved result can't be displayed. Run it again to replace it.", 'text-warning')
+        : line('No product name on label', 'text-muted-foreground');
     case 'failed':
-      return <p className={cn(base, 'text-danger')}>{upload.error?.message ?? 'Processing failed.'}</p>;
+      return line(upload.error?.message ?? 'Processing failed.', 'text-danger');
     case 'processing':
-      return <p className={cn(base, 'text-brand')}>Reading label</p>;
+      return line('Reading label', 'text-brand');
     case 'queued':
       // Queued again after a failed attempt: say why, and that it's handled.
-      return upload.error ? (
-        <p className={cn(base, 'text-warning')}>{upload.error.message} Retrying automatically.</p>
-      ) : (
-        <p className={cn(base, 'text-muted-foreground')}>Waiting to be processed</p>
-      );
+      return upload.error
+        ? line(`${upload.error.message} Retrying automatically.`, 'text-warning')
+        : line('Waiting to be processed', 'text-muted-foreground');
     case 'uploading':
-      return <p className={cn(base, 'text-muted-foreground')}>Uploading</p>;
+      return line('Uploading', 'text-muted-foreground');
   }
 }
