@@ -64,7 +64,7 @@ uploading ─(browser confirms)─► queued ─(worker claims)─► processing
 ### Monitoring
 
 - **System status page** (`/status` in the app, from `GET /api/ops`): uploads waiting, retrying and processing; whether the worker is running; health checks; the last 24 hours; and failures by reason.
-- **Activity log** (`/logs` in the app, from `GET /api/logs`): every step of every upload (created, queued, each extraction attempt, retries, failures and why), plus rate-limit pauses and process starts. Narrow it to a level, one type of event or one upload, and it updates live. Kept for 30 days.
+- **Activity log** (`/logs` in the app, from `GET /api/logs`): every step of every upload (created, queued, each extraction attempt, retries, failures and why), plus rate-limit pauses and process starts. Narrow it to any mix of event types (with shortcuts for warnings and errors) or to one upload, and it updates live. Kept for 30 days.
 - **`GET /api/health`** on the API (database, queue) and on the worker (plus its job loop) answers 200 or 503. Railway uses it on deploy.
 
 ## Running locally
@@ -146,7 +146,7 @@ supabase/        Local config and the SQL migrations
 | `GET` | `/api/uploads/:id` | One upload with its extracted data and a preview URL |
 | `POST` | `/api/uploads/:id/retry` | Run extraction again, for failures that could succeed and results that can't be read |
 | `GET` | `/api/events` | Server-sent events announcing upload changes and new activity-log events |
-| `GET` | `/api/logs?level=&type=&upload=&cursor=&limit=` | One page of the activity log, newest first, with `nextCursor`. `level` is a minimum (`all`, `warn`, `error`) |
+| `GET` | `/api/logs?type=&type=&upload=&cursor=&limit=` | One page of the activity log, newest first, with `nextCursor`. One `type` per type of event wanted; none means every type |
 | `GET` | `/api/health` | Health checks: 200 or 503 |
 | `GET` | `/api/ops` | Everything on the System status page |
 | `GET` | `/api/exports/uploads.csv` | Every completed extraction as CSV, one row per product (streamed) |

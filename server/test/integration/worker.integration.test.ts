@@ -137,7 +137,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
 
   /** The activity log for one upload, oldest first. */
   async function eventTypes(uploadId: string) {
-    const newestFirst = await events.list({ level: 'all', uploadId, limit: 100 });
+    const newestFirst = await events.list({ types: [], uploadId, limit: 100 });
     return newestFirst.map((event) => event.type).reverse();
   }
 
@@ -415,7 +415,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       const uploadId = crypto.randomUUID();
       createdIds.push(uploadId);
 
-      await events.record({ level: 'info', type: 'extraction.started', uploadId, message: 'x' });
+      await events.record({ type: 'extraction.started', uploadId, message: 'x' });
 
       await expect.poll(() => announced, { timeout: 5000 }).toBeGreaterThan(0);
       unsubscribe();
@@ -430,32 +430,31 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       return id;
     }
 
-    it('lists newest first, filtered by minimum level, type and upload', async () => {
+    it("lists newest first, at each type's level, filtered by type and upload", async () => {
       const uploadId = testUploadId();
-      await events.record({ level: 'info', type: 'extraction.started', uploadId, message: 'one' });
-      await events.record({ level: 'warn', type: 'extraction.retry_scheduled', uploadId, message: 'two', data: { code: 'LLM_TIMEOUT' } });
-      await events.record({ level: 'error', type: 'extraction.failed', uploadId, message: 'three' });
+      await events.record({ type: 'extraction.started', uploadId, message: 'one' });
+      await events.record({ type: 'extraction.retry_scheduled', uploadId, message: 'two', data: { code: 'LLM_TIMEOUT' } });
+      await events.record({ type: 'extraction.failed', uploadId, message: 'three' });
       const messages = async (filters: Partial<Parameters<EventStore['list']>[0]>) =>
-        (await events.list({ level: 'all', uploadId, limit: 10, ...filters })).map((event) => event.message);
+        (await events.list({ types: [], uploadId, limit: 10, ...filters })).map((event) => event.message);
 
       expect(await messages({})).toEqual(['three', 'two', 'one']);
-      expect(await messages({ level: 'warn' })).toEqual(['three', 'two']);
-      expect(await messages({ level: 'error' })).toEqual(['three']);
-      expect(await messages({ type: 'extraction.retry_scheduled' })).toEqual(['two']);
+      expect(await messages({ types: ['extraction.failed', 'extraction.retry_scheduled'] })).toEqual(['three', 'two']);
+      expect(await messages({ types: ['extraction.retry_scheduled'] })).toEqual(['two']);
 
-      const [latest] = await events.list({ level: 'warn', uploadId, type: 'extraction.retry_scheduled', limit: 1 });
+      const [latest] = await events.list({ uploadId, types: ['extraction.retry_scheduled'], limit: 1 });
       expect(latest).toMatchObject({ source: 'worker', level: 'warn', uploadId, data: { code: 'LLM_TIMEOUT' } });
       expect(latest!.occurredAt).toBeInstanceOf(Date);
     });
 
     it('pages with a keyset cursor, without gaps or repeats', async () => {
       const uploadId = testUploadId();
-      for (let i = 1; i <= 7; i++) await events.record({ level: 'info', type: 'extraction.started', uploadId, message: `${i}` });
+      for (let i = 1; i <= 7; i++) await events.record({ type: 'extraction.started', uploadId, message: `${i}` });
 
       const seen: string[] = [];
       let after: string | undefined;
       for (;;) {
-        const page = await events.list({ level: 'all', uploadId, limit: 3, after });
+        const page = await events.list({ types: [], uploadId, limit: 3, after });
         if (page.length === 0) break;
         seen.push(...page.map((event) => event.message));
         after = page.at(-1)!.id;
@@ -465,12 +464,12 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
 
     it('prunes only events older than the retention period', async () => {
       const uploadId = testUploadId();
-      await events.record({ level: 'info', type: 'extraction.started', uploadId, message: 'old' });
-      await events.record({ level: 'info', type: 'extraction.started', uploadId, message: 'recent' });
+      await events.record({ type: 'extraction.started', uploadId, message: 'old' });
+      await events.record({ type: 'extraction.started', uploadId, message: 'recent' });
       await sql`update events set occurred_at = now() - interval '31 days' where upload_id = ${uploadId} and message = 'old'`;
 
       expect(await events.pruneOlderThan(30)).toBeGreaterThanOrEqual(1);
-      expect((await events.list({ level: 'all', uploadId, limit: 10 })).map((event) => event.message)).toEqual(['recent']);
+      expect((await events.list({ types: [], uploadId, limit: 10 })).map((event) => event.message)).toEqual(['recent']);
     });
 
     it("never rejects when a write fails: it's reported to stdout instead", async () => {
@@ -478,8 +477,8 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       const store = createEventStore(sql, { source: 'api', logger });
       const uploadId = testUploadId();
 
-      // A level the table's check constraint refuses stands in for any failed insert.
-      await expect(store.record({ level: 'debug' as never, type: 'extraction.started', uploadId, message: 'x' })).resolves.toBeUndefined();
+      // A message the table's not-null constraint refuses stands in for any failed insert.
+      await expect(store.record({ type: 'extraction.started', uploadId, message: null as never })).resolves.toBeUndefined();
       expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ event: 'extraction.started' }), 'Could not write to the activity log');
     });
   });

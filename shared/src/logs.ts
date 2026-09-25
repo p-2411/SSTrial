@@ -6,7 +6,7 @@
  * worker starting — written by the API or the worker to the `events` table.
  */
 
-/** GET /api/logs?level=…&type=…&upload=…&cursor=…&limit=… — newest first, one page at a time. */
+/** GET /api/logs?type=…&type=…&upload=…&cursor=…&limit=… — newest first, one page at a time. */
 export const LOG_EVENTS_PATH = '/api/logs';
 
 export const LOG_LEVELS = ['info', 'warn', 'error'] as const;
@@ -19,27 +19,28 @@ export const LOG_RETENTION_DAYS = 30;
 export type LogSource = 'api' | 'worker';
 
 /**
- * Every kind of event, with the label the Logs page shows for it. Types are dotted by area
- * (upload, extraction, …) so related ones sort and read together.
+ * Every kind of event: the label the Logs page shows for it, and its level. A type always has the
+ * same level ("Extraction failed" is always an error), so filtering by level is filtering by type.
+ * Types are dotted by area (upload, extraction, …) so related ones sort and read together.
  */
 export const LOG_EVENT_TYPES = {
   // The API, as an upload arrives
-  'upload.created': 'Upload started',
-  'upload.duplicate': 'Identical file already uploaded',
-  'upload.queued': 'Queued for extraction',
-  'upload.rejected': 'File rejected',
-  'upload.discarded': 'Unfinished upload discarded',
-  'upload.retry_requested': 'Retry requested',
+  'upload.created': { label: 'Upload started', level: 'info' },
+  'upload.duplicate': { label: 'Identical file already uploaded', level: 'info' },
+  'upload.queued': { label: 'Queued for extraction', level: 'info' },
+  'upload.rejected': { label: 'File rejected', level: 'warn' },
+  'upload.discarded': { label: 'Unfinished upload discarded', level: 'info' },
+  'upload.retry_requested': { label: 'Retry requested', level: 'info' },
   // The worker, extracting
-  'extraction.started': 'Extraction started',
-  'extraction.completed': 'Extraction completed',
-  'extraction.retry_scheduled': 'Retry scheduled',
-  'extraction.failed': 'Extraction failed',
-  'extraction.abandoned': 'Extraction abandoned',
-  'ratelimit.paused': 'AI requests paused',
+  'extraction.started': { label: 'Extraction started', level: 'info' },
+  'extraction.completed': { label: 'Extraction completed', level: 'info' },
+  'extraction.retry_scheduled': { label: 'Retry scheduled', level: 'warn' },
+  'extraction.failed': { label: 'Extraction failed', level: 'error' },
+  'extraction.abandoned': { label: 'Extraction abandoned', level: 'error' },
+  'ratelimit.paused': { label: 'AI requests paused', level: 'warn' },
   // Either process
-  'process.started': 'Process started',
-} as const satisfies Record<string, string>;
+  'process.started': { label: 'Process started', level: 'info' },
+} as const satisfies Record<string, { label: string; level: LogLevel }>;
 
 export type LogEventType = keyof typeof LOG_EVENT_TYPES;
 export const LOG_EVENT_TYPE_IDS = Object.keys(LOG_EVENT_TYPES) as LogEventType[];
@@ -53,16 +54,6 @@ export function isLogEventType(value: string): value is LogEventType {
  * nothing to open. Earlier events of the same upload may still point at it.
  */
 export const UPLOAD_GONE_EVENT_TYPES: readonly LogEventType[] = ['upload.rejected', 'upload.discarded'];
-
-/** The page's level filter — everything, or a minimum level — with its label. */
-export const LOG_LEVEL_FILTERS = {
-  all: 'Everything',
-  warn: 'Warnings and errors',
-  error: 'Errors only',
-} as const satisfies Record<string, string>;
-
-export type LogLevelFilter = keyof typeof LOG_LEVEL_FILTERS;
-export const LOG_LEVEL_FILTER_IDS = Object.keys(LOG_LEVEL_FILTERS) as LogLevelFilter[];
 
 export interface LogEvent {
   /** Also the pagination cursor. A string: the database counts in 64-bit integers. */

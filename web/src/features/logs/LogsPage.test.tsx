@@ -82,24 +82,30 @@ describe('LogsPage', () => {
     expect(screen.getByText(/"attempt": 2/)).toBeInTheDocument();
   });
 
-  it('shows a minimum level or one type of event, chosen from one menu', async () => {
+  it('shows any number of types of event, ticked in one menu', async () => {
     const user = userEvent.setup();
     const requested = stubLogs({ events: [event({ id: '1', message: 'Reading oat-milk.png.' })], nextCursor: null });
     renderPage();
     await screen.findByText('Reading oat-milk.png.');
 
+    // A shortcut picks a whole set: the types that are errors.
     await user.click(screen.getByRole('button', { name: 'Show everything' }));
-    await user.click(screen.getByRole('menuitemradio', { name: 'Errors only' }));
+    await user.click(screen.getByRole('menuitemcheckbox', { name: 'Errors only' }));
 
     expect(screen.getByRole('button', { name: 'Show errors only' })).toBeInTheDocument();
-    await vi.waitFor(() => expect(requested.at(-1)).toBe('/api/logs?level=error'));
+    await vi.waitFor(() => expect(requested.at(-1)).toBe('/api/logs?type=extraction.failed&type=extraction.abandoned'));
 
-    // Choosing a type replaces the level rather than combining with it.
+    // Ticking another type adds it, and the menu stays open for more.
     await user.click(screen.getByRole('button', { name: 'Show errors only' }));
-    await user.click(screen.getByRole('menuitemradio', { name: 'Retry scheduled' }));
+    await user.click(screen.getByRole('menuitemcheckbox', { name: 'Retry scheduled' }));
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Retry scheduled' })).toHaveAttribute('aria-checked', 'true');
+    await user.click(screen.getByRole('menuitemcheckbox', { name: 'Extraction failed' }));
 
-    await vi.waitFor(() => expect(requested.at(-1)).toBe('/api/logs?type=extraction.retry_scheduled'));
-    expect(screen.getByRole('button', { name: 'Show retry scheduled' })).toBeInTheDocument();
+    await vi.waitFor(() =>
+      expect(requested.at(-1)).toBe('/api/logs?type=extraction.retry_scheduled&type=extraction.abandoned'),
+    );
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('button', { name: 'Show 2 types of event' })).toBeInTheDocument();
   });
 
   it('applies the filters in the URL, naming the upload, and can drop the upload filter', async () => {
@@ -135,7 +141,7 @@ describe('LogsPage', () => {
   it('offers to clear the filters when nothing matches them', async () => {
     const user = userEvent.setup();
     const requested = stubLogs({ events: [], nextCursor: null });
-    renderPage('/logs?level=error');
+    renderPage('/logs?type=extraction.failed');
 
     expect(await screen.findByText('No events match these filters')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Show every event' }));

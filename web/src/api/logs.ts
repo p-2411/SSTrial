@@ -1,18 +1,16 @@
-import { LOG_EVENTS_PATH, type ListLogsResponse, type LogEventType, type LogLevelFilter } from '@label-extractor/shared';
+import { LOG_EVENTS_PATH, type ListLogsResponse, type LogEventType } from '@label-extractor/shared';
 import { apiRequest } from './client.ts';
 
-/** What the activity log is narrowed to: a minimum level, one type of event, one upload. */
+/** What the activity log is narrowed to: some types of event (none means every type), one upload. */
 export interface LogFilters {
-  level: LogLevelFilter;
-  type: LogEventType | null;
+  types: LogEventType[];
   upload: string | null;
 }
 
-/** The filters as query parameters, leaving out the defaults. The Logs page's URL uses the same ones. */
-export function logFilterParams({ level, type, upload }: LogFilters): URLSearchParams {
+/** The filters as query parameters, one `type` per type. The Logs page's URL uses the same ones. */
+export function logFilterParams({ types, upload }: LogFilters): URLSearchParams {
   const params = new URLSearchParams();
-  if (level !== 'all') params.set('level', level);
-  if (type) params.set('type', type);
+  for (const type of types) params.append('type', type);
   if (upload) params.set('upload', upload);
   return params;
 }

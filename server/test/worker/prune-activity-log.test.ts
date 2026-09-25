@@ -8,8 +8,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 describe('pruneActivityLog', () => {
   it(`deletes events older than ${LOG_RETENTION_DAYS} days and keeps the rest`, async () => {
     const events = new InMemoryEventStore();
-    events.seed({ level: 'info', type: 'process.started', message: 'old', occurredAt: new Date(Date.now() - (LOG_RETENTION_DAYS + 1) * DAY_MS) });
-    events.seed({ level: 'info', type: 'process.started', message: 'recent', occurredAt: new Date(Date.now() - DAY_MS) });
+    events.seed({ type: 'process.started', message: 'old', occurredAt: new Date(Date.now() - (LOG_RETENTION_DAYS + 1) * DAY_MS) });
+    events.seed({ type: 'process.started', message: 'recent', occurredAt: new Date(Date.now() - DAY_MS) });
 
     await pruneActivityLog({ events, logger: silentLogger });
 

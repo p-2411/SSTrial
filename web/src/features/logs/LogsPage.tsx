@@ -18,7 +18,7 @@ import { NO_LOG_FILTERS, useLogFilters } from './logFilters';
 
 /**
  * Route: /logs — the activity log: what happened to each upload and to the system, newest first,
- * grouped by day. Filtered by level or event type, and by upload, all in the URL. Live: new events
+ * grouped by day. Filtered by type of event and by upload, both in the URL. Live: new events
  * appear as they're written (see useLiveUpdates).
  */
 export function LogsPage() {
@@ -96,8 +96,8 @@ function fileNameIn(events: LogEvent[] | undefined): string | null {
 }
 
 function EmptyState({ filters, onClearFilters }: { filters: LogFilters; onClearFilters: () => void }) {
-  const isFiltered = filters.level !== 'all' || filters.type !== null || filters.upload !== null;
-  const justOneUpload = filters.upload !== null && filters.level === 'all' && filters.type === null;
+  const isFiltered = filters.types.length > 0 || filters.upload !== null;
+  const justOneUpload = filters.upload !== null && filters.types.length === 0;
   return (
     <div className="flex flex-col items-center gap-2 px-6 py-10 text-center">
       <span className="grid size-10 place-items-center rounded-full bg-muted text-muted-foreground">

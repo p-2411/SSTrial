@@ -1,26 +1,31 @@
 import { useSearchParams } from 'react-router';
-import { isLogEventType, LOG_LEVEL_FILTER_IDS } from '@label-extractor/shared';
+import { LOG_EVENT_TYPE_IDS, type LogEventType } from '@label-extractor/shared';
 import { logFilterParams, type LogFilters } from '@/api/logs';
 
 /**
- * The activity log's filters live in the URL (?level=warn&type=extraction.failed&upload=…), so they
+ * The activity log's filters live in the URL (?type=extraction.failed&type=…&upload=…), so they
  * survive refreshes and can be shared. Values that aren't valid are dropped rather than sent to
  * the server.
  */
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export const NO_LOG_FILTERS: LogFilters = { level: 'all', type: null, upload: null };
+export const NO_LOG_FILTERS: LogFilters = { types: [], upload: null };
 
 export function readLogFilters(params: URLSearchParams): LogFilters {
-  const level = params.get('level');
-  const type = params.get('type');
   const upload = params.get('upload');
   return {
-    level: LOG_LEVEL_FILTER_IDS.find((id) => id === level) ?? 'all',
-    type: type !== null && isLogEventType(type) ? type : null,
+    types: inCatalogueOrder(params.getAll('type')),
     upload: upload !== null && UUID.test(upload) ? upload : null,
   };
+}
+
+/**
+ * Known types only, once each, in the catalogue's order, so the same choice always makes the same
+ * URL (and the same cached query) however it was ticked.
+ */
+export function inCatalogueOrder(types: readonly string[]): LogEventType[] {
+  return LOG_EVENT_TYPE_IDS.filter((type) => types.includes(type));
 }
 
 /** The filters in the URL, and a function that changes some of them (a navigation, so Back undoes it). */

@@ -1,11 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import {
-  listLogsQuerySchema,
-  LOG_EVENT_TYPE_IDS,
-  LOG_EVENTS_PATH,
-  LOG_LEVEL_FILTER_IDS,
-  type ListLogsResponse,
-} from '@label-extractor/shared';
+import { listLogsQuerySchema, LOG_EVENT_TYPE_IDS, LOG_EVENTS_PATH, type ListLogsResponse } from '@label-extractor/shared';
 import { toLogEvent } from '../../logs/presenter.ts';
 import type { EventQueries } from '../../logs/store.ts';
 import { ApiError } from '../errors.ts';
@@ -22,12 +16,12 @@ export async function logRoutes(app: FastifyInstance, { events }: LogRoutesDeps)
       throw new ApiError(
         400,
         'BAD_REQUEST',
-        `Use level=${LOG_LEVEL_FILTER_IDS.join('|')}, type=one of ${LOG_EVENT_TYPE_IDS.join(', ')}, upload=an upload ID, a cursor from a previous page, and limit=1–200.`,
+        `Use type=… once per type wanted (${LOG_EVENT_TYPE_IDS.join(', ')}), upload=an upload ID, a cursor from a previous page, and limit=1–200.`,
       );
     }
-    const { level, type, upload, cursor, limit } = query.data;
+    const { type, upload, cursor, limit } = query.data;
     // Ask for one extra row: if it comes back, there's another page after this one.
-    const records = await events.list({ level, type, uploadId: upload, limit: limit + 1, after: cursor });
+    const records = await events.list({ types: type, uploadId: upload, limit: limit + 1, after: cursor });
     const page = records.slice(0, limit);
     return {
       events: page.map(toLogEvent),

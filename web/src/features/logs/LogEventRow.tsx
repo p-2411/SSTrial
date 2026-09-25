@@ -48,7 +48,7 @@ export function LogEventRow({ event }: { event: LogEvent }) {
         <div className="grid min-w-0 gap-0.5">
           <p className="text-sm break-words text-foreground">{event.message}</p>
           <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-            <span>{LOG_EVENT_TYPES[event.type]}</span>
+            <span>{LOG_EVENT_TYPES[event.type].label}</span>
             <Dot />
             <span>{SOURCE_LABEL[event.source]}</span>
             {uploadId && (

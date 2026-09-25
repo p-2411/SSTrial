@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { LOG_EVENT_TYPE_IDS, LOG_LEVEL_FILTER_IDS, type LogEventType, type LogLevelFilter } from './logs.ts';
+import { LOG_EVENT_TYPE_IDS, type LogEventType } from './logs.ts';
 import { UPLOAD_FILTER_IDS, type UploadFilter } from './uploads.ts';
 
 /**
@@ -28,11 +28,15 @@ export const listUploadsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
-/** GET /api/logs?level=…&type=…&upload=…&cursor=…&limit=… — newest first, one page at a time. */
+const logEventType = z.enum(LOG_EVENT_TYPE_IDS as [LogEventType, ...LogEventType[]]);
+
+/** GET /api/logs?type=…&type=…&upload=…&cursor=…&limit=… — newest first, one page at a time. */
 export const listLogsQuerySchema = z.object({
-  /** `warn` means warnings and errors; `error`, errors only. */
-  level: z.enum(LOG_LEVEL_FILTER_IDS as [LogLevelFilter, ...LogLevelFilter[]]).default('all'),
-  type: z.enum(LOG_EVENT_TYPE_IDS as [LogEventType, ...LogEventType[]]).optional(),
+  /** One `type` parameter per type of event wanted; none means every type. */
+  type: z
+    .union([logEventType, z.array(logEventType)])
+    .optional()
+    .transform((value) => [...new Set(value === undefined ? [] : [value].flat())]),
   /** Only this upload's events. */
   upload: z.uuid().optional(),
   /** The `nextCursor` of the previous page: an event ID. */

@@ -26,8 +26,8 @@ const messages = (body: ListLogsResponse) => body.events.map((event) => event.me
 describe('GET /api/logs', () => {
   it('returns events newest first, with ISO timestamps', async () => {
     const occurredAt = new Date('2026-09-25T08:00:00Z');
-    events.seed({ level: 'info', type: 'process.started', message: 'API started.', occurredAt });
-    events.seed({ level: 'info', type: 'upload.created', uploadId: UPLOAD, message: 'label.png started uploading.', data: { fileName: 'label.png' } });
+    events.seed({ type: 'process.started', message: 'API started.', occurredAt });
+    events.seed({ type: 'upload.created', uploadId: UPLOAD, message: 'label.png started uploading.', data: { fileName: 'label.png' } });
 
     const body = await getLogs();
 
@@ -46,20 +46,28 @@ describe('GET /api/logs', () => {
     expect(body.nextCursor).toBeNull();
   });
 
-  it('filters by minimum level, type and upload', async () => {
-    events.seed({ level: 'info', type: 'extraction.started', uploadId: UPLOAD, message: 'started' });
-    events.seed({ level: 'warn', type: 'extraction.retry_scheduled', uploadId: UPLOAD, message: 'retrying' });
-    events.seed({ level: 'error', type: 'extraction.failed', uploadId: UPLOAD, message: 'failed' });
-    events.seed({ level: 'error', type: 'extraction.abandoned', uploadId: OTHER_UPLOAD, message: 'abandoned' });
+  it('filters by any number of types, and by upload', async () => {
+    events.seed({ type: 'extraction.started', uploadId: UPLOAD, message: 'started' });
+    events.seed({ type: 'extraction.retry_scheduled', uploadId: UPLOAD, message: 'retrying' });
+    events.seed({ type: 'extraction.failed', uploadId: UPLOAD, message: 'failed' });
+    events.seed({ type: 'extraction.abandoned', uploadId: OTHER_UPLOAD, message: 'abandoned' });
 
-    expect(messages(await getLogs('?level=warn'))).toEqual(['abandoned', 'failed', 'retrying']);
-    expect(messages(await getLogs('?level=error'))).toEqual(['abandoned', 'failed']);
     expect(messages(await getLogs('?type=extraction.started'))).toEqual(['started']);
-    expect(messages(await getLogs(`?upload=${UPLOAD}&level=error`))).toEqual(['failed']);
+    expect(messages(await getLogs('?type=extraction.failed&type=extraction.abandoned'))).toEqual(['abandoned', 'failed']);
+    expect(messages(await getLogs(`?upload=${UPLOAD}&type=extraction.failed&type=extraction.abandoned`))).toEqual(['failed']);
+    expect(messages(await getLogs(`?upload=${UPLOAD}`))).toEqual(['failed', 'retrying', 'started']);
+  });
+
+  it("records each event at its type's level", async () => {
+    events.seed({ type: 'extraction.failed', message: 'failed' });
+    events.seed({ type: 'extraction.retry_scheduled', message: 'retrying' });
+    events.seed({ type: 'extraction.completed', message: 'done' });
+
+    expect((await getLogs()).events.map((event) => event.level)).toEqual(['info', 'warn', 'error']);
   });
 
   it('pages through every event exactly once', async () => {
-    for (let i = 1; i <= 5; i++) events.seed({ level: 'info', type: 'extraction.started', message: `${i}` });
+    for (let i = 1; i <= 5; i++) events.seed({ type: 'extraction.started', message: `${i}` });
 
     const seen: string[] = [];
     let cursor: string | null = null;
@@ -73,7 +81,6 @@ describe('GET /api/logs', () => {
   });
 
   it.each([
-    ['an unknown level', '?level=debug'],
     ['an unknown type', '?type=upload.exploded'],
     ['a malformed upload ID', '?upload=not-a-uuid'],
     ['a malformed cursor', '?cursor=abc'],

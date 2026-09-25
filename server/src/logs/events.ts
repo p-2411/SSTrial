@@ -34,7 +34,6 @@ export const logEvents = {
     const base = aboutUpload(upload);
     return {
       ...base,
-      level: 'info',
       type: 'upload.created',
       message: `${upload.fileName} started uploading (${fileTypeLabel(upload.mimeType)}, ${formatBytes(upload.sizeBytes)}).`,
       data: { ...base.data, mimeType: upload.mimeType, sizeBytes: upload.sizeBytes },
@@ -45,7 +44,6 @@ export const logEvents = {
   uploadDuplicate(existing: UploadRecord, fileName: string): NewLogEvent {
     return {
       uploadId: existing.id,
-      level: 'info',
       type: 'upload.duplicate',
       message: `${fileName} is identical to ${existing.fileName}, which was shown instead of processing it again.`,
       data: { fileName, existingFileName: existing.fileName },
@@ -64,7 +62,6 @@ export const logEvents = {
         : ` It was sent as a ${fileTypeLabel(options.claimedType)} but is a ${fileTypeLabel(upload.mimeType)}, and was accepted as one.`;
     return {
       ...base,
-      level: 'info',
       type: 'upload.queued',
       message: `${upload.fileName} ${how}.${corrected}`,
       data: { ...base.data, mimeType: upload.mimeType, claimedType: options.claimedType, byFinaliseJob: options.byFinaliseJob },
@@ -74,7 +71,6 @@ export const logEvents = {
   uploadRejected(upload: UploadRef): NewLogEvent {
     return {
       ...aboutUpload(upload),
-      level: 'warn',
       type: 'upload.rejected',
       message: `${upload.fileName} isn't a supported file type (${SUPPORTED_TYPES_LABEL}), so it was deleted.`,
     };
@@ -83,7 +79,6 @@ export const logEvents = {
   uploadDiscarded(upload: UploadRef): NewLogEvent {
     return {
       ...aboutUpload(upload),
-      level: 'info',
       type: 'upload.discarded',
       message: `${upload.fileName} never finished uploading, so it was discarded.`,
     };
@@ -92,7 +87,6 @@ export const logEvents = {
   retryRequested(upload: UploadRef): NewLogEvent {
     return {
       ...aboutUpload(upload),
-      level: 'info',
       type: 'upload.retry_requested',
       message: `Extraction of ${upload.fileName} was requested again.`,
     };
@@ -104,7 +98,6 @@ export const logEvents = {
     const base = aboutUpload(upload);
     return {
       ...base,
-      level: 'info',
       type: 'extraction.started',
       message: upload.attempts > 1 ? `Reading ${upload.fileName}, ${attemptOf(upload.attempts)}.` : `Reading ${upload.fileName}.`,
       data: { ...base.data, attempt: upload.attempts },
@@ -125,7 +118,6 @@ export const logEvents = {
         : `read in ${seconds(details.durationMs)}`;
     return {
       ...base,
-      level: 'info',
       type: 'extraction.completed',
       message: `${upload.fileName} ${how}${found}.`,
       data: { ...base.data, attempt: upload.attempts, ...details },
@@ -136,7 +128,6 @@ export const logEvents = {
     const base = aboutUpload(upload);
     return {
       ...base,
-      level: 'warn',
       type: 'extraction.retry_scheduled',
       message: `${upload.fileName} failed on ${attemptOf(upload.attempts)}: ${uploadErrorMessage(code)} It will be retried.`,
       data: { ...base.data, code, attempt: upload.attempts },
@@ -149,7 +140,6 @@ export const logEvents = {
     const why = isRetryableCode(code) ? ` Gave up after ${upload.attempts} attempts.` : " Retrying wouldn't help.";
     return {
       ...base,
-      level: 'error',
       type: 'extraction.failed',
       message: `${upload.fileName} failed: ${uploadErrorMessage(code)}${why}`,
       data: { ...base.data, code, attempt: upload.attempts },
@@ -161,7 +151,6 @@ export const logEvents = {
     const base = aboutUpload(upload);
     return {
       ...base,
-      level: 'error',
       type: 'extraction.abandoned',
       message: `Every attempt on ${upload.fileName} stopped before finishing (crashed or hung), so it was marked failed.`,
       data: { ...base.data, code, attempts: upload.attempts },
@@ -173,7 +162,6 @@ export const logEvents = {
     const base = aboutUpload(upload);
     return {
       ...base,
-      level: 'warn',
       type: 'ratelimit.paused',
       message: `The AI service asked us to slow down while reading ${upload.fileName}. All AI requests paused for ${seconds(pauseMs)}.`,
       data: { ...base.data, pauseMs },
@@ -183,6 +171,6 @@ export const logEvents = {
   // ---- Either process ------------------------------------------------------------------
 
   processStarted(name: 'API' | 'Worker', details: Record<string, unknown> = {}): NewLogEvent {
-    return { level: 'info', type: 'process.started', message: `${name} started.`, data: details };
+    return { type: 'process.started', message: `${name} started.`, data: details };
   },
 };

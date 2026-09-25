@@ -1,5 +1,5 @@
 import type postgres from 'postgres';
-import type { LogEventType, LogLevel, LogLevelFilter, LogSource } from '@label-extractor/shared';
+import { LOG_EVENT_TYPES, type LogEventType, type LogLevel, type LogSource } from '@label-extractor/shared';
 import type { Logger } from '../infra/logger.ts';
 
 /**
@@ -12,9 +12,11 @@ import type { Logger } from '../infra/logger.ts';
  * acceptable, failing an upload because the log couldn't be written is not.
  */
 
-/** An event as a caller describes it; `source` and the timestamp are added by the store. */
+/**
+ * An event as a caller describes it. The store adds its level (fixed per type, see
+ * LOG_EVENT_TYPES), its source and the time.
+ */
 export interface NewLogEvent {
-  level: LogLevel;
   type: LogEventType;
   message: string;
   uploadId?: string | null;
@@ -41,10 +43,11 @@ export interface EventLog {
 /** Reading the activity log, for the API. */
 export interface EventQueries {
   /**
-   * One page of events, newest first. `after` is the ID of the last event on the previous page
-   * (keyset pagination: stable while new events arrive, and fast at any depth).
+   * One page of events, newest first, of the given types (every type when `types` is empty).
+   * `after` is the ID of the last event on the previous page (keyset pagination: stable while new
+   * events arrive, and fast at any depth).
    */
-  list(options: { level: LogLevelFilter; type?: LogEventType; uploadId?: string; limit: number; after?: string }): Promise<LogEventRecord[]>;
+  list(options: { types: LogEventType[]; uploadId?: string; limit: number; after?: string }): Promise<LogEventRecord[]>;
 }
 
 /** Keeping the table to a bounded size, for the worker's monitor. */
@@ -58,34 +61,23 @@ export type EventStore = EventLog & EventQueries & EventRetention;
 export function createEventStore(sql: postgres.Sql, options: { source: LogSource; logger: Logger }): EventStore {
   const { source, logger } = options;
 
-  /**
-   * Each level filter as the exact condition its partial index is built on (see the migration), so
-   * "warnings and errors" and "errors only" read those small indexes rather than every event.
-   */
-  const levelCondition: Record<LogLevelFilter, postgres.PendingQuery<postgres.Row[]>> = {
-    all: sql``,
-    warn: sql`and level <> 'info'`,
-    error: sql`and level = 'error'`,
-  };
-
   return {
     async record(event) {
       try {
         await sql`
           insert into events (source, level, type, upload_id, message, data)
-          values (${source}, ${event.level}, ${event.type}, ${event.uploadId ?? null}, ${event.message},
+          values (${source}, ${LOG_EVENT_TYPES[event.type].level}, ${event.type}, ${event.uploadId ?? null}, ${event.message},
                   ${sql.json((event.data ?? {}) as postgres.JSONValue)})`;
       } catch (err) {
         logger.warn({ err, event: event.type, uploadId: event.uploadId }, 'Could not write to the activity log');
       }
     },
 
-    async list({ level, type, uploadId, limit, after }) {
+    async list({ types, uploadId, limit, after }) {
       const rows = await sql`
         select * from events
         where true
-          ${levelCondition[level]}
-          ${type ? sql`and type = ${type}` : sql``}
+          ${types.length > 0 ? sql`and type = any(${types}::text[])` : sql``}
           ${uploadId ? sql`and upload_id = ${uploadId}` : sql``}
           ${after ? sql`and id < ${after}::bigint` : sql``}
         order by id desc

@@ -1,13 +1,12 @@
 import { pino } from 'pino';
 import {
   canTransition,
-  LOG_LEVELS,
+  LOG_EVENT_TYPES,
   UPLOAD_TRANSITIONS,
   type UploadTransition,
   type HealthReport,
   type LabelExtraction,
   type LogEventType,
-  type LogLevelFilter,
   type SupportedMimeType,
   type LiveChange,
   type UploadErrorCode,
@@ -262,7 +261,7 @@ export class InMemoryEventStore implements EventStore {
       id: String(this.nextId++),
       occurredAt: event.occurredAt ?? new Date(),
       source: event.source ?? 'api',
-      level: event.level,
+      level: LOG_EVENT_TYPES[event.type].level,
       type: event.type,
       uploadId: event.uploadId ?? null,
       message: event.message,
@@ -276,11 +275,9 @@ export class InMemoryEventStore implements EventStore {
     this.seed(event);
   }
 
-  async list({ level, type, uploadId, limit, after }: { level: LogLevelFilter; type?: LogEventType; uploadId?: string; limit: number; after?: string }) {
-    const minimum = level === 'all' ? 0 : LOG_LEVELS.indexOf(level);
+  async list({ types, uploadId, limit, after }: { types: LogEventType[]; uploadId?: string; limit: number; after?: string }) {
     return this.events
-      .filter((event) => LOG_LEVELS.indexOf(event.level) >= minimum)
-      .filter((event) => !type || event.type === type)
+      .filter((event) => types.length === 0 || types.includes(event.type))
       .filter((event) => !uploadId || event.uploadId === uploadId)
       .filter((event) => !after || Number(event.id) < Number(after))
       .toSorted((a, b) => Number(b.id) - Number(a.id))

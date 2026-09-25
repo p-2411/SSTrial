@@ -1,26 +1,19 @@
 import { Fragment } from 'react';
 import { Link } from 'react-router';
 import { ChevronDown, ListFilter, X } from 'lucide-react';
-import {
-  isLogEventType,
-  LOG_EVENT_TYPE_IDS,
-  LOG_EVENT_TYPES,
-  LOG_LEVEL_FILTER_IDS,
-  LOG_LEVEL_FILTERS,
-  type LogEventType,
-} from '@label-extractor/shared';
+import { LOG_EVENT_TYPE_IDS, LOG_EVENT_TYPES, type LogEventType } from '@label-extractor/shared';
 import type { LogFilters } from '@/api/logs';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { uploadPath } from '@/routes';
+import { inCatalogueOrder } from './logFilters';
 
 interface LogFilterBarProps {
   filters: LogFilters;
@@ -30,13 +23,13 @@ interface LogFilterBarProps {
 }
 
 /**
- * The log's filters: what to show (one menu), and the upload it's narrowed to, if any (a chip,
- * removable).
+ * The log's filters: which types of event to show (one menu), and the upload it's narrowed to, if
+ * any (a chip, removable).
  */
 export function LogFilterBar({ filters, onChange, uploadName }: LogFilterBarProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <ShowMenu filters={filters} onChange={onChange} />
+      <ShowMenu types={filters.types} onChange={(types) => onChange({ types })} />
       {filters.upload && <UploadChip id={filters.upload} name={uploadName} onClear={() => onChange({ upload: null })} />}
     </div>
   );
@@ -69,17 +62,33 @@ for (const type of LOG_EVENT_TYPE_IDS) {
 }
 
 /**
- * What to show: everything, a minimum level, or one type of event. One menu rather than two
- * filters, because each type of event always has the same level ("Errors only" is just the failed
- * and abandoned extractions), so the two would only ever narrow the same thing. Choosing one
- * clears the other.
+ * Choices at the top of the menu, each a whole set of types. A type always has the same level, so
+ * "warnings and errors" is just the types that are warnings or errors. Everything is no filter.
  */
-function ShowMenu({ filters, onChange }: { filters: LogFilters; onChange: (changes: Partial<LogFilters>) => void }) {
-  const select = (value: string) => {
-    if (isLogEventType(value)) return onChange({ type: value, level: 'all' });
-    const level = LOG_LEVEL_FILTER_IDS.find((id) => id === value);
-    if (level) onChange({ level, type: null });
-  };
+const SHORTCUTS: Array<{ label: string; types: LogEventType[] }> = [
+  { label: 'Everything', types: [] },
+  { label: 'Warnings and errors', types: LOG_EVENT_TYPE_IDS.filter((type) => LOG_EVENT_TYPES[type].level !== 'info') },
+  { label: 'Errors only', types: LOG_EVENT_TYPE_IDS.filter((type) => LOG_EVENT_TYPES[type].level === 'error') },
+];
+
+/** Both lists are in the catalogue's order, so comparing them in order is enough. */
+const sameTypes = (a: LogEventType[], b: LogEventType[]) => a.length === b.length && a.every((type, i) => type === b[i]);
+
+/** The button's summary of the choice: "Show everything", "Show errors only", "Show 3 types of event"… */
+function describe(types: LogEventType[]): string {
+  const shortcut = SHORTCUTS.find((candidate) => sameTypes(candidate.types, types));
+  if (shortcut) return midSentence(shortcut.label);
+  if (types.length === 1) return midSentence(LOG_EVENT_TYPES[types[0]!].label);
+  return `${types.length} types of event`;
+}
+
+/**
+ * Which types of event to show: any number of them, ticked in the menu (which stays open while you
+ * tick), or a shortcut at the top that picks a whole set at once.
+ */
+function ShowMenu({ types, onChange }: { types: LogEventType[]; onChange: (types: LogEventType[]) => void }) {
+  const toggle = (type: LogEventType, checked: boolean) =>
+    onChange(inCatalogueOrder(checked ? [...types, type] : types.filter((selected) => selected !== type)));
 
   return (
     <DropdownMenu>
@@ -87,29 +96,37 @@ function ShowMenu({ filters, onChange }: { filters: LogFilters; onChange: (chang
         <Button variant="outline" size="sm" className="h-9">
           <ListFilter data-icon="inline-start" aria-hidden />
           {/* The space keeps the accessible name "Show everything" rather than "Showeverything". */}
-          <span className="font-normal">Show</span> {midSentence(filters.type ? LOG_EVENT_TYPES[filters.type] : LOG_LEVEL_FILTERS[filters.level])}
+          <span className="font-normal">Show</span> {describe(types)}
           <ChevronDown data-icon="inline-end" aria-hidden />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
-        <DropdownMenuRadioGroup value={filters.type ?? filters.level} onValueChange={select}>
-          {LOG_LEVEL_FILTER_IDS.map((id) => (
-            <DropdownMenuRadioItem key={id} value={id}>
-              {LOG_LEVEL_FILTERS[id]}
-            </DropdownMenuRadioItem>
-          ))}
-          {TYPE_MENU.map(({ heading, types }) => (
-            <Fragment key={heading}>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{heading}</DropdownMenuLabel>
-              {types.map((type) => (
-                <DropdownMenuRadioItem key={type} value={type}>
-                  {LOG_EVENT_TYPES[type]}
-                </DropdownMenuRadioItem>
-              ))}
-            </Fragment>
-          ))}
-        </DropdownMenuRadioGroup>
+        {SHORTCUTS.map((shortcut) => (
+          <DropdownMenuCheckboxItem
+            key={shortcut.label}
+            checked={sameTypes(shortcut.types, types)}
+            onCheckedChange={() => onChange(shortcut.types)}
+          >
+            {shortcut.label}
+          </DropdownMenuCheckboxItem>
+        ))}
+        {TYPE_MENU.map(({ heading, types: group }) => (
+          <Fragment key={heading}>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{heading}</DropdownMenuLabel>
+            {group.map((type) => (
+              <DropdownMenuCheckboxItem
+                key={type}
+                checked={types.includes(type)}
+                onCheckedChange={(checked) => toggle(type, checked)}
+                // Keep the menu open, so several types can be ticked in one go.
+                onSelect={(event) => event.preventDefault()}
+              >
+                {LOG_EVENT_TYPES[type].label}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </Fragment>
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   );
