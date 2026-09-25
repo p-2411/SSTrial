@@ -74,14 +74,22 @@ The UI uses the same stack as SupplyScope's app: Tailwind v4 and shadcn/ui on Ra
 
 It's also styled with their brand, taken from supplyscope.io and their product screenshots:
 - **Colours:** warm off-white `#F6F5F3` background, near-black `#1B1B1B` buttons, indigo `#5048E5` reserved for AI features ("BETA" pill, "Retry extraction", AI sparkles) and green `#027A48` for validated data.
-- **Layout:** a dark sidebar shell. The sidebar holds destinations only (Uploads, System status and the Activity log); the status filter is a tab row in the list's own header, because it narrows one panel rather than taking you somewhere new.
+- **Layout:** a dark sidebar shell. The sidebar holds destinations only (Uploads, and for admins System status and the Activity log), then who is signed in; the status filter is a tab row in the list's own header, because it narrows one panel rather than taking you somewhere new.
 - **Detail view:** opens as a panel that slides in beside the list and narrows it, rather than covering it, so the main page is just "add files, see results" and you can move between uploads by clicking the next row. The URL (`/uploads/:id`) still drives it, so links, refresh and the back button work. Inside, it's modelled on their compliance screen: a "Core information" card with verified values in green, then the source document to check them against.
 - **Not copied:** their logo or product name (the deployed app is public, and it shouldn't pass as an official SupplyScope product) and their display typeface (Labil Grotesk is commercially licensed). Inter, which their app itself uses, stands in with tight heading tracking.
 - **Desktop only:** there's no mobile layout. It's a desktop operations tool, and supporting phones would have added complexity for little benefit.
 
+## Sign-in and roles
+
+- **Accounts come from a script, not sign-up or invites.** It's the smallest thing that shows how access is managed. Invites would need an email provider (Supabase's built-in one only emails the project's own team), and public sign-up would let anyone spend the OpenAI credit. Supabase Auth holds the accounts and passwords; the `members` table says who has access and as what.
+- **Two roles.** Members do the work: upload, review, export. Admins can also see how the system is running (System status, the Activity log). The API enforces it with `requireRole`; the UI only hides what the API would refuse anyway.
+- **Roles live in a table, not in the token.** The API looks the member up on every request (one primary-key read), so removing someone or changing their role applies immediately instead of when their token next refreshes, up to an hour later.
+- **The token travels in a header, never in a URL,** where it would end up in server and proxy logs. That's why live updates read the event stream with `fetch` (the browser's `EventSource` can't send headers) and exports download through `fetch` rather than a plain link.
+- **Only Supabase's auth client ships to the browser** (`@supabase/auth-js`), not all of supabase-js: the browser never talks to the database or storage directly.
+
 ## Other trade-offs and things deliberately left out
 
-- **No authentication or multi-tenancy:** everyone shares one list. This is the first thing to add before real use, along with per-user quotas.
+- **One workspace, no team management:** everyone signed in shares one list, and accounts come from a script. Before real use: invites through an email provider, password reset, per-user quotas, and separate workspaces if several companies share it.
 - **A double LLM call is still possible, just rarer.** If a worker loses the database mid-call, its job is handed on and the label is read twice. The claim token makes the second read harmless, and heartbeats make the handover prompt, but an in-flight LLM call can't be taken back.
 - **Migrations only go forward.** There are no down scripts; one-off data changes are committed scripts (`server/scripts/`), not ad-hoc SQL.
 - **No CI.** Tests and deploys are run by hand.

@@ -63,6 +63,8 @@ uploading ─(browser confirms)─► queued ─(worker claims)─► processing
 
 ### Monitoring
 
+Both pages are for admins only.
+
 - **System status page** (`/status` in the app, from `GET /api/ops`): uploads waiting, retrying and processing; whether the worker is running; health checks; the last 24 hours; and failures by reason.
 - **Activity log** (`/logs` in the app, from `GET /api/logs`): every step of every upload (created, queued, each extraction attempt, retries, failures and why), plus rate-limit pauses and process starts. Narrow it to any mix of event types (with shortcuts for warnings and errors) or to one upload, and it updates live. Kept for 30 days.
 - **`GET /api/health`** on the API (database, queue) and on the worker (plus its job loop) answers 200 or 503. Railway uses it on deploy.
@@ -74,13 +76,18 @@ uploading ─(browser confirms)─► queued ─(worker claims)─► processing
 ```bash
 npm install
 supabase start                     # local Postgres + Storage in Docker; applies supabase/migrations
-cp server/.env.example server/.env # then fill in the two blanks:
-                                   #   SUPABASE_SECRET_KEY  ← SECRET_KEY from `supabase status -o env`
-                                   #   OPENAI_API_KEY       ← your key
+cp server/.env.example server/.env # then fill in the three blanks:
+                                   #   SUPABASE_SECRET_KEY      ← SECRET_KEY from `supabase status -o env`
+                                   #   SUPABASE_PUBLISHABLE_KEY ← PUBLISHABLE_KEY, same place
+                                   #   OPENAI_API_KEY           ← your key
+supabase migration up              # only if the database was already running: applies new migrations
+npm run create-user -w server -- --email you@example.com --password '…' --role admin
 npm run dev                        # API :3000, worker, and web on http://localhost:5173
 ```
 
-`samples/` has a label as PNG and PDF, and a text file renamed to `.jpg` to try the content check.
+Sign in with the account you created. There's no public sign-up: accounts come from the script,
+which also changes someone's role (`--role member`) or password. `samples/` has a label as PNG and
+PDF, and a text file renamed to `.jpg` to try the content check.
 
 **Production image via Docker Compose** (API serving the built UI on http://localhost:3000, plus two workers):
 
@@ -110,7 +117,9 @@ The LLM is never called from tests. The worker depends on a `LabelExtractor` int
 shared/          Types, Zod schemas and rules used by all three: file rules, upload lifecycle, extraction
                  schema, HTTP contract
 server/
-  src/api/       HTTP API process (Fastify): routes that turn use-case outcomes into responses, errors
+  src/api/       HTTP API process (Fastify): routes that turn use-case outcomes into responses, errors,
+                 the sign-in check and the admin-only guard
+  src/auth/      Who a request is from: access-token check and the members table (roles)
   src/worker/    Worker process: the extraction job and a handler per queue
   src/extraction/ LLM integration: interface, errors, retry policy, OpenAI implementation and its
                  error mapping, prompt, shared rate limiter
@@ -124,6 +133,7 @@ server/
   test/          Unit tests (with in-memory fakes) and the integration test
 web/src/
   app/           Router, app shell (sidebar and top bar), 404 page
+  auth/          Supabase Auth in the browser, the sign-in page, and the route guards
   api/           API client, React Query hooks and cache refreshing, live updates (polling as fallback)
   features/      upload (dropzone + upload manager), uploads-list (list + status tabs),
                  upload-detail (side panel), system-status, logs (the activity log)
@@ -137,8 +147,13 @@ supabase/        Local config and the SQL migrations
 
 ## API
 
+Every route needs `Authorization: Bearer <access token>` from Supabase Auth, except `/api/health` and
+`/api/config`. Without it: 401. Signed in but not a member: 403.
+
 | Method | Path | |
 |---|---|---|
+| `GET` | `/api/config` | Public: the Supabase URL and publishable key the browser signs in with |
+| `GET` | `/api/me` | The signed-in member: `{ id, email, role }` |
 | `POST` | `/api/uploads` | Validate `{ fileName, mimeType, sizeBytes, sha256? }`; return `{ kind: 'created', upload, uploadUrl }`, or `{ kind: 'duplicate', upload }` for a file already processed |
 | `POST` | `/api/uploads/:id/complete` | Check the uploaded bytes and queue the upload (idempotent); 422 and nothing kept if the content isn't a supported type |
 | `GET` | `/api/uploads?status=&cursor=&limit=` | One page of a view (`all`, `in-progress`, `completed`, `failed`), newest first, with `nextCursor` |
@@ -146,9 +161,9 @@ supabase/        Local config and the SQL migrations
 | `GET` | `/api/uploads/:id` | One upload with its extracted data and a preview URL |
 | `POST` | `/api/uploads/:id/retry` | Run extraction again, for failures that could succeed and results that can't be read |
 | `GET` | `/api/events` | Server-sent events announcing upload changes and new activity-log events |
-| `GET` | `/api/logs?type=&type=&upload=&cursor=&limit=` | One page of the activity log, newest first, with `nextCursor`. One `type` per type of event wanted; none means every type |
-| `GET` | `/api/health` | Health checks: 200 or 503 |
-| `GET` | `/api/ops` | Everything on the System status page |
+| `GET` | `/api/logs?type=&type=&upload=&cursor=&limit=` | Admins only. One page of the activity log, newest first, with `nextCursor`. One `type` per type of event wanted; none means every type |
+| `GET` | `/api/health` | Public. Health checks: 200 or 503 |
+| `GET` | `/api/ops` | Admins only. Everything on the System status page |
 | `GET` | `/api/exports/uploads.csv` | Every completed extraction as CSV, one row per product (streamed) |
 | `GET` | `/api/exports/uploads.json` | The same, as JSON with the full structured data |
 
@@ -158,6 +173,6 @@ Errors are always `{ "error": { "code", "message" } }`, with a message written f
 
 Deliberately left out to stay within the time box. The reasoning is in [DECISIONS.md](DECISIONS.md#other-trade-offs-and-things-deliberately-left-out).
 
-- **Authentication and per-user data:** everyone sees one shared list.
+- **Team management and per-user data:** one shared workspace. Accounts come from a script; there are no invites, sign-up or password-reset emails.
 - **HEIC conversion** and a **PDF page-count limit**.
 - **CI/CD.** Deploys are run by hand with `railway up`. Next steps would be tests on every push and Railway deploying from GitHub.
