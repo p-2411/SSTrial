@@ -1,26 +1,14 @@
 import { memo } from 'react';
 import { NavLink, useLocation } from 'react-router';
-import { formatBytes, type UploadSummary } from '@label-extractor/shared';
+import type { UploadSummary } from '@label-extractor/shared';
 import { FileTypeTile } from '@/components/FileTypeTile';
-import { StatusPill } from '@/components/StatusPill';
 import { RelativeTime } from '@/components/RelativeTime';
-import { fileTypeLabel } from '@/lib/format';
+import { StatusPill } from '@/components/StatusPill';
+import { rowClassName, RowTitle } from '@/components/UploadRowLayout';
+import { formatFileFacts } from '@/lib/format';
+import { uploadState } from '@/lib/uploadState';
 import { cn } from '@/lib/utils';
-
-/** Shared by UploadRow and PendingUploadRow so both kinds of row line up in one list. */
-export const rowClassName = 'flex items-start gap-3 border-b border-border/70 px-4 py-3 last:border-b-0';
-
-/** A row's first line: its name in bold, with smaller details (file type, size) right after it. */
-export function RowTitle({ name, meta }: { name: string; meta: string }) {
-  return (
-    <p className="flex min-w-0 items-baseline gap-2">
-      <span className="truncate text-sm font-semibold" title={name}>
-        {name}
-      </span>
-      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{meta}</span>
-    </p>
-  );
-}
+import { uploadPath } from '@/routes';
 
 /**
  * One server-side upload, in two lines. Once the label is read, the product is what people are
@@ -39,7 +27,7 @@ export const UploadRow = memo(function UploadRow({ upload, now }: { upload: Uplo
     <li className="border-b border-border/70 [contain-intrinsic-size:auto_4.25rem] [content-visibility:auto] last:border-b-0">
       <NavLink
         // Keep the current filter (?status=…) when opening an upload.
-        to={{ pathname: `/uploads/${upload.id}`, search }}
+        to={{ pathname: uploadPath(upload.id), search }}
         className={({ isActive }) =>
           cn(
             rowClassName,
@@ -51,10 +39,7 @@ export const UploadRow = memo(function UploadRow({ upload, now }: { upload: Uplo
       >
         <FileTypeTile mimeType={upload.mimeType} />
         <div className="min-w-0 flex-1">
-          <RowTitle
-            name={productName ?? upload.fileName}
-            meta={`${fileTypeLabel(upload.mimeType)}, ${formatBytes(upload.sizeBytes)}`}
-          />
+          <RowTitle name={productName ?? upload.fileName} meta={formatFileFacts(upload.mimeType, upload.sizeBytes)} />
           {productName ? (
             <p className="mt-0.5 truncate text-sm text-muted-foreground" title={upload.fileName}>
               {upload.fileName}
@@ -76,27 +61,28 @@ export const UploadRow = memo(function UploadRow({ upload, now }: { upload: Uplo
  * The second line when there's no product name to lead with: what's happening, or why it failed.
  * Kept to one line; the full message is in the tooltip and the detail panel.
  */
-export function StatusDetail({ upload }: { upload: UploadSummary }) {
+function StatusDetail({ upload }: { upload: UploadSummary }) {
   const line = (text: string, tone: string) => (
     <p className={cn('mt-0.5 truncate text-sm', tone)} title={text}>
       {text}
     </p>
   );
-  switch (upload.status) {
+  const state = uploadState(upload);
+  switch (state.kind) {
+    case 'unreadable':
+      return line("Saved result can't be displayed. Run it again to replace it.", 'text-warning');
     case 'completed':
-      // No product name to lead with: either the saved result can't be read, or the label had none.
-      return upload.resultUnreadable
-        ? line("Saved result can't be displayed. Run it again to replace it.", 'text-warning')
-        : line('No product name on label', 'text-muted-foreground');
+      // Read fine, but the label had no product name to lead with.
+      return line('No product name on label', 'text-muted-foreground');
     case 'failed':
-      return line(upload.error?.message ?? 'Processing failed.', 'text-danger');
+      return line(state.error?.message ?? 'Processing failed.', 'text-danger');
     case 'processing':
       return line('Reading label', 'text-brand');
-    case 'queued':
+    case 'retrying':
       // Queued again after a failed attempt: say why, and that it's handled.
-      return upload.error
-        ? line(`${upload.error.message} Retrying automatically.`, 'text-warning')
-        : line('Waiting to be processed', 'text-muted-foreground');
+      return line(`${state.error.message} Retrying automatically.`, 'text-warning');
+    case 'waiting':
+      return line('Waiting to be processed', 'text-muted-foreground');
     case 'uploading':
       return line('Uploading', 'text-muted-foreground');
   }

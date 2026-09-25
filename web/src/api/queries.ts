@@ -1,19 +1,19 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { isActiveStatus, type UploadDetail, type UploadFilter } from '@label-extractor/shared';
-import { ApiRequestError } from './client.ts';
 import { isLiveConnected } from './liveConnection.ts';
 import { getOpsStatus, getUpload, getUploadCounts, listUploads, retryUpload } from './uploads.ts';
 
 /**
  * Server state lives in React Query: caching, polling and retries are handled here so
- * components only deal with "loading / error / data".
+ * components only deal with "loading / error / data". Code that changes uploads keeps the cache in
+ * step through the helpers below rather than touching query keys itself.
  */
 
 /**
  * How often to poll while something is still queued or processing — only as a fallback: while the
  * live update stream is connected, the server pushes changes and nothing polls.
  */
-export const POLL_INTERVAL_MS = 2_000;
+const POLL_INTERVAL_MS = 2_000;
 
 /** Poll interval for a query: never while live updates are connected, otherwise while `active`. */
 function pollWhile(active: boolean): number | false {
@@ -29,13 +29,40 @@ export const uploadKeys = {
   detail: (id: string) => [...uploadKeys.all, 'detail', id] as const,
 };
 
+export const opsKeys = {
+  all: ['ops'] as const,
+};
+
 /** How often the System status page (and the sidebar's alert dot) refresh. */
 export const OPS_REFRESH_MS = 15_000;
 
-/** Don't retry requests that can't succeed on a second try (e.g. 404), retry others twice. */
-function retryUnlessClientError(failureCount: number, error: Error): boolean {
-  if (error instanceof ApiRequestError && error.status >= 400 && error.status < 500) return false;
-  return failureCount < 2;
+/** Refetches every upload query: lists, counts and details. For when changes may have been missed. */
+export function refreshAllUploads(queryClient: QueryClient): Promise<void> {
+  return queryClient.invalidateQueries({ queryKey: uploadKeys.all });
+}
+
+/** Refetches the list views and their counts: anything that moves an upload between views. */
+export async function refreshUploadLists(queryClient: QueryClient): Promise<void> {
+  // Independent refetches: run them side by side rather than one after the other.
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: uploadKeys.lists() }),
+    queryClient.invalidateQueries({ queryKey: uploadKeys.counts() }),
+  ]);
+}
+
+/** Refetches just the per-view counts, e.g. the tab numbers beside a list that's being switched. */
+export function refreshUploadCounts(queryClient: QueryClient): Promise<void> {
+  return queryClient.invalidateQueries({ queryKey: uploadKeys.counts() });
+}
+
+/** Refetches one upload's detail, if it's cached. */
+export function refreshUpload(queryClient: QueryClient, id: string): Promise<void> {
+  return queryClient.invalidateQueries({ queryKey: uploadKeys.detail(id) });
+}
+
+/** Caches an upload the API just returned, so its detail shows without another request. */
+export function storeUpload(queryClient: QueryClient, upload: UploadDetail): void {
+  queryClient.setQueryData(uploadKeys.detail(upload.id), upload);
 }
 
 /**
@@ -48,7 +75,6 @@ export function useUploadList(filter: UploadFilter) {
     queryFn: ({ pageParam }) => listUploads(filter, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-    retry: retryUnlessClientError,
     refetchInterval: (query) =>
       pollWhile(query.state.data?.pages.some((page) => page.uploads.some((upload) => isActiveStatus(upload.status))) ?? false),
   });
@@ -59,7 +85,6 @@ export function useUploadCounts() {
   return useQuery({
     queryKey: uploadKeys.counts(),
     queryFn: getUploadCounts,
-    retry: retryUnlessClientError,
     refetchInterval: (query) => pollWhile((query.state.data?.['in-progress'] ?? 0) > 0),
   });
 }
@@ -69,7 +94,6 @@ export function useUploadDetail(id: string) {
   return useQuery({
     queryKey: uploadKeys.detail(id),
     queryFn: () => getUpload(id),
-    retry: retryUnlessClientError,
     refetchInterval: (query) => {
       const upload = query.state.data as UploadDetail | undefined;
       return pollWhile(upload !== undefined && isActiveStatus(upload.status));
@@ -83,12 +107,8 @@ export function useRetryUpload() {
   return useMutation({
     mutationFn: retryUpload,
     onSuccess: async (upload) => {
-      queryClient.setQueryData(uploadKeys.detail(upload.id), upload);
-      // Independent refetches: run them side by side rather than one after the other.
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: uploadKeys.lists() }),
-        queryClient.invalidateQueries({ queryKey: uploadKeys.counts() }),
-      ]);
+      storeUpload(queryClient, upload);
+      await refreshUploadLists(queryClient);
     },
   });
 }
@@ -96,9 +116,8 @@ export function useRetryUpload() {
 /** Health, queue, throughput and alerts. Refreshes on a timer: monitoring data changes by the minute. */
 export function useOpsStatus() {
   return useQuery({
-    queryKey: ['ops'],
+    queryKey: opsKeys.all,
     queryFn: getOpsStatus,
-    retry: retryUnlessClientError,
     refetchInterval: OPS_REFRESH_MS,
   });
 }

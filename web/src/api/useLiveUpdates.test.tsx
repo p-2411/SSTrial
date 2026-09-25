@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
-import { createTestQueryClient, Providers } from '../test/render.tsx';
+import { createTestQueryClient, Providers } from '@/test/render';
 import { isLiveConnected } from './liveConnection.ts';
 import { uploadKeys } from './queries.ts';
 import { useLiveUpdates } from './useLiveUpdates.ts';

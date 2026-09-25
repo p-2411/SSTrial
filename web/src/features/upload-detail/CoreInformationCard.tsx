@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
 import { ShieldCheck, Sparkles } from 'lucide-react';
-import { isVolumeUnit, type Ingredient, type LabelExtraction, type NetQuantity, type NetQuantityUnit } from '@label-extractor/shared';
+import { isVolumeUnit, type Ingredient, type LabelExtraction } from '@label-extractor/shared';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatQuantity } from '@/lib/quantity';
+import { TONE_CLASSES } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 
 /**
@@ -42,24 +44,7 @@ export function CoreInformationCard({ result }: { result: LabelExtraction }) {
             )}
           </Field>
           <Field label="Allergens">
-            {allergens.length > 0 ? (
-              <>
-                <span className="sr-only">Contains {allergens.join(', ')}.</span>
-                {/* Allergens are warnings, so they get SupplyScope's pastel-yellow treatment. */}
-                <ul className="flex flex-wrap gap-1.5" aria-hidden>
-                  {allergens.map((allergen) => (
-                    <li
-                      key={allergen}
-                      className="rounded-full border border-warning-border bg-warning-soft px-2.5 py-0.5 text-sm font-medium text-warning capitalize"
-                    >
-                      {allergen}
-                    </li>
-                  ))}
-                </ul>
-              </>
-            ) : (
-              <Missing>None declared on label</Missing>
-            )}
+            {allergens.length > 0 ? <AllergenChips allergens={allergens} /> : <Missing>None declared on label</Missing>}
           </Field>
         </dl>
 
@@ -138,21 +123,28 @@ function IngredientList({ ingredients }: { ingredients: Ingredient[] }) {
   );
 }
 
+/** Allergens are warnings, so they get SupplyScope's pastel-yellow treatment. Read out as one sentence. */
+function AllergenChips({ allergens }: { allergens: string[] }) {
+  return (
+    <>
+      <span className="sr-only">Contains {allergens.join(', ')}.</span>
+      <ul className="flex flex-wrap gap-1.5" aria-hidden>
+        {allergens.map((allergen) => (
+          <li key={allergen} className={cn('rounded-full border px-2.5 py-0.5 text-sm font-medium capitalize', TONE_CLASSES.warning)}>
+            {allergen}
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 function Value({ children }: { children: ReactNode }) {
   return <span className="font-semibold text-success">{children}</span>;
 }
 
 function Missing({ children }: { children: ReactNode }) {
   return <span className="text-muted-foreground italic">{children}</span>;
-}
-
-/** Litres as "L": a lowercase l is easily misread as the digit 1 ("1 l"). */
-const UNIT_DISPLAY: Partial<Record<NetQuantityUnit, string>> = { l: 'L' };
-
-/** { 500, g } → "500 g"; { 1.5, l } → "1.5 L"; long decimals are rounded to 2 places. */
-export function formatQuantity({ value, unit }: NetQuantity): string {
-  const amount = Number.isInteger(value) ? String(value) : String(Number(value.toFixed(2)));
-  return `${amount} ${UNIT_DISPLAY[unit] ?? unit}`;
 }
 
 function normalise(text: string): string {

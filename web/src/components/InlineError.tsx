@@ -1,6 +1,7 @@
 import { AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { TONE_CLASSES } from '@/lib/tone';
 
 interface InlineErrorProps {
   title: string;
@@ -13,7 +14,7 @@ interface InlineErrorProps {
 /** A failed request, explained, with a way to try again. */
 export function InlineError({ title, message, onRetry, retrying = false }: InlineErrorProps) {
   return (
-    <Alert className="border-danger-border bg-danger-soft text-danger">
+    <Alert className={TONE_CLASSES.danger}>
       <AlertCircle />
       <AlertTitle className="font-semibold">{title}</AlertTitle>
       <AlertDescription className="text-danger/90">

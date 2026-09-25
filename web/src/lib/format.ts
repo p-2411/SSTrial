@@ -1,4 +1,4 @@
-import { SUPPORTED_FILE_TYPES, type SupportedMimeType } from '@label-extractor/shared';
+import { formatBytes, SUPPORTED_FILE_TYPES, type SupportedMimeType } from '@label-extractor/shared';
 
 // Formatters are built once: creating one is far slower than using it, and these run for every row
 // on every render.
@@ -26,6 +26,11 @@ export function fileTypeLabel(mimeType: SupportedMimeType): string {
   return SUPPORTED_FILE_TYPES[mimeType]?.label ?? mimeType;
 }
 
+/** "PNG, 48.8 KB". Just the size when there's no supported type, e.g. a file rejected in the browser. */
+export function formatFileFacts(mimeType: SupportedMimeType | null, sizeBytes: number): string {
+  return mimeType ? `${fileTypeLabel(mimeType)}, ${formatBytes(sizeBytes)}` : formatBytes(sizeBytes);
+}
+
 /** 45 → "45s", 190 → "3 min", 7500 → "2 h 5 min". */
 export function formatDuration(seconds: number): string {
   if (seconds < 60) return `${Math.round(seconds)}s`;
@@ -33,4 +38,9 @@ export function formatDuration(seconds: number): string {
   if (minutes < 60) return `${minutes} min`;
   const hours = Math.floor(minutes / 60);
   return minutes % 60 === 0 ? `${hours} h` : `${hours} h ${minutes % 60} min`;
+}
+
+/** A value the server may not have yet (nothing measured), formatted, or a dash in its place. */
+export function formatOptional<T>(value: T | null, format: (value: T) => string): string {
+  return value === null ? '–' : format(value);
 }

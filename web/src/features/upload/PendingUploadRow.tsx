@@ -1,16 +1,15 @@
 import { memo } from 'react';
-import { formatBytes } from '@label-extractor/shared';
 import { FileTypeTile } from '@/components/FileTypeTile';
 import { StatusPill } from '@/components/StatusPill';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { fileTypeLabel } from '@/lib/format';
+import { rowClassName, RowTitle } from '@/components/UploadRowLayout';
+import { formatFileFacts } from '@/lib/format';
 import type { PendingUpload } from './useFileUploads';
-import { rowClassName, RowTitle } from '@/features/uploads-list/UploadRow';
 
 interface PendingUploadRowProps {
   upload: PendingUpload;
-  onRetry: (upload: PendingUpload) => void;
+  onRetry: (localId: string) => void;
   onDismiss: (localId: string) => void;
 }
 
@@ -24,13 +23,12 @@ interface PendingUploadRowProps {
 export const PendingUploadRow = memo(function PendingUploadRow({ upload, onRetry, onDismiss }: PendingUploadRowProps) {
   const { file, mimeType, phase } = upload;
   const hasError = phase === 'rejected' || phase === 'failed';
-  const meta = mimeType ? `${fileTypeLabel(mimeType)}, ${formatBytes(file.size)}` : formatBytes(file.size);
 
   return (
     <li className={rowClassName}>
       <FileTypeTile mimeType={mimeType} />
       <div className="min-w-0 flex-1">
-        <RowTitle name={file.name} meta={meta} />
+        <RowTitle name={file.name} meta={formatFileFacts(mimeType, file.size)} />
         {hasError ? (
           <p role="alert" className="mt-0.5 text-sm text-danger">
             {phase === 'rejected' ? upload.error : `Upload failed: ${upload.error}`}
@@ -52,7 +50,7 @@ export const PendingUploadRow = memo(function PendingUploadRow({ upload, onRetry
         {hasError && (
           <div className="flex gap-1">
             {phase === 'failed' && (
-              <Button size="xs" variant="outline" onClick={() => onRetry(upload)}>
+              <Button size="xs" variant="outline" onClick={() => onRetry(upload.localId)}>
                 Try again
               </Button>
             )}

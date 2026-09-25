@@ -47,7 +47,6 @@ export async function apiRequest<T>(path: string, init: { method?: string; body?
 
 /** A message suitable for showing to the user, whatever was thrown. */
 export function errorMessage(error: unknown): string {
-  if (error instanceof ApiRequestError) return error.message;
   if (error instanceof Error && error.message) return error.message;
   return 'Something went wrong. Please try again.';
 }

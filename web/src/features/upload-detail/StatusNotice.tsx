@@ -5,22 +5,23 @@ import { errorMessage } from '@/api/client';
 import { useRetryUpload } from '@/api/queries';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { TONE_CLASSES } from '@/lib/tone';
+import { uploadState } from '@/lib/uploadState';
 
 /** Explains a not-yet-completed upload: waiting, being read, retrying, or failed (with a retry button). */
 export function StatusNotice({ upload }: { upload: UploadDetail }) {
-  switch (upload.status) {
-    case 'queued':
-      if (upload.error) {
-        return (
-          <Alert role="status" className="border-warning-border bg-warning-soft text-warning">
-            <RotateCw />
-            <AlertTitle className="font-semibold">Retrying automatically</AlertTitle>
-            <AlertDescription className="text-warning/90">
-              {upload.error.message} It will be tried again shortly.
-            </AlertDescription>
-          </Alert>
-        );
-      }
+  const state = uploadState(upload);
+  switch (state.kind) {
+    case 'retrying':
+      return (
+        <Alert role="status" className={TONE_CLASSES.warning}>
+          <RotateCw />
+          <AlertTitle className="font-semibold">Retrying automatically</AlertTitle>
+          <AlertDescription className="text-warning/90">{state.error.message} It will be tried again shortly.</AlertDescription>
+        </Alert>
+      );
+
+    case 'waiting':
       return (
         <Alert role="status">
           <Clock />
@@ -39,15 +40,14 @@ export function StatusNotice({ upload }: { upload: UploadDetail }) {
         </Alert>
       );
 
-    case 'failed': {
-      const retryable = canRetryUpload(upload);
+    case 'failed':
       return (
-        <Alert className="border-danger-border bg-danger-soft text-danger">
+        <Alert className={TONE_CLASSES.danger}>
           <XCircle />
           <AlertTitle className="font-semibold">Couldn't extract this label</AlertTitle>
           <AlertDescription className="text-danger/90">
-            <p>{upload.error?.message ?? 'Processing failed.'}</p>
-            {retryable ? (
+            <p>{state.error?.message ?? 'Processing failed.'}</p>
+            {canRetryUpload(upload) ? (
               <RetryButton uploadId={upload.id} label="Retry extraction" />
             ) : (
               <p className="mt-1 text-sm text-muted-foreground">Upload a different file to try again.</p>
@@ -55,22 +55,21 @@ export function StatusNotice({ upload }: { upload: UploadDetail }) {
           </AlertDescription>
         </Alert>
       );
-    }
+
+    case 'unreadable':
+      // Saved in a shape this version can't read: say so, rather than showing an empty page.
+      return (
+        <Alert className={TONE_CLASSES.warning}>
+          <FileWarning />
+          <AlertTitle className="font-semibold">This result can't be displayed</AlertTitle>
+          <AlertDescription className="text-warning/90">
+            <p>It was saved in a format this version of the app can't read. Run the extraction again to replace it.</p>
+            <RetryButton uploadId={upload.id} label="Run extraction again" />
+          </AlertDescription>
+        </Alert>
+      );
 
     case 'completed':
-      // Saved in a shape this version can't read: say so, rather than showing an empty page.
-      if (upload.resultUnreadable) {
-        return (
-          <Alert className="border-warning-border bg-warning-soft text-warning">
-            <FileWarning />
-            <AlertTitle className="font-semibold">This result can't be displayed</AlertTitle>
-            <AlertDescription className="text-warning/90">
-              <p>It was saved in a format this version of the app can't read. Run the extraction again to replace it.</p>
-              <RetryButton uploadId={upload.id} label="Run extraction again" />
-            </AlertDescription>
-          </Alert>
-        );
-      }
       return null;
   }
 }

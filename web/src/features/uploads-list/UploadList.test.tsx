@@ -1,15 +1,13 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { jsonResponse, renderWithProviders } from '../../test/render.tsx';
-import { summary } from '../../test/fixtures.ts';
+import { jsonResponse, renderWithProviders } from '@/test/render';
+import { summary } from '@/test/fixtures';
 import { UPLOAD_FILTERS, UPLOAD_FILTER_IDS, type UploadFilter, type UploadSummary } from '@label-extractor/shared';
 import { UploadList } from './UploadList.tsx';
 
-const noop = () => {};
-
 function renderList(url = '/') {
-  return renderWithProviders(<UploadList pending={[]} onRetryPending={noop} onDismissPending={noop} />, { url });
+  return renderWithProviders(<UploadList />, { url });
 }
 
 afterEach(() => vi.unstubAllGlobals());

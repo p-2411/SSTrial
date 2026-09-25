@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { LIVE_EVENTS_PATH, type UploadChange } from '@label-extractor/shared';
 import { isLiveConnected, setLiveConnected } from './liveConnection.ts';
-import { uploadKeys } from './queries.ts';
+import { refreshAllUploads, refreshUpload, refreshUploadLists } from './queries.ts';
 
 /** Changes arriving within this window are refreshed together (e.g. a batch finishing at once). */
 const BATCH_MS = 250;
@@ -22,12 +22,11 @@ export function useLiveUpdates(): void {
     const changed = new Set<string>();
     let flushTimer: ReturnType<typeof setTimeout> | undefined;
 
-    const refreshEverything = () => void queryClient.invalidateQueries({ queryKey: uploadKeys.all });
+    const refreshEverything = () => void refreshAllUploads(queryClient);
     const flush = () => {
       flushTimer = undefined;
-      void queryClient.invalidateQueries({ queryKey: uploadKeys.lists() });
-      void queryClient.invalidateQueries({ queryKey: uploadKeys.counts() });
-      for (const id of changed) void queryClient.invalidateQueries({ queryKey: uploadKeys.detail(id) });
+      void refreshUploadLists(queryClient);
+      for (const id of changed) void refreshUpload(queryClient, id);
       changed.clear();
     };
 

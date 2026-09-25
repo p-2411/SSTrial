@@ -13,9 +13,19 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
+import type { AlertSeverity } from '@label-extractor/shared';
 import { useOpsStatus } from '@/api/queries';
 import { loadSystemStatusPage } from '@/features/system-status/loadSystemStatusPage';
+import { worstOpenSeverity } from '@/features/system-status/systemState';
 import { cn } from '@/lib/utils';
+import { HOME_PATH, STATUS_PATH } from '@/routes';
+
+/**
+ * The alert dot, in the status page's alert colours. Each tone's most saturated colour, so it
+ * stands out on the dark sidebar: red for danger, and for warning the yellow of its border (its
+ * text colour is a dark brown that would disappear here).
+ */
+const SEVERITY_DOT: Record<AlertSeverity, string> = { critical: 'bg-danger', warning: 'bg-warning-border' };
 
 /**
  * The app shell's dark sidebar, following the SupplyScope product layout. It holds destinations
@@ -26,14 +36,14 @@ export function AppSidebar() {
   const { pathname } = useLocation();
   const { data: ops } = useOpsStatus();
 
-  const onStatusPage = pathname === '/status';
-  const openAlerts = ops?.alerts.open ?? [];
-  const worstAlert = openAlerts.some((alert) => alert.severity === 'critical') ? 'critical' : openAlerts.length ? 'warning' : null;
+  const onStatusPage = pathname === STATUS_PATH;
+  const openAlertCount = ops?.alerts.open.length ?? 0;
+  const worstAlert = ops ? worstOpenSeverity(ops.alerts) : null;
 
   return (
     <Sidebar>
       <SidebarHeader className="px-4 pt-5 pb-3">
-        <Link to="/" className="flex items-center gap-2.5 rounded-md text-white outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring">
+        <Link to={HOME_PATH} className="flex items-center gap-2.5 rounded-md text-white outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring">
           <span className="grid size-8 place-items-center rounded-lg bg-white text-sidebar-primary-foreground">
             <ScanText className="size-4.5" aria-hidden />
           </span>
@@ -53,7 +63,7 @@ export function AppSidebar() {
               <SidebarMenuItem>
                 {/* The list and an open upload are both part of Uploads. */}
                 <SidebarMenuButton asChild isActive={!onStatusPage}>
-                  <Link to="/" aria-current={onStatusPage ? undefined : 'page'}>
+                  <Link to={HOME_PATH} aria-current={onStatusPage ? undefined : 'page'}>
                     <Files aria-hidden />
                     <span>Uploads</span>
                   </Link>
@@ -71,7 +81,7 @@ export function AppSidebar() {
                 <SidebarMenuButton asChild isActive={onStatusPage}>
                   {/* The page's code is split out; start fetching it as soon as a visit looks likely. */}
                   <Link
-                    to="/status"
+                    to={STATUS_PATH}
                     aria-current={onStatusPage ? 'page' : undefined}
                     onMouseEnter={() => void loadSystemStatusPage()}
                     onFocus={() => void loadSystemStatusPage()}
@@ -83,8 +93,8 @@ export function AppSidebar() {
                 {worstAlert && (
                   <SidebarMenuBadge>
                     <span
-                      className={cn('size-2 rounded-full', worstAlert === 'critical' ? 'bg-destructive' : 'bg-amber-400')}
-                      aria-label={`${openAlerts.length} open alert${openAlerts.length === 1 ? '' : 's'}`}
+                      className={cn('size-2 rounded-full', SEVERITY_DOT[worstAlert])}
+                      aria-label={`${openAlertCount} open alert${openAlertCount === 1 ? '' : 's'}`}
                     />
                   </SidebarMenuBadge>
                 )}

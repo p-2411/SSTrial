@@ -3,8 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { Link, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UploadDetail } from '@label-extractor/shared';
-import { jsonResponse, renderWithProviders } from '../../test/render.tsx';
-import { summary } from '../../test/fixtures.ts';
+import { jsonResponse, renderWithProviders } from '@/test/render';
+import { summary } from '@/test/fixtures';
 import { UploadDetailPanel } from './UploadDetailPanel.tsx';
 
 /** Uploads the fake API can return, by ID. "nameless" is a read label with no product name on it. */

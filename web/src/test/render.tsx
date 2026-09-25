@@ -1,11 +1,15 @@
 import type { ReactElement, ReactNode } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider, type QueryClient } from '@tanstack/react-query';
 import { render } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
+import { createQueryClient } from '@/api/queryClient';
 
-/** A fresh QueryClient per test, with retries that fire immediately so error states appear fast. */
+/**
+ * A fresh QueryClient per test with the app's defaults, except that retries fire immediately so
+ * error states appear fast.
+ */
 export function createTestQueryClient() {
-  return new QueryClient({ defaultOptions: { queries: { retryDelay: 0, gcTime: Infinity } } });
+  return createQueryClient({ retryDelay: 0, gcTime: Infinity });
 }
 
 export function Providers({ children, client, url = '/' }: { children: ReactNode; client: QueryClient; url?: string }) {

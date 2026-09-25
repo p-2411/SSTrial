@@ -1,23 +1,20 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router';
-import { toast } from 'sonner';
-import { validateFileMetadata, type SupportedMimeType } from '@label-extractor/shared';
-import { errorMessage } from '../../api/client.ts';
-import { uploadKeys } from '../../api/queries.ts';
-import { completeUpload, createUpload, putFileToStorage } from '../../api/uploads.ts';
-import { sha256Hex } from '../../lib/hashFile.ts';
+import { validateFileMetadata, type SupportedMimeType, type UploadSummary } from '@label-extractor/shared';
+import { errorMessage } from '@/api/client';
+import { refreshUploadLists, storeUpload } from '@/api/queries';
+import { useWarnBeforeUnload } from '@/lib/useWarnBeforeUnload';
+import { uploadFile } from './uploadFile';
 
 /**
  * Tracks files the user has picked until the server has accepted them.
  *
- * Each file goes: validate (instantly, in the browser) → ask the API for a signed URL → PUT the
- * bytes to storage (with progress) → confirm with the API. Once confirmed, the file shows up in
- * the server's upload list and is removed from here. Files that fail stay visible with the
- * reason and a way to try again.
+ * Each file is validated instantly in the browser, then sent a few at a time (see uploadFile).
+ * Once confirmed, the file shows up in the server's upload list and is removed from here. Files
+ * that fail stay visible with the reason and a way to try again.
  */
 
-export type PendingUploadPhase =
+type PendingUploadPhase =
   | 'rejected' // failed validation in the browser; never sent
   | 'waiting' // queued behind other files
   | 'uploading' // bytes on their way to storage
@@ -33,6 +30,11 @@ export interface PendingUpload {
   /** 0–1, while uploading. */
   progress: number;
   error: string | null;
+}
+
+export interface FileUploadsOptions {
+  /** The server already had this file, so it wasn't sent again; `upload` is the one it has. */
+  onDuplicate?: (upload: UploadSummary, file: File) => void;
 }
 
 /** Uploading a few files at once is faster than one-by-one without saturating the connection. */
@@ -54,14 +56,22 @@ function reducer(state: PendingUpload[], action: Action): PendingUpload[] {
   }
 }
 
-export function useFileUploads() {
-  const [uploads, dispatch] = useReducer(reducer, []);
+export function useFileUploads({ onDuplicate }: FileUploadsOptions = {}) {
+  const [pending, dispatch] = useReducer(reducer, []);
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
 
   // The work queue lives in refs, not state: it's bookkeeping, not something to render.
   const waiting = useRef<PendingUpload[]>([]);
   const running = useRef(0);
+  /** Uploads whose last attempt failed, by localId: the ones `retry` can send again. */
+  const failed = useRef(new Map<string, PendingUpload>());
+
+  // Read at the moment a duplicate comes back, so the caller needn't memoise it and the functions
+  // returned below stay stable for memoised children.
+  const onDuplicateRef = useRef(onDuplicate);
+  useEffect(() => {
+    onDuplicateRef.current = onDuplicate;
+  });
 
   const update = useCallback(
     (localId: string, changes: Partial<PendingUpload>) => dispatch({ type: 'updated', localId, changes }),
@@ -69,56 +79,41 @@ export function useFileUploads() {
   );
 
   const send = useCallback(
-    async ({ localId, file }: PendingUpload) => {
+    async (upload: PendingUpload) => {
+      const { localId, file } = upload;
       try {
         update(localId, { phase: 'uploading', progress: 0, error: null });
-        const created = await createUpload({
-          fileName: file.name,
-          mimeType: file.type,
-          sizeBytes: file.size,
-          // Lets the API recognise a file it already has, so it isn't uploaded or extracted twice.
-          sha256: await sha256Hex(file),
-        });
-
-        if (created.kind === 'duplicate') {
-          dispatch({ type: 'removed', localId });
-          const existingId = created.upload.id;
-          toast(`${file.name} was already uploaded`, {
-            description: 'Showing the existing upload instead of processing it again.',
-            action: { label: 'View', onClick: () => void navigate(`/uploads/${existingId}`) },
-          });
-          return;
-        }
-        const { upload, uploadUrl } = created;
 
         // Progress events can fire dozens of times a second, and each state update re-renders the
         // app shell, so only report whole-percent changes: at most 100 updates per file.
         let reportedPercent = -1;
-        const onProgress = (progress: number) => {
-          const percent = Math.floor(progress * 100);
-          if (percent === reportedPercent) return;
-          reportedPercent = percent;
-          update(localId, { progress });
-        };
-        // Use the API's normalised type: the browser's `file.type` can be empty or "image/jpg".
-        await putFileToStorage(uploadUrl, file, upload.mimeType, onProgress);
+        const result = await uploadFile(file, {
+          onProgress: (progress) => {
+            const percent = Math.floor(progress * 100);
+            if (percent === reportedPercent) return;
+            reportedPercent = percent;
+            update(localId, { progress });
+          },
+          onConfirming: () => update(localId, { phase: 'confirming', progress: 1 }),
+        });
 
-        update(localId, { phase: 'confirming', progress: 1 });
-        const confirmed = await completeUpload(upload.id);
+        if (result.kind === 'duplicate') {
+          dispatch({ type: 'removed', localId });
+          onDuplicateRef.current?.(result.upload, file);
+          return;
+        }
 
         // Hand over to the server-side list: cache the detail, wait for the list to include this
         // upload, then drop the local row, so it moves across without a flicker.
-        queryClient.setQueryData(uploadKeys.detail(confirmed.id), confirmed);
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: uploadKeys.lists() }),
-          queryClient.invalidateQueries({ queryKey: uploadKeys.counts() }),
-        ]);
+        storeUpload(queryClient, result.upload);
+        await refreshUploadLists(queryClient);
         dispatch({ type: 'removed', localId });
       } catch (error) {
+        failed.current.set(localId, upload);
         update(localId, { phase: 'failed', error: errorMessage(error) });
       }
     },
-    [navigate, queryClient, update],
+    [queryClient, update],
   );
 
   /** Starts waiting uploads until MAX_PARALLEL_UPLOADS are in flight. */
@@ -158,25 +153,27 @@ export function useFileUploads() {
 
   /** Tries a failed upload again from the start (a new signed URL, a fresh upload). */
   const retry = useCallback(
-    (upload: PendingUpload) => {
-      if (upload.phase !== 'failed') return;
-      update(upload.localId, { phase: 'waiting', progress: 0, error: null });
+    (localId: string) => {
+      const upload = failed.current.get(localId);
+      if (!upload) return;
+      failed.current.delete(localId);
+      update(localId, { phase: 'waiting', progress: 0, error: null });
       waiting.current.push(upload);
       pump();
     },
     [pump, update],
   );
 
-  const dismiss = useCallback((localId: string) => dispatch({ type: 'removed', localId }), []);
+  /** Removes a rejected or failed file from the list. */
+  const dismiss = useCallback((localId: string) => {
+    failed.current.delete(localId);
+    dispatch({ type: 'removed', localId });
+  }, []);
 
   // Leaving the page mid-upload would silently lose files, so ask first.
-  const inProgress = uploads.some((u) => u.phase === 'waiting' || u.phase === 'uploading' || u.phase === 'confirming');
-  useEffect(() => {
-    if (!inProgress) return;
-    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [inProgress]);
+  useWarnBeforeUnload(pending.some((u) => u.phase === 'waiting' || u.phase === 'uploading' || u.phase === 'confirming'));
 
-  return { uploads, addFiles, retry, dismiss };
+  return { pending, addFiles, retry, dismiss };
 }
+
+export type FileUploads = ReturnType<typeof useFileUploads>;

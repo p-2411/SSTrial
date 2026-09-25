@@ -1,7 +1,7 @@
 import { screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { OpsStatusResponse } from '@label-extractor/shared';
-import { jsonResponse, renderWithProviders } from '../../test/render.tsx';
+import { jsonResponse, renderWithProviders } from '@/test/render';
 import { SystemStatusPage } from './SystemStatusPage.tsx';
 
 afterEach(() => vi.unstubAllGlobals());

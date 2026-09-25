@@ -1,8 +1,8 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { UploadDetail } from '@label-extractor/shared';
-import { renderWithProviders } from '../../test/render.tsx';
-import { summary } from '../../test/fixtures.ts';
+import { renderWithProviders } from '@/test/render';
+import { summary } from '@/test/fixtures';
 import { StatusNotice } from './StatusNotice.tsx';
 
 const detail = (overrides: Partial<UploadDetail>): UploadDetail => ({ ...summary(), result: null, fileUrl: null, ...overrides });

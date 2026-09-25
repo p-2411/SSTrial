@@ -3,7 +3,11 @@ import { useLocation, useMatch, useNavigate } from 'react-router';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { HOME_PATH, UPLOAD_PATH_PATTERN } from '@/routes';
 import { DETAIL_TITLE_ID, UploadDetailView } from './UploadDetailView';
+
+/** The open panel's width: a share of the container's, capped so text lines stay readable. */
+const OPEN_WIDTH = 'w-[min(42rem,55cqw)]';
 
 /**
  * One upload's details in a panel beside the list. Opening it slides it in and narrows the list to
@@ -21,7 +25,7 @@ import { DETAIL_TITLE_ID, UploadDetailView } from './UploadDetailView';
 export const UploadDetailPanel = memo(function UploadDetailPanel() {
   const navigate = useNavigate();
   const { search } = useLocation();
-  const id = useMatch('/uploads/:id')?.params.id;
+  const id = useMatch(UPLOAD_PATH_PATTERN)?.params.id;
   const open = Boolean(id);
 
   // Keep showing the last upload while the panel slides closed (the route has already changed);
@@ -29,7 +33,7 @@ export const UploadDetailPanel = memo(function UploadDetailPanel() {
   const [shownId, setShownId] = useState(id);
   if (id && id !== shownId) setShownId(id);
 
-  const close = () => navigate({ pathname: '/', search });
+  const close = () => navigate({ pathname: HOME_PATH, search });
 
   // Esc closes the panel, unless an open menu or popover (e.g. Export) is handling it. As an effect
   // event it always sees the latest filter, so the listener isn't re-attached when the filter changes.
@@ -55,7 +59,7 @@ export const UploadDetailPanel = memo(function UploadDetailPanel() {
       className={cn(
         'relative shrink-0 overflow-hidden border-l bg-background shadow-[-12px_0_24px_-16px_rgb(0_0_0/0.12)]',
         'transition-[width] duration-300 ease-out motion-reduce:transition-none',
-        open ? 'w-[min(42rem,55cqw)]' : 'w-0 border-transparent shadow-none',
+        open ? OPEN_WIDTH : 'w-0 border-transparent shadow-none',
       )}
     >
       {shownId && (
@@ -71,7 +75,7 @@ export const UploadDetailPanel = memo(function UploadDetailPanel() {
           </Button>
           {/* Fixed at the open width, so content doesn't reflow while the panel animates. The
               scrollbar's space is reserved too, so short and long uploads line up the same. */}
-          <div className="h-full w-[min(42rem,55cqw)] overflow-y-auto p-6 [scrollbar-gutter:stable]">
+          <div className={cn('h-full overflow-y-auto p-6 [scrollbar-gutter:stable]', OPEN_WIDTH)}>
             <UploadDetailView id={shownId} />
           </div>
         </>

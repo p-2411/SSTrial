@@ -1,15 +1,15 @@
 import type { ReactNode } from 'react';
-import { formatBytes, type UploadDetail } from '@label-extractor/shared';
+import type { UploadDetail } from '@label-extractor/shared';
 import { ApiRequestError, errorMessage } from '@/api/client';
 import { useUploadDetail } from '@/api/queries';
 import { InlineError } from '@/components/InlineError';
 import { RelativeTime } from '@/components/RelativeTime';
 import { StatusPill } from '@/components/StatusPill';
 import { Skeleton } from '@/components/ui/skeleton';
-import { fileTypeLabel } from '@/lib/format';
+import { formatFileFacts } from '@/lib/format';
 import { useNow } from '@/lib/useNow';
 import { cn } from '@/lib/utils';
-import { CoreInformationCard } from './ExtractionCards';
+import { CoreInformationCard } from './CoreInformationCard';
 import { JsonDisclosure } from './JsonDisclosure';
 import { SourceDocumentCard } from './SourceDocumentCard';
 import { StatusNotice } from './StatusNotice';
@@ -63,7 +63,7 @@ function Detail({ upload }: { upload: UploadDetail }) {
   const now = useNow();
   // Like the list rows: the product leads once the label is read; until then, the file name.
   const productName = upload.result?.productName ?? null;
-  const fileFacts = `${fileTypeLabel(upload.mimeType)}, ${formatBytes(upload.sizeBytes)}`;
+  const fileFacts = formatFileFacts(upload.mimeType, upload.sizeBytes);
 
   return (
     <>

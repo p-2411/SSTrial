@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { LabelExtraction } from '@label-extractor/shared';
-import { CoreInformationCard } from './ExtractionCards';
+import { CoreInformationCard } from './CoreInformationCard';
 
 const full: LabelExtraction = {
   productName: 'Maple Pecan Crunch',

@@ -1,8 +1,8 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { UploadSummary } from '@label-extractor/shared';
-import { renderWithProviders } from '../../test/render.tsx';
-import { summary } from '../../test/fixtures.ts';
+import { renderWithProviders } from '@/test/render';
+import { summary } from '@/test/fixtures';
 import { UploadRow } from './UploadRow.tsx';
 
 function renderRow(upload: UploadSummary) {
