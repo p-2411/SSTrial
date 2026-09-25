@@ -2,7 +2,7 @@
 
 ## Architecture in one breath
 
-The browser asks the API for a signed URL, uploads the file **straight to storage**, then tells the API it's done. The API checks the file's real type from its first bytes and, **in one Postgres transaction**, marks the upload `queued` and inserts a job. A separate worker process pulls jobs, calls the LLM, validates the answer against our schema and stores it. A database trigger announces each change, and the API pushes it to browsers over server-sent events.
+The browser asks the API for a signed URL, uploads the file **straight to storage**, then tells the API it's done. The API checks the file's real type from its first bytes and, **in one Postgres transaction**, marks the upload `queued` and inserts a job. A separate worker process pulls jobs, calls the LLM, validates the answer against our schema and stores it. A database trigger announces each change, and the API pushes it to browsers over server-sent events. Each step is also recorded in an activity log that anyone can browse.
 
 ## Why a Postgres queue (pg-boss) rather than Redis or SQS
 
@@ -50,7 +50,18 @@ The LLM sits behind a `LabelExtractor` interface. Every failure becomes an `Extr
 
 - **Health checks:** `GET /api/health` on the API and on the worker checks the database, the queue and (on the worker) its job loop. It answers 503 naming what failed, and Railway uses it on deploy.
 - **Alerts:** a once-a-minute monitor in the worker records a heartbeat and opens or resolves alerts in `ops_alerts`: the AI service refusing every request, a stalled queue, a backlog, stuck processing, a high failure rate, and crashed attempts. Only opening and resolving are logged.
-- **Where to look:** the System status page (`/status`) and `GET /api/ops`. The workers' heartbeat covers the one failure a worker can't report itself: no worker running.
+- **Where to look:** the System status page (`/status`) and `GET /api/ops` for the state of things now; the activity log (`/logs`) for what happened, and when. The workers' heartbeat covers the one failure a worker can't report itself: no worker running.
+
+## Activity log
+
+An `events` table records what happened to each upload (created, identical to an earlier file, queued, rejected, discarded, retried by hand, each extraction attempt started, completed, scheduled for retry, failed or abandoned) and to the system (rate-limit pauses, alerts opening and resolving, process starts). The Logs page (`/logs`) shows it newest first, grouped by day, filtered by minimum level, event type and upload, all kept in the URL. Each upload's detail panel links to its own history.
+
+- **A table, not the stdout logs.** The processes still log to stdout (pino) for debugging: stack traces, raw provider errors. But those can't be queried per upload from the app, and they're only as good as the host's log search. Events are one readable sentence each, plus structured `data` (error code, attempt, duration, file name), so they work for the person running the system, not only for a developer.
+- **Written by the application, not by triggers.** A trigger on `uploads` would catch every status change atomically, but it can't know *why*: which attempt, whether the error is worth retrying, how long the AI took, that a result was reused, that every worker paused. The use cases and the worker know, so they record events through a small `EventLog` interface, and every message is worded in one file (`server/src/logs/events.ts`).
+- **Best-effort, after the change, never in its transaction.** A log write can't fail or slow down an upload: a failed insert is reported to stdout and swallowed. The cost is that an event can be missing if a process dies between a change and its event. For a history meant for people, that's the right side to err on. Recording in the same transaction would turn a logging hiccup into a failed upload.
+- **History outlives the upload.** `upload_id` has no foreign key, because rejected and discarded uploads are deleted, and their events are exactly the ones worth keeping. Events carry the file name for the same reason.
+- **Scale.** An upload writes four events when all goes well, and a few more for each retry, so 50,000 uploads add 200,000 to 300,000 rows. Pages use a keyset cursor on the ID. The "warnings and errors" and "errors only" filters each have a partial index built on exactly their condition, and per-upload and per-type lookups have their own indexes. Events are kept for 30 days and pruned by the once-a-minute monitor, so each run deletes about a minute's worth, found through a BRIN index on the timestamp. Past a few million rows a day, I'd partition by day and drop old partitions instead, or send events to a log store.
+- **Live.** A statement-level trigger on `events` sends a NOTIFY with no payload. The API forwards it as a `log` server-sent event, and the page refetches its newest events. With no payload there's nothing to parse or trust, and a burst of inserts collapses into one refresh in the browser.
 
 ## Storage
 
@@ -62,7 +73,7 @@ The UI uses the same stack as SupplyScope's app: Tailwind v4 and shadcn/ui on Ra
 
 It's also styled with their brand, taken from supplyscope.io and their product screenshots:
 - **Colours:** warm off-white `#F6F5F3` background, near-black `#1B1B1B` buttons, indigo `#5048E5` reserved for AI features ("BETA" pill, "Retry extraction", AI sparkles) and green `#027A48` for validated data.
-- **Layout:** a dark sidebar shell. The sidebar holds destinations only (today just Uploads); the status filter is a tab row in the list's own header, because it narrows one panel rather than taking you somewhere new.
+- **Layout:** a dark sidebar shell. The sidebar holds destinations only (Uploads, System status and the Activity log); the status filter is a tab row in the list's own header, because it narrows one panel rather than taking you somewhere new.
 - **Detail view:** opens as a panel that slides in beside the list and narrows it, rather than covering it, so the main page is just "add files, see results" and you can move between uploads by clicking the next row. The URL (`/uploads/:id`) still drives it, so links, refresh and the back button work. Inside, it's modelled on their compliance screen: a "Core information" card with verified values in green, then the source document to check them against.
 - **Not copied:** their logo or product name (the deployed app is public, and it shouldn't pass as an official SupplyScope product) and their display typeface (Labil Grotesk is commercially licensed). Inter, which their app itself uses, stands in with tight heading tracking.
 - **Desktop only:** there's no mobile layout. It's a desktop operations tool, and supporting phones would have added complexity for little benefit.
