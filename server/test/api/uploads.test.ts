@@ -117,7 +117,7 @@ describe('POST /api/uploads/:id/complete — confirm the upload and queue it', (
     expect(response.statusCode).toBe(200);
     expect(response.json().upload).toMatchObject({
       status: 'failed',
-      error: { code: 'FILE_CONTENT_MISMATCH', message: expect.stringMatching(/isn't a valid JPEG, PNG, WebP or PDF/) },
+      error: { code: 'FILE_CONTENT_MISMATCH', message: 'Unsupported file type. Must be JPEG, PNG, WebP or PDF.' },
     });
     expect(uploads.enqueued).toEqual([]);
   });

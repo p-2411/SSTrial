@@ -106,7 +106,7 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage }: U
     if (!detected) {
       const rejected = await uploads.rejectUpload(upload.id, {
         code: 'FILE_CONTENT_MISMATCH',
-        message: `This file isn't a valid ${SUPPORTED_TYPES_LABEL}. It may be corrupted, or renamed from another format.`,
+        message: `Unsupported file type. Must be ${SUPPORTED_TYPES_LABEL}.`,
       });
       return detailResponse(rejected ?? (await loadUpload(request.params)));
     }
