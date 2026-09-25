@@ -34,11 +34,12 @@ export function toUploadSummary(record: UploadRecord): UploadSummary {
   };
 }
 
-export function toUploadDetail(record: UploadRecord, fileUrl: string | null): UploadDetail {
+export function toUploadDetail(record: UploadRecord, fileUrl: string | null, uploadedBy: string | null): UploadDetail {
   return {
     ...toUploadSummary(record),
     result: record.status === 'completed' ? record.result : null,
     fileUrl,
+    uploadedBy,
   };
 }
 

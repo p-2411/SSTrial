@@ -127,4 +127,6 @@ export interface UploadDetail extends UploadSummary {
   result: LabelExtraction | null;
   /** Short-lived signed URL for previewing the original file, or `null` if unavailable. */
   fileUrl: string | null;
+  /** Email of whoever uploaded it; null for uploads from before sign-in existed. */
+  uploadedBy: string | null;
 }

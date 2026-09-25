@@ -60,6 +60,7 @@ export class InMemoryUploadStore implements UploadStore {
       sizeBytes: 1234,
       storagePath: `uploads/${overrides.id}.png`,
       contentSha256: null,
+      uploadedBy: null,
       claimToken: null,
       status: 'uploading',
       attempts: 0,
@@ -332,6 +333,7 @@ export function testAppDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     events: new InMemoryEventStore(),
     logger: silentLogger,
     authenticator: signedInAsAdmin,
+    members: { emailOf: async (id: string) => [ADMIN, MEMBER].find((m) => m.id === id)?.email ?? null },
     publicConfig: TEST_PUBLIC_CONFIG,
     ...overrides,
   };

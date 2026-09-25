@@ -11,6 +11,7 @@ import {
   type UploadCountsResponse,
   type UploadResponse,
 } from '@label-extractor/shared';
+import type { MemberStore } from '../../auth/members.ts';
 import type { FileStorage } from '../../infra/storage.ts';
 import type { EventLog } from '../../logs/store.ts';
 import { finaliseUpload } from '../../uploads/finalise.ts';
@@ -25,6 +26,8 @@ export interface UploadRoutesDeps {
   storage: FileStorage;
   /** The use cases record what they did to the activity log. */
   events: EventLog;
+  /** To name who uploaded each file. */
+  members: Pick<MemberStore, 'emailOf'>;
 }
 
 /** How long preview links in the detail view stay valid. */
@@ -41,7 +44,7 @@ const idParams = z.object({ id: z.uuid() });
  *   2. PUT  <signed URL>              → browser sends the bytes straight to storage (not via us)
  *   3. POST /api/uploads/:id/complete → verify the bytes, then queue the extraction job
  */
-export async function uploadRoutes(app: FastifyInstance, { uploads, storage, events }: UploadRoutesDeps) {
+export async function uploadRoutes(app: FastifyInstance, { uploads, storage, events, members }: UploadRoutesDeps) {
   /** The `:id` route param, or a 404 for a malformed ID (it can't name an upload). */
   function uploadId(params: unknown): string {
     const parsed = idParams.safeParse(params);
@@ -61,7 +64,8 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
         return null;
       });
     }
-    return { upload: toUploadDetail(upload, fileUrl) };
+    const uploadedBy = upload.uploadedBy ? await members.emailOf(upload.uploadedBy) : null;
+    return { upload: toUploadDetail(upload, fileUrl, uploadedBy) };
   }
 
   // 1. Ask to upload a file ------------------------------------------------------------------
@@ -70,7 +74,7 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
     if (!body.success) {
       throw new ApiError(400, 'BAD_REQUEST', 'Expected a JSON body with fileName, mimeType and sizeBytes.');
     }
-    const result = await requestUpload({ uploads, storage, events }, body.data);
+    const result = await requestUpload({ uploads, storage, events }, body.data, request.member!.id);
 
     switch (result.outcome) {
       case 'invalid':

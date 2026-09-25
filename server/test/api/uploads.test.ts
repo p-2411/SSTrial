@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { MAX_FILE_SIZE_BYTES } from '@label-extractor/shared';
 import { buildApp, type App } from '../../src/api/app.ts';
-import { FILE_BYTES, InMemoryEventStore, InMemoryStorage, InMemoryUploadStore, SAMPLE_EXTRACTION, testAppDeps } from '../fakes.ts';
+import { ADMIN, FILE_BYTES, InMemoryEventStore, InMemoryStorage, InMemoryUploadStore, SAMPLE_EXTRACTION, testAppDeps } from '../fakes.ts';
 
 // HTTP-level tests: real routing, validation and error handling via Fastify's `inject()`, with
 // in-memory fakes in place of Postgres, the queue and Supabase Storage.
@@ -34,6 +34,15 @@ function seedUploaded(bytes: Uint8Array, overrides: Parameters<InMemoryUploadSto
 }
 
 describe('POST /api/uploads — request a signed upload URL', () => {
+  it('records who uploaded the file, and names them in the detail', async () => {
+    const created = await createUpload({ fileName: 'label.png', mimeType: 'image/png', sizeBytes: 5000 });
+    const { id } = created.json().upload;
+
+    expect(uploads.get(id).uploadedBy).toBe(ADMIN.id);
+    const detail = await app.inject({ method: 'GET', url: `/api/uploads/${id}` });
+    expect(detail.json().upload.uploadedBy).toBe(ADMIN.email);
+  });
+
   it('creates an upload and returns a URL to PUT the file to', async () => {
     const response = await createUpload({ fileName: 'label.png', mimeType: 'image/png', sizeBytes: 5000 });
 

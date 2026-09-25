@@ -21,7 +21,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   mocked.createUpload.mockResolvedValue({ kind: 'created', upload: summary({ status: 'uploading' }), uploadUrl: 'https://storage/signed' });
   mocked.putFileToStorage.mockResolvedValue();
-  mocked.completeUpload.mockResolvedValue({ ...summary({ status: 'queued' }), result: null, fileUrl: null });
+  mocked.completeUpload.mockResolvedValue({ ...summary({ status: 'queued' }), result: null, fileUrl: null, uploadedBy: null });
   mocked.listUploads.mockResolvedValue({ uploads: [], nextCursor: null });
 });
 

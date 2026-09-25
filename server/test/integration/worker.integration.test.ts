@@ -117,7 +117,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
     const fileName = `${id}.png`;
     createdIds.push(id);
     scripts.set(fileName, { steps, calls: 0 });
-    const upload = await uploads.create({ id, fileName, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${fileName}`, contentSha256: null });
+    const upload = await uploads.create({ id, fileName, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${fileName}`, contentSha256: null, uploadedBy: null });
     storage.put(upload.storagePath, uniquePng());
     expect(await uploads.markUploaded(id, 'image/png', { cancelFinalise: true })).toMatchObject({ status: 'queued' });
     return id;
@@ -208,7 +208,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
   it('reads results stored before ingredients were structured', async () => {
     const id = crypto.randomUUID();
     createdIds.push(id);
-    await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png`, contentSha256: null });
+    await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png`, contentSha256: null, uploadedBy: null });
     const legacy = { ...SAMPLE_EXTRACTION, ingredients: ['Rolled OATS (48%)', 'Salt'] };
     await sql`update uploads set status = 'completed', result = ${sql.json(legacy as postgres.JSONValue)} where id = ${id}`;
 
@@ -237,7 +237,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       createdIds.push(id);
       const fileName = `${id}.png`;
       scripts.set(fileName, { steps: [SAMPLE_EXTRACTION], calls: 0 });
-      const upload = await uploads.create({ id, fileName, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${fileName}`, contentSha256: null });
+      const upload = await uploads.create({ id, fileName, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${fileName}`, contentSha256: null, uploadedBy: null });
       if (file) storage.put(upload.storagePath, file);
       return upload;
     }
@@ -307,7 +307,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
         const id = crypto.randomUUID();
         createdIds.push(id);
         ids.push(id);
-        await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png`, contentSha256: null });
+        await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png`, contentSha256: null, uploadedBy: null });
         await sql`update uploads set status = 'failed', error_code = 'LLM_TIMEOUT' where id = ${id}`;
       }
 
@@ -398,7 +398,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       });
 
       createdIds.push(id);
-      await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png`, contentSha256: null });
+      await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png`, contentSha256: null, uploadedBy: null });
       await uploads.markUploaded(id, 'image/png');
 
       await expect.poll(() => seen, { timeout: 5000 }).toContain('queued');
@@ -521,7 +521,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
     async function uploadIn(status: UploadStatus) {
       const id = crypto.randomUUID();
       createdIds.push(id);
-      await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png`, contentSha256: null });
+      await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png`, contentSha256: null, uploadedBy: null });
       const [row] = await sql`
         update uploads
         set status = ${status}, claim_token = gen_random_uuid(),
@@ -558,7 +558,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
     async function createProcessable() {
       const id = crypto.randomUUID();
       createdIds.push(id);
-      await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png`, contentSha256: null });
+      await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png`, contentSha256: null, uploadedBy: null });
       // Straight to 'queued' without a job, so no running worker picks it up during the test.
       await sql`update uploads set status = 'queued' where id = ${id}`;
       return id;

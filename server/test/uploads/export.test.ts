@@ -11,6 +11,7 @@ function record(overrides: Partial<UploadRecord> = {}): UploadRecord {
     sizeBytes: 1000,
     storagePath: 'x.png',
     contentSha256: null,
+    uploadedBy: null,
     claimToken: null,
     resultUnreadable: false,
     status: 'completed',

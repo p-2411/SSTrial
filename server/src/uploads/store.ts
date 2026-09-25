@@ -35,6 +35,8 @@ export interface UploadRecord {
   storagePath: string;
   /** SHA-256 of the file (hex). Claimed by the browser at first, replaced by the worker's own hash. */
   contentSha256: string | null;
+  /** Who uploaded it (a Supabase Auth user ID); null for uploads from before sign-in existed. */
+  uploadedBy: string | null;
   status: UploadStatus;
   attempts: number;
   error: UploadFailure | null;
@@ -60,6 +62,7 @@ export interface NewUpload {
   sizeBytes: number;
   storagePath: string;
   contentSha256: string | null;
+  uploadedBy: string | null;
 }
 
 /** Options for the two ways an upload leaves `uploading`. */
@@ -152,9 +155,9 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
       // guarantees it's eventually confirmed or discarded.
       return sql.begin(async (tx) => {
         const [row] = await tx`
-          insert into uploads (id, file_name, mime_type, size_bytes, storage_path, content_sha256)
+          insert into uploads (id, file_name, mime_type, size_bytes, storage_path, content_sha256, uploaded_by)
           values (${upload.id}, ${upload.fileName}, ${upload.mimeType}, ${upload.sizeBytes}, ${upload.storagePath},
-                  ${upload.contentSha256})
+                  ${upload.contentSha256}, ${upload.uploadedBy})
           returning *`;
         await jobs.scheduleFinalise(upload.id, tx);
         return toRecord(row!);
@@ -299,6 +302,7 @@ function toRecord(row: postgres.Row): UploadRecord {
     sizeBytes: row.size_bytes,
     storagePath: row.storage_path,
     contentSha256: row.content_sha256 ?? null,
+    uploadedBy: row.uploaded_by ?? null,
     claimToken: row.claim_token ?? null,
     status: row.status,
     attempts: row.attempts,

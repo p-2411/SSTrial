@@ -27,7 +27,11 @@ export interface IntakeDeps {
   events: EventLog;
 }
 
-export async function requestUpload(deps: IntakeDeps, request: CreateUploadRequest): Promise<UploadRequestResult> {
+export async function requestUpload(
+  deps: IntakeDeps,
+  request: CreateUploadRequest,
+  uploadedBy: string,
+): Promise<UploadRequestResult> {
   // Same rules the browser already applied — the browser can't be trusted to have done so.
   const validation = validateFileMetadata({ name: request.fileName, type: request.mimeType, size: request.sizeBytes });
   if (!validation.ok) return { outcome: 'invalid', code: validation.code, message: validation.message };
@@ -52,6 +56,7 @@ export async function requestUpload(deps: IntakeDeps, request: CreateUploadReque
     sizeBytes: request.sizeBytes,
     storagePath,
     contentSha256: request.sha256 ?? null,
+    uploadedBy,
   });
   await deps.events.record(logEvents.uploadCreated(upload));
   return { outcome: 'created', upload, uploadUrl };

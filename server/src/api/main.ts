@@ -40,6 +40,7 @@ const authenticator = createAuthenticator({
 const app = await buildApp({
   logger,
   authenticator,
+  members,
   // Browsers reach Supabase at the public URL where it differs (Docker); see config.ts.
   publicConfig: { supabaseUrl: config.SUPABASE_PUBLIC_URL ?? config.SUPABASE_URL, supabasePublishableKey: config.SUPABASE_PUBLISHABLE_KEY },
   events,
