@@ -48,6 +48,9 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage }: U
 
   /** Detail response, with a short-lived preview link. A storage hiccup shouldn't hide the data. */
   async function detailResponse(upload: UploadRecord): Promise<UploadResponse> {
+    if (upload.resultUnreadable) {
+      app.log.warn({ uploadId: upload.id }, 'Stored result no longer matches the extraction schema');
+    }
     let fileUrl: string | null = null;
     if (upload.status !== 'uploading') {
       fileUrl = await storage.createDownloadUrl(upload.storagePath, PREVIEW_URL_TTL_SECONDS).catch((err: unknown) => {
@@ -156,10 +159,10 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage }: U
         'NOT_RETRYABLE',
         upload.status === 'failed'
           ? "This file can't be processed. Please upload a different file."
-          : 'Only failed uploads can be retried.',
+          : 'Only failed uploads, or completed ones whose result can no longer be read, can be run again.',
       );
     }
-    const requeued = await uploads.requeueFailed(upload.id);
+    const requeued = await uploads.requeue(upload.id, upload.status === 'completed' ? 'completed' : 'failed');
     return detailResponse(requeued ?? (await loadUpload(request.params)));
   });
 }

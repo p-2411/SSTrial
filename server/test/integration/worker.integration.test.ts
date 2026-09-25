@@ -276,4 +276,19 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       expect(counts).not.toHaveProperty('uploading');
     });
   });
+
+  describe('saved results that no longer match the schema', () => {
+    it('are flagged rather than hidden, and can be run again', async () => {
+      const id = await queueUpload(SAMPLE_EXTRACTION);
+      await waitForStatus(id, 'completed');
+      // Simulate a result saved by an older version in a shape this one can't read.
+      await sql`update uploads set result = '{"productName": 42}'::jsonb where id = ${id}`;
+
+      const upload = await uploads.findById(id);
+      expect(upload).toMatchObject({ status: 'completed', result: null, resultUnreadable: true });
+
+      expect(await uploads.requeue(id, 'completed')).toMatchObject({ status: 'queued', result: null });
+      await expect(waitForStatus(id, 'completed')).resolves.toMatchObject({ resultUnreadable: false, result: SAMPLE_EXTRACTION });
+    }, 30_000);
+  });
 });

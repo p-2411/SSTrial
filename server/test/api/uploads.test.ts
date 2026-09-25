@@ -326,6 +326,25 @@ describe('POST /api/uploads/:id/retry — manual retry', () => {
   });
 });
 
+describe('uploads whose saved result can no longer be read', () => {
+  it('says so in the detail and allows running the extraction again', async () => {
+    seedUploaded(FILE_BYTES.png, { id: ID, status: 'completed', result: null, resultUnreadable: true, completedAt: new Date() });
+
+    const detail = await app.inject({ method: 'GET', url: `/api/uploads/${ID}` });
+    expect(detail.json().upload).toMatchObject({ status: 'completed', result: null, resultUnreadable: true });
+
+    const retried = await app.inject({ method: 'POST', url: `/api/uploads/${ID}/retry` });
+    expect(retried.statusCode).toBe(200);
+    expect(retried.json().upload).toMatchObject({ status: 'queued', resultUnreadable: false });
+    expect(uploads.enqueued).toEqual([ID]);
+  });
+
+  it('does not re-run a completed upload whose result reads fine', async () => {
+    uploads.seed({ id: ID, status: 'completed', result: SAMPLE_EXTRACTION });
+    expect((await app.inject({ method: 'POST', url: `/api/uploads/${ID}/retry` })).statusCode).toBe(409);
+  });
+});
+
 describe('unknown routes', () => {
   it('returns a JSON 404', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/nope' });

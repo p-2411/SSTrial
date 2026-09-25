@@ -1,4 +1,4 @@
-import { Clock, RotateCw, Sparkles, XCircle } from 'lucide-react';
+import { Clock, FileWarning, RotateCw, Sparkles, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { canRetryUpload, type UploadDetail } from '@label-extractor/shared';
 import { errorMessage } from '@/api/client';
@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 
 /** Explains a not-yet-completed upload: waiting, being read, retrying, or failed (with a retry button). */
 export function StatusNotice({ upload }: { upload: UploadDetail }) {
-  const retry = useRetryUpload();
 
   switch (upload.status) {
     case 'queued':
@@ -50,21 +49,7 @@ export function StatusNotice({ upload }: { upload: UploadDetail }) {
           <AlertDescription className="text-danger/90">
             <p>{upload.error?.message ?? 'Processing failed.'}</p>
             {retryable ? (
-              <div className="mt-3 flex flex-wrap items-center gap-3">
-                <Button
-                  variant="brand"
-                  disabled={retry.isPending}
-                  onClick={() =>
-                    retry.mutate(upload.id, {
-                      onSuccess: () => toast.success('Extraction queued again'),
-                    })
-                  }
-                >
-                  <Sparkles data-icon="inline-start" aria-hidden />
-                  {retry.isPending ? 'Retrying…' : 'Retry extraction'}
-                </Button>
-                {retry.isError && <span className="text-sm">{errorMessage(retry.error)}</span>}
-              </div>
+              <RetryButton uploadId={upload.id} label="Retry extraction" />
             ) : (
               <p className="mt-1 text-sm text-muted-foreground">Upload a different file to try again.</p>
             )}
@@ -74,6 +59,37 @@ export function StatusNotice({ upload }: { upload: UploadDetail }) {
     }
 
     case 'completed':
+      // Saved in a shape this version can't read: say so, rather than showing an empty page.
+      if (upload.resultUnreadable) {
+        return (
+          <Alert className="border-warning-border bg-warning-soft text-warning">
+            <FileWarning />
+            <AlertTitle className="font-semibold">This result can't be displayed</AlertTitle>
+            <AlertDescription className="text-warning/90">
+              <p>It was saved in a format this version of the app can't read. Run the extraction again to replace it.</p>
+              <RetryButton uploadId={upload.id} label="Run extraction again" />
+            </AlertDescription>
+          </Alert>
+        );
+      }
       return null;
   }
+}
+
+/** Queues the extraction again (indigo: it's an AI action) and confirms with a toast. */
+function RetryButton({ uploadId, label }: { uploadId: string; label: string }) {
+  const retry = useRetryUpload();
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-3">
+      <Button
+        variant="brand"
+        disabled={retry.isPending}
+        onClick={() => retry.mutate(uploadId, { onSuccess: () => toast.success('Extraction queued again') })}
+      >
+        <Sparkles data-icon="inline-start" aria-hidden />
+        {retry.isPending ? 'Queuing…' : label}
+      </Button>
+      {retry.isError && <span className="text-sm">{errorMessage(retry.error)}</span>}
+    </div>
+  );
 }

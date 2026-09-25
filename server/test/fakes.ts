@@ -42,6 +42,7 @@ export class InMemoryUploadStore implements UploadStore {
       attempts: 0,
       error: null,
       result: null,
+      resultUnreadable: false,
       createdAt: now,
       updatedAt: now,
       completedAt: null,
@@ -106,8 +107,15 @@ export class InMemoryUploadStore implements UploadStore {
     this.rows.delete(id);
     return row;
   }
-  async requeueFailed(id: string) {
-    const row = this.transition(id, ['failed'], { status: 'queued', attempts: 0, error: null });
+  async requeue(id: string, from: 'failed' | 'completed') {
+    const row = this.transition(id, [from], {
+      status: 'queued',
+      attempts: 0,
+      error: null,
+      result: null,
+      resultUnreadable: false,
+      completedAt: null,
+    });
     if (row) this.enqueued.push(id);
     return row;
   }

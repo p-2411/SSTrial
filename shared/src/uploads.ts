@@ -55,11 +55,17 @@ export function uploadErrorMessage(code: UploadErrorCode): string {
 const FILE_PROBLEMS: readonly UploadErrorCode[] = ['FILE_MISSING'];
 
 /**
- * Whether the user may retry a failed upload. Used by the UI (to show the button) and the API
- * (to enforce it). Everything else — including permanent LLM failures like a refusal — can be
- * retried by hand, since the cause may have been fixed (credit topped up, key rotated…).
+ * Whether the user may run extraction again. Used by the UI (to show the button) and the API (to
+ * enforce it). Allowed for failures the file itself didn't cause — including permanent LLM
+ * failures like a refusal, since the cause may have been fixed (credit topped up, key rotated…) —
+ * and for completed uploads whose saved result can no longer be read.
  */
-export function canRetryUpload(upload: { status: UploadStatus; error: { code: UploadErrorCode } | null }): boolean {
+export function canRetryUpload(upload: {
+  status: UploadStatus;
+  error: { code: UploadErrorCode } | null;
+  resultUnreadable: boolean;
+}): boolean {
+  if (upload.status === 'completed') return upload.resultUnreadable;
   return upload.status === 'failed' && upload.error !== null && !FILE_PROBLEMS.includes(upload.error.code);
 }
 
@@ -82,6 +88,11 @@ export interface UploadSummary {
   error: { code: UploadErrorCode; message: string } | null;
   /** Extracted product name, so the list can show what each file turned out to be. */
   productName: string | null;
+  /**
+   * True when the upload completed but its saved result can't be read any more (e.g. saved in a
+   * shape this version doesn't understand). It can be run again to replace it.
+   */
+  resultUnreadable: boolean;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;

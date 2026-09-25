@@ -29,6 +29,8 @@ export interface UploadRecord {
   attempts: number;
   error: UploadFailure | null;
   result: LabelExtraction | null;
+  /** The row has a result, but it no longer matches the extraction schema. */
+  resultUnreadable: boolean;
   createdAt: Date;
   updatedAt: Date;
   completedAt: Date | null;
@@ -71,8 +73,11 @@ export interface UploadStore {
    * rows can go, so a confirmed upload is never removed by a late or duplicate call.
    */
   discardUnfinished(id: string): Promise<UploadRecord | null>;
-  /** `failed → queued` with attempts reset, and enqueue a fresh job, atomically. */
-  requeueFailed(id: string): Promise<UploadRecord | null>;
+  /**
+   * `failed|completed → queued` with attempts and any result cleared, and enqueue a fresh job,
+   * atomically. `from` is the status the caller saw, so a concurrent change makes this a no-op.
+   */
+  requeue(id: string, from: 'failed' | 'completed'): Promise<UploadRecord | null>;
 
   // ---- Used by the worker -----------------------------------------------------------------
   /**
@@ -186,12 +191,12 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
       return transition(sql`delete from uploads where id = ${id} and status = 'uploading' returning *`);
     },
 
-    async requeueFailed(id) {
+    async requeue(id, from) {
       return sql.begin(async (tx) => {
         const record = await transition(tx`
           update uploads
-          set status = 'queued', attempts = 0, error_code = null
-          where id = ${id} and status = 'failed'
+          set status = 'queued', attempts = 0, error_code = null, result = null, completed_at = null
+          where id = ${id} and status = ${from}
           returning *`);
         if (record) await jobs.enqueueExtraction(id, tx);
         return record;
@@ -243,7 +248,7 @@ function toRecord(row: postgres.Row): UploadRecord {
     status: row.status,
     attempts: row.attempts,
     error: row.error_code ? { code: row.error_code } : null,
-    result: readStoredResult(row.result),
+    ...readStoredResult(row.result),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     completedAt: row.completed_at ?? null,
@@ -252,11 +257,12 @@ function toRecord(row: postgres.Row): UploadRecord {
 
 /**
  * Stored results are read back through the extraction schema, which upgrades older shapes (such as
- * ingredients saved as plain strings) to the current one. Anything unreadable is treated as absent
- * rather than passed on half-formed.
+ * ingredients saved as plain strings) to the current one. Anything that still doesn't fit is never
+ * passed on half-formed — but it isn't hidden either: `resultUnreadable` lets the UI say so and
+ * offer to run the extraction again.
  */
-function readStoredResult(value: unknown): LabelExtraction | null {
-  if (value === null || value === undefined) return null;
+function readStoredResult(value: unknown): { result: LabelExtraction | null; resultUnreadable: boolean } {
+  if (value === null || value === undefined) return { result: null, resultUnreadable: false };
   const parsed = labelExtractionSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
+  return parsed.success ? { result: parsed.data, resultUnreadable: false } : { result: null, resultUnreadable: true };
 }

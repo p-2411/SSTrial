@@ -19,6 +19,7 @@ export function toUploadSummary(record: UploadRecord): UploadSummary {
     // The message is rendered from the code at response time, so rewording never touches stored data.
     error: record.error && { code: record.error.code, message: uploadErrorMessage(record.error.code) },
     productName: record.result?.productName ?? null,
+    resultUnreadable: record.resultUnreadable,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
     completedAt: record.completedAt?.toISOString() ?? null,

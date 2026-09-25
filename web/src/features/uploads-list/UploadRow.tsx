@@ -51,7 +51,11 @@ export function StatusDetail({ upload }: { upload: UploadSummary }) {
   const base = 'mt-0.5 text-sm';
   switch (upload.status) {
     case 'completed':
-      return <p className={cn(base, 'font-medium text-success')}>{upload.productName ?? 'Label read'}</p>;
+      return upload.resultUnreadable ? (
+        <p className={cn(base, 'text-warning')}>Saved result can't be displayed. Run it again to replace it.</p>
+      ) : (
+        <p className={cn(base, 'font-medium text-success')}>{upload.productName ?? 'Label read'}</p>
+      );
     case 'failed':
       return <p className={cn(base, 'text-danger')}>{upload.error?.message ?? 'Processing failed.'}</p>;
     case 'processing':
