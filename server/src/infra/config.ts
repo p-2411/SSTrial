@@ -39,7 +39,7 @@ const workerSchema = z.object({
   HOST: z.string().default('0.0.0.0'),
   PORT: z.coerce.number().int().positive().default(3001),
   OPENAI_API_KEY: z.string().min(1),
-  OPENAI_MODEL: z.string().min(1).default('gpt-5.4-mini'),
+  OPENAI_MODEL: z.string().min(1).default('gpt-6-luna'),
   /** Per-request timeout for the LLM call. Must stay well under the job's expiry (see queue.ts). */
   OPENAI_TIMEOUT_MS: z.coerce.number().int().positive().default(90_000),
   /** Requests per minute allowed to the LLM across *all* workers together (shared rate limiter). */
