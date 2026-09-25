@@ -27,7 +27,12 @@ services:
   worker:
     <<: *supabase
     image: label-extractor
-    command: ["node", "server/src/worker/main.ts"]
+    environment:
+      APP_PROCESS: worker
+      NODE_ENV: production
+      LOG_LEVEL: info
+      DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:54322/postgres
+      SUPABASE_URL: http://host.docker.internal:54321
     depends_on:
       - api # only so the image is built first
     deploy:
