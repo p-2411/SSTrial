@@ -42,6 +42,17 @@ The LLM sits behind a `LabelExtractor` interface. Every failure becomes an `Extr
 
 We first considered S3, then preferred **Cloudflare R2**, which has a free tier and is S3-compatible, so the code is the same. Once we chose a Postgres queue on **Supabase**, we switched to **Supabase Storage**: one platform, one account and one set of keys for database, queue and files. Supabase also enforces the bucket's size and type limits itself, so a signed upload URL can't be used to push anything else. Storage sits behind a small `FileStorage` interface, so moving to S3/R2 later is one new file.
 
+## Frontend
+
+The UI uses the same stack as SupplyScope's app: Tailwind v4 and shadcn/ui on Radix, with Lucide icons and Sonner toasts. I found this by inspecting app.supplyscope.io's public login page and its assets. Anyone on their team can read and extend it without learning a new component library.
+
+It's also styled with their brand, taken from supplyscope.io and their product screenshots:
+- **Colours:** warm off-white `#F6F5F3` background, near-black `#1B1B1B` buttons, indigo `#5048E5` reserved for AI features ("BETA" pill, "Retry extraction", AI sparkles) and green `#027A48` for validated data.
+- **Layout:** a dark sidebar shell.
+- **Detail view:** modelled on their compliance screen, with a "Core information" card, a pastel card for allergens, and the source document alongside.
+- **Not copied:** their logo or product name (the deployed app is public, and it shouldn't pass as an official SupplyScope product) and their display typeface (Labil Grotesk is commercially licensed). Inter, which their app itself uses, stands in with tight heading tracking.
+- **Desktop only:** there's no mobile layout. It's a desktop operations tool, and supporting phones would have added complexity for little benefit.
+
 ## Other trade-offs and things deliberately left out
 
 - **No authentication or multi-tenancy:** everyone shares one list. This is the first thing to add before real use, along with per-user quotas.

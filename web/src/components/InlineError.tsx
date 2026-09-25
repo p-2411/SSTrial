@@ -1,5 +1,6 @@
-import { Button } from './Button.tsx';
-import styles from './InlineError.module.css';
+import { AlertCircle } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 
 interface InlineErrorProps {
   title: string;
@@ -12,14 +13,17 @@ interface InlineErrorProps {
 /** A failed request, explained, with a way to try again. */
 export function InlineError({ title, message, onRetry, retrying = false }: InlineErrorProps) {
   return (
-    <div role="alert" className={styles.error}>
-      <p className={styles.title}>{title}</p>
-      <p>{message}</p>
-      {onRetry && (
-        <Button size="sm" onClick={onRetry} disabled={retrying} className={styles.action}>
-          {retrying ? 'Trying again…' : 'Try again'}
-        </Button>
-      )}
-    </div>
+    <Alert className="border-danger-border bg-danger-soft text-danger">
+      <AlertCircle />
+      <AlertTitle className="font-semibold">{title}</AlertTitle>
+      <AlertDescription className="text-danger/90">
+        <p>{message}</p>
+        {onRetry && (
+          <Button variant="outline" size="sm" onClick={onRetry} disabled={retrying} className="mt-2 text-foreground">
+            {retrying ? 'Trying again…' : 'Try again'}
+          </Button>
+        )}
+      </AlertDescription>
+    </Alert>
   );
 }

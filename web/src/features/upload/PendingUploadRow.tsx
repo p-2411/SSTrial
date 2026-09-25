@@ -1,10 +1,10 @@
-import { formatBytes } from '@label-extractor/shared';
-import { Button } from '../../components/Button.tsx';
-import { ProgressBar } from '../../components/ProgressBar.tsx';
-import { StatusBadge } from '../../components/StatusBadge.tsx';
-import rowStyles from '../uploads-list/UploadRow.module.css';
-import type { PendingUpload } from './useFileUploads.ts';
-import styles from './PendingUploadRow.module.css';
+import { formatBytes, mimeTypeFromFileName } from '@label-extractor/shared';
+import { FileTypeTile } from '@/components/FileTypeTile';
+import { StatusPill } from '@/components/StatusPill';
+import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
+import type { PendingUpload } from './useFileUploads';
+import { rowClassName } from '@/features/uploads-list/UploadRow';
 
 interface PendingUploadRowProps {
   upload: PendingUpload;
@@ -16,43 +16,45 @@ interface PendingUploadRowProps {
 export function PendingUploadRow({ upload, onRetry, onDismiss }: PendingUploadRowProps) {
   const { file, phase } = upload;
   const hasError = phase === 'rejected' || phase === 'failed';
+  const mimeType = mimeTypeFromFileName(file.name) ?? 'image/png';
 
   return (
-    <li className={rowStyles.row}>
-      <div className={rowStyles.status}>
-        {hasError ? <StatusBadge status="failed" /> : <StatusBadge status="uploading" />}
-      </div>
-      <div className={rowStyles.main}>
-        <p className={rowStyles.name} title={file.name}>
+    <li className={rowClassName}>
+      <FileTypeTile mimeType={mimeType} />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold" title={file.name}>
           {file.name}
         </p>
         {hasError ? (
           <>
-            <p role="alert" className={rowStyles.failure}>
+            <p role="alert" className="mt-0.5 text-sm text-danger">
               {phase === 'rejected' ? upload.error : `Upload failed: ${upload.error}`}
             </p>
-            <div className={styles.actions}>
+            <div className="mt-2 flex gap-2">
               {phase === 'failed' && (
-                <Button size="sm" onClick={() => onRetry(upload)}>
+                <Button size="xs" variant="outline" onClick={() => onRetry(upload)}>
                   Try again
                 </Button>
               )}
-              <Button size="sm" variant="quiet" onClick={() => onDismiss(upload.localId)}>
+              <Button size="xs" variant="ghost" className="text-muted-foreground" onClick={() => onDismiss(upload.localId)}>
                 Dismiss
               </Button>
             </div>
           </>
         ) : (
-          <div className={styles.progress}>
-            <p className={rowStyles.detail}>{phaseText(upload)}</p>
-            <ProgressBar
-              label={`Uploading ${file.name}`}
-              value={phase === 'uploading' ? upload.progress : undefined}
+          <div className="mt-1 space-y-1.5">
+            <p className="text-sm text-muted-foreground">{phaseText(upload)}</p>
+            <Progress
+              aria-label={`Uploading ${file.name}`}
+              value={phase === 'uploading' ? Math.round(upload.progress * 100) : phase === 'confirming' ? 100 : 0}
             />
           </div>
         )}
       </div>
-      <div className={rowStyles.meta}>{formatBytes(file.size)}</div>
+      <div className="flex flex-col items-end gap-1.5">
+        <StatusPill status={hasError ? 'failed' : 'uploading'} />
+        <span className="text-xs text-muted-foreground tabular-nums">{formatBytes(file.size)}</span>
+      </div>
     </li>
   );
 }

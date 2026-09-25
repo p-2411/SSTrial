@@ -1,16 +1,16 @@
-import { Link, useParams } from 'react-router';
+import type { ReactNode } from 'react';
+import { useParams } from 'react-router';
 import { formatBytes, type UploadDetail } from '@label-extractor/shared';
-import { ApiRequestError, errorMessage } from '../../api/client.ts';
-import { useUploadDetail } from '../../api/queries.ts';
-import { InlineError } from '../../components/InlineError.tsx';
-import { Skeleton } from '../../components/Skeleton.tsx';
-import { StatusBadge } from '../../components/StatusBadge.tsx';
-import { fileTypeLabel, formatDateTime, formatRelativeTime } from '../../lib/format.ts';
-import { FilePreview } from './FilePreview.tsx';
-import { JsonDisclosure } from './JsonDisclosure.tsx';
-import { LabelPanel } from './LabelPanel.tsx';
-import { StatusNotice } from './StatusNotice.tsx';
-import styles from './UploadDetailView.module.css';
+import { ApiRequestError, errorMessage } from '@/api/client';
+import { useUploadDetail } from '@/api/queries';
+import { InlineError } from '@/components/InlineError';
+import { StatusPill } from '@/components/StatusPill';
+import { Skeleton } from '@/components/ui/skeleton';
+import { fileTypeLabel, formatDateTime, formatRelativeTime } from '@/lib/format';
+import { AllergensCard, CoreInformationCard, IngredientsCard } from './ExtractionCards';
+import { JsonDisclosure } from './JsonDisclosure';
+import { SourceDocumentCard } from './SourceDocumentCard';
+import { StatusNotice } from './StatusNotice';
 
 /** Route: /uploads/:id — everything about one upload. */
 export function UploadDetailView() {
@@ -18,22 +18,15 @@ export function UploadDetailView() {
   const { data: upload, isPending, isError, error, refetch, isRefetching } = useUploadDetail(id);
 
   return (
-    <div className={styles.view}>
-      {/* Only visible on narrow screens, where the list and the detail are separate pages. */}
-      <Link to="/" className={styles.back}>
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" strokeWidth="2" />
-        </svg>
-        All uploads
-      </Link>
+    <div className="grid min-w-0 gap-5">
 
       {isPending && <DetailSkeleton />}
 
       {isError && !upload &&
         (error instanceof ApiRequestError && error.status === 404 ? (
-          <div className={styles.notFound}>
-            <h1 className={styles.fileName}>Upload not found</h1>
-            <p>This upload doesn't exist. Check the link, or pick an upload from the list.</p>
+          <div className="grid gap-1">
+            <h2 className="text-2xl font-semibold">Upload not found</h2>
+            <p className="text-muted-foreground">This upload doesn't exist. Check the link, or pick an upload from the list.</p>
           </div>
         ) : (
           <InlineError
@@ -52,59 +45,64 @@ export function UploadDetailView() {
 function Detail({ upload }: { upload: UploadDetail }) {
   return (
     <>
-      <header className={styles.header}>
-        <h1 className={styles.fileName} title={upload.fileName}>
-          {upload.fileName}
-        </h1>
-        <StatusBadge status={upload.status} />
-      </header>
-      <dl className={styles.facts}>
-        <div>
-          <dt>Uploaded</dt>
-          <dd>
+      <header className="grid gap-2">
+        <div className="flex items-start justify-between gap-4">
+          <h2 className="min-w-0 text-2xl font-semibold break-words" title={upload.fileName}>
+            {upload.fileName}
+          </h2>
+          <StatusPill status={upload.status} className="mt-1" />
+        </div>
+        <dl className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
+          <Fact label="Uploaded">
             <time dateTime={upload.createdAt} title={formatDateTime(upload.createdAt)}>
               {formatRelativeTime(upload.createdAt)}
             </time>
-          </dd>
-        </div>
-        <div>
-          <dt>File</dt>
-          <dd>
+          </Fact>
+          <Fact label="File">
             {fileTypeLabel(upload.mimeType)}, {formatBytes(upload.sizeBytes)}
-          </dd>
-        </div>
-        {upload.attempts > 0 && (
-          <div>
-            <dt>Attempts</dt>
-            <dd>
+          </Fact>
+          {upload.attempts > 0 && (
+            <Fact label="Attempts">
               {upload.attempts} of {upload.maxAttempts}
-            </dd>
-          </div>
-        )}
-      </dl>
+            </Fact>
+          )}
+        </dl>
+      </header>
 
       <StatusNotice upload={upload} />
 
-      <div className={styles.columns}>
+      {/* Extracted data first, then the source document to check it against. */}
+      <div className="grid items-start gap-4">
         {upload.result && (
-          <div className={styles.panelColumn}>
-            <LabelPanel result={upload.result} />
+          <div className="grid gap-4">
+            <CoreInformationCard result={upload.result} />
+            <AllergensCard allergens={upload.result.allergens} />
+            <IngredientsCard ingredients={upload.result.ingredients} />
             <JsonDisclosure data={upload.result} />
           </div>
         )}
         {/* Keyed by id so switching uploads resets the remembered preview URL. */}
-        <FilePreview key={upload.id} upload={upload} />
+        <SourceDocumentCard key={upload.id} upload={upload} />
       </div>
     </>
   );
 }
 
+function Fact({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex gap-1.5">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="tabular-nums">{children}</dd>
+    </div>
+  );
+}
+
 function DetailSkeleton() {
   return (
-    <div aria-label="Loading upload" className={styles.skeleton}>
-      <Skeleton width="55%" height={26} />
-      <Skeleton width="35%" />
-      <Skeleton height={220} style={{ marginTop: 16, maxWidth: 544 }} />
+    <div aria-label="Loading upload" className="grid gap-3">
+      <Skeleton className="h-7 w-1/2" />
+      <Skeleton className="h-4 w-1/3" />
+      <Skeleton className="mt-3 h-56 w-full rounded-xl" />
     </div>
   );
 }

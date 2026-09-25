@@ -8,16 +8,17 @@ export function createTestQueryClient() {
   return new QueryClient({ defaultOptions: { queries: { retryDelay: 0, gcTime: Infinity } } });
 }
 
-export function Providers({ children, client }: { children: ReactNode; client: QueryClient }) {
+export function Providers({ children, client, url = '/' }: { children: ReactNode; client: QueryClient; url?: string }) {
   return (
     <QueryClientProvider client={client}>
-      <MemoryRouter>{children}</MemoryRouter>
+      <MemoryRouter initialEntries={[url]}>{children}</MemoryRouter>
     </QueryClientProvider>
   );
 }
 
-export function renderWithProviders(ui: ReactElement, client = createTestQueryClient()) {
-  return { client, ...render(<Providers client={client}>{ui}</Providers>) };
+/** Renders inside React Query and a router. `url` sets the starting location, e.g. "/?status=failed". */
+export function renderWithProviders(ui: ReactElement, { client = createTestQueryClient(), url = '/' } = {}) {
+  return { client, ...render(<Providers client={client} url={url}>{ui}</Providers>) };
 }
 
 /** A JSON Response, as fetch would return it. */

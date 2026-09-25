@@ -1,8 +1,14 @@
+import path from 'node:path';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    // "@/components/ui/button" etc. — the alias shadcn/ui components use.
+    alias: { '@': path.resolve(import.meta.dirname, 'src') },
+  },
   server: {
     port: 5173,
     // In development the API runs separately on :3000; proxying keeps the browser on one origin.

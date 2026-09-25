@@ -1,0 +1,136 @@
+/*
+ * Theme: shadcn/ui on Tailwind v4 — the same stack as the SupplyScope app — with SupplyScope's
+ * brand tokens mapped onto shadcn's variables.
+ *
+ * Sources (supplyscope.io and the public app.supplyscope.io login page):
+ *   - warm off-white page #F6F5F3 and near-black #1B1B1B for text and primary buttons
+ *   - indigo #5048E5 for AI features (the "BETA" pill, "Recommend" button, AI sparkles)
+ *   - success green #027A48 for verified/passed data (compliance and test-report screens)
+ *   - pastel panels (yellow, pink) to colour-code agent output
+ *   - Inter as the UI typeface (the brand display face, Labil Grotesk, is commercially licensed;
+ *     Inter with tight tracking stands in for it)
+ */
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/inter";
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+
+  /* shadcn semantic colours */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* SupplyScope brand colours shadcn has no slot for — used as bg-brand, text-success, … */
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-soft: var(--brand-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-success-border: var(--success-border);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-border: var(--warning-border);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-border: var(--danger-border);
+  --color-document: var(--document);
+  --color-document-soft: var(--document-soft);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+}
+
+:root {
+  --radius: 0.625rem; /* 10px — the brand's button radius; cards use radius-xl (14px) */
+
+  --background: #f6f5f3;
+  --foreground: #1b1b1b;
+  --card: #ffffff;
+  --card-foreground: #1b1b1b;
+  --popover: #ffffff;
+  --popover-foreground: #1b1b1b;
+  --primary: #1b1b1b;
+  --primary-foreground: #ffffff;
+  --secondary: #efede9;
+  --secondary-foreground: #1b1b1b;
+  --muted: #f1efec;
+  --muted-foreground: #6b6966;
+  --accent: #f1efec;
+  --accent-foreground: #1b1b1b;
+  --destructive: #d92d20;
+  --border: #e6e3de;
+  --input: #e6e3de;
+  --ring: #5048e5;
+
+  --sidebar: #1b1b1b;
+  --sidebar-foreground: #c9c6c1;
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #1b1b1b;
+  --sidebar-accent: #2c2c2b;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #2c2c2b;
+  --sidebar-ring: #5048e5;
+
+  --brand: #5048e5;
+  --brand-foreground: #ffffff;
+  --brand-soft: #eeedfd;
+  --success: #027a48;
+  --success-soft: #ecfdf3;
+  --success-border: #abefc6;
+  --warning: #93370d;
+  --warning-soft: #fef7c3;
+  --warning-border: #fde272;
+  --danger: #b42318;
+  --danger-soft: #fef3f2;
+  --danger-border: #fecdca;
+  --document: #c11574;
+  --document-soft: #fdf2fa;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+  html {
+    @apply font-sans;
+  }
+  /* Headings borrow the brand's tight display tracking. */
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.02em;
+  }
+}

@@ -6,8 +6,8 @@ import { UploadList } from './UploadList.tsx';
 
 const noop = () => {};
 
-function renderList() {
-  return renderWithProviders(<UploadList pending={[]} onRetryPending={noop} onDismissPending={noop} />);
+function renderList(url = '/') {
+  return renderWithProviders(<UploadList pending={[]} onRetryPending={noop} onDismissPending={noop} />, { url });
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -59,5 +59,25 @@ describe('UploadList', () => {
     for (const status of ['Completed', 'Processing', 'Queued', 'Failed']) {
       expect(screen.getByText(status)).toBeInTheDocument();
     }
+  });
+
+  it('filters by the status in the URL', async () => {
+    const uploads = [
+      summary({ id: 'a', fileName: 'done.png', status: 'completed' }),
+      summary({ id: 'b', fileName: 'broken.png', status: 'failed', error: { code: 'NO_LABEL_DATA', message: 'Nothing found.' } }),
+    ];
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ uploads })));
+    renderList('/?status=failed');
+
+    expect(await screen.findByText('broken.png')).toBeInTheDocument();
+    expect(screen.queryByText('done.png')).not.toBeInTheDocument();
+    expect(screen.getByText('Failed', { selector: '[data-slot=card-title]' })).toBeInTheDocument();
+  });
+
+  it('shows an empty message for a filter with no matches', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ uploads: [summary({ status: 'completed' })] })));
+    renderList('/?status=in-progress');
+
+    expect(await screen.findByText('Nothing is being processed right now.')).toBeInTheDocument();
   });
 });
