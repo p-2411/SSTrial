@@ -46,10 +46,46 @@ async function extractionError(response: ModelResponse | (() => never)): Promise
   return error as ExtractionError;
 }
 
+/** The model's scores, as it sends them: one per field, with a reason for anything below 85. */
+const MODEL_CONFIDENCE = {
+  productName: { score: 97, reason: null },
+  brand: { score: 95, reason: null },
+  netWeight: { score: 72, reason: 'Partly hidden by a fold.' },
+  allergens: { score: 90, reason: null },
+  ingredients: { score: 88, reason: null },
+};
+
 describe('OpenAI extractor — valid responses', () => {
   it('returns validated, normalised data', async () => {
     const { extractor } = extractorReturning(textResponse(JSON.stringify(VALID_OUTPUT)));
-    await expect(extractor.extract(PNG)).resolves.toEqual({ ...VALID_OUTPUT, allergens: ['oats', 'pecans'] });
+    await expect(extractor.extract(PNG)).resolves.toMatchObject({ result: { ...VALID_OUTPUT, allergens: ['oats', 'pecans'] } });
+  });
+
+  it('reads how sure the model is of each field, with its reasons', async () => {
+    const { extractor } = extractorReturning(textResponse(JSON.stringify({ ...VALID_OUTPUT, confidence: MODEL_CONFIDENCE })));
+    const { confidence } = await extractor.extract(PNG);
+    expect(confidence).toEqual({
+      productName: { score: 97, reasons: [] },
+      brand: { score: 95, reasons: [] },
+      netWeight: { score: 72, reasons: ['Partly hidden by a fold.'] },
+      allergens: { score: 90, reasons: [] },
+      ingredients: { score: 88, reasons: [] },
+    });
+  });
+
+  it('keeps the data when the scores are missing or malformed: they are advisory, not worth a retry', async () => {
+    for (const confidence of [undefined, { productName: { score: 'high' } }, 'sure']) {
+      const { extractor } = extractorReturning(textResponse(JSON.stringify({ ...VALID_OUTPUT, confidence })));
+      await expect(extractor.extract(PNG)).resolves.toMatchObject({ result: { productName: 'Maple Pecan Crunch' }, confidence: null });
+    }
+  });
+
+  it('keeps scores within 0–100', async () => {
+    const outOfRange = { ...MODEL_CONFIDENCE, productName: { score: 140, reason: null }, brand: { score: -5, reason: 'Unreadable.' } };
+    const { extractor } = extractorReturning(textResponse(JSON.stringify({ ...VALID_OUTPUT, confidence: outOfRange })));
+    const { confidence } = await extractor.extract(PNG);
+    expect(confidence?.productName.score).toBe(100);
+    expect(confidence?.brand.score).toBe(0);
   });
 
   it('sends images as high-detail image input and PDFs as file input', async () => {

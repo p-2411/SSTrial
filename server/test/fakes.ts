@@ -11,6 +11,7 @@ import {
   type LiveChange,
   type UploadErrorCode,
   type CurrentMember,
+  type ExtractionConfidence,
   type PublicConfig,
 } from '@label-extractor/shared';
 import type { AppDeps } from '../src/api/app.ts';
@@ -61,6 +62,7 @@ export class InMemoryUploadStore implements UploadStore {
       storagePath: `uploads/${overrides.id}.png`,
       contentSha256: null,
       uploadedBy: null,
+      confidence: null,
       claimToken: null,
       status: 'uploading',
       attempts: 0,
@@ -140,6 +142,7 @@ export class InMemoryUploadStore implements UploadStore {
       error: null,
       result: null,
       resultUnreadable: false,
+      confidence: null,
       completedAt: null,
       claimToken: null,
     });
@@ -154,8 +157,8 @@ export class InMemoryUploadStore implements UploadStore {
       claimToken: crypto.randomUUID(),
     });
   }
-  async complete(id: string, claimToken: string, result: LabelExtraction) {
-    return this.transition(id, 'complete', { result, error: null, completedAt: new Date(), claimToken: null }, claimToken);
+  async complete(id: string, claimToken: string, result: LabelExtraction, confidence: ExtractionConfidence | null) {
+    return this.transition(id, 'complete', { result, confidence, error: null, completedAt: new Date(), claimToken: null }, claimToken);
   }
   async scheduleRetry(id: string, claimToken: string, code: UploadErrorCode) {
     return this.transition(id, 'retryLater', { error: { code }, claimToken: null }, claimToken);

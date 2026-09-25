@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ExtractionConfidence } from '@label-extractor/shared';
 import { ExtractionError } from '../../src/extraction/errors.ts';
-import type { LabelExtractor } from '../../src/extraction/extractor.ts';
+import type { ExtractedLabel, LabelExtractor } from '../../src/extraction/extractor.ts';
 import { createOpenAIExtractor, type ModelResponse } from '../../src/extraction/openai-extractor.ts';
 import { RETRY_POLICY } from '../../src/extraction/retry-policy.ts';
 import { processUpload, type ExtractionJob, type JobOutcome } from '../../src/worker/process-upload.ts';
@@ -37,18 +38,28 @@ const badKey = () => new ExtractionError('LLM_MISCONFIGURED', 'HTTP 401 invalid_
 const rateLimited = (providerBackoffMs: number) => new ExtractionError('LLM_RATE_LIMITED', 'HTTP 429', { providerBackoffMs });
 
 /** An extractor that plays back a script: each call returns the next result or throws the next error. */
-function scriptedExtractor(...script: Array<typeof SAMPLE_EXTRACTION | Error>): LabelExtractor & { calls: number } {
+function scriptedExtractor(...script: Array<typeof SAMPLE_EXTRACTION | ExtractedLabel | Error>): LabelExtractor & { calls: number } {
   const extractor = {
     calls: 0,
     async extract() {
       const step = script[Math.min(extractor.calls, script.length - 1)]!;
       extractor.calls += 1;
       if (step instanceof Error) throw step;
-      return step;
+      // Plain data stands for a model that gave no scores.
+      return 'result' in step ? step : { result: step, confidence: null };
     },
   };
   return extractor;
 }
+
+/** The model is sure of everything, so any lowered score comes from a check. */
+const SURE: ExtractionConfidence = {
+  productName: { score: 95, reasons: [] },
+  brand: { score: 95, reasons: [] },
+  netWeight: { score: 95, reasons: [] },
+  allergens: { score: 95, reasons: [] },
+  ingredients: { score: 95, reasons: [] },
+};
 
 function run(extractor: LabelExtractor, job: Partial<ExtractionJob> = {}) {
   return processUpload(
@@ -85,7 +96,7 @@ describe('processUpload — success', () => {
   });
 
   it('passes the file bytes, type and the abort signal to the extractor', async () => {
-    const extract = vi.fn<LabelExtractor['extract']>(async () => SAMPLE_EXTRACTION);
+    const extract = vi.fn<LabelExtractor['extract']>(async () => ({ result: SAMPLE_EXTRACTION, confidence: null }));
     const signal = new AbortController().signal;
     await run({ extract }, { signal });
 
@@ -237,6 +248,25 @@ describe('processUpload — duplicate and stale jobs', () => {
 });
 
 describe('processUpload — identical files', () => {
+  it('stores how sure the extraction is, capped where the data contradicts itself', async () => {
+    // "milk" is declared, but no ingredient contains it.
+    const result = { ...SAMPLE_EXTRACTION, allergens: [...SAMPLE_EXTRACTION.allergens, 'milk'] };
+    await run(scriptedExtractor({ result, confidence: SURE }));
+
+    expect(uploads.get(UPLOAD_ID).confidence).toEqual({
+      ...SURE,
+      allergens: { score: 60, reasons: ['No ingredient contains milk.'] },
+    });
+  });
+
+  it('reuses the scores along with the result of an identical file', async () => {
+    const hash = createHash('sha256').update(FILE_BYTES.png).digest('hex');
+    uploads.seed({ id: 'twin', status: 'completed', contentSha256: hash, result: SAMPLE_EXTRACTION, confidence: SURE });
+
+    await run(scriptedExtractor(SAMPLE_EXTRACTION));
+    expect(uploads.get(UPLOAD_ID).confidence).toEqual(SURE);
+  });
+
   it('reuses the result of a completed upload of the same bytes instead of calling the LLM', async () => {
     const hash = createHash('sha256').update(FILE_BYTES.png).digest('hex');
     uploads.seed({ id: 'twin', status: 'completed', contentSha256: hash, result: SAMPLE_EXTRACTION });
@@ -310,7 +340,7 @@ describe('processUpload — an attempt taken over by another worker', () => {
       async extract() {
         await uploads.startAttempt(UPLOAD_ID); // the other worker's attempt claims the upload
         if (outcome instanceof Error) throw outcome;
-        return outcome;
+        return { result: outcome, confidence: null };
       },
     };
   }

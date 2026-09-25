@@ -1,10 +1,16 @@
-import type { LabelExtraction, SupportedMimeType } from '@label-extractor/shared';
+import type { ExtractionConfidence, LabelExtraction, SupportedMimeType } from '@label-extractor/shared';
 
 /** A file to extract label data from. */
 export interface LabelFile {
   bytes: Uint8Array;
   mimeType: SupportedMimeType;
   fileName: string;
+}
+
+/** What a label yielded: the data, and how sure the model is of each field (null if it didn't say). */
+export interface ExtractedLabel {
+  result: LabelExtraction;
+  confidence: ExtractionConfidence | null;
 }
 
 /**
@@ -15,5 +21,5 @@ export interface LabelFile {
  * reject with an `ExtractionError` saying whether the failure is worth retrying.
  */
 export interface LabelExtractor {
-  extract(file: LabelFile, options?: { signal?: AbortSignal }): Promise<LabelExtraction>;
+  extract(file: LabelFile, options?: { signal?: AbortSignal }): Promise<ExtractedLabel>;
 }

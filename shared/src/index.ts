@@ -1,6 +1,7 @@
 // Public entry point of @label-extractor/shared. Import from here, not from individual files.
 export * from './api.ts';
 export * from './auth.ts';
+export * from './confidence.ts';
 export * from './extraction.ts';
 export * from './files.ts';
 export * from './lifecycle.ts';

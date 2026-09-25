@@ -4,10 +4,11 @@ import type {
   ResponseCreateParamsNonStreaming,
   ResponseInputContent,
 } from 'openai/resources/responses/responses';
-import { labelExtractionSchema, type LabelExtraction } from '@label-extractor/shared';
+import { z } from 'zod';
+import { CONFIDENCE_FIELDS, labelExtractionSchema, type ExtractionConfidence } from '@label-extractor/shared';
 import { ExtractionError } from './errors.ts';
 import { classifyOpenAIError } from './openai-errors.ts';
-import type { LabelExtractor, LabelFile } from './extractor.ts';
+import type { ExtractedLabel, LabelExtractor, LabelFile } from './extractor.ts';
 import { EXTRACTION_INSTRUCTIONS, EXTRACTION_USER_PROMPT, LABEL_RESPONSE_FORMAT } from './prompt.ts';
 
 /**
@@ -74,7 +75,7 @@ export function createOpenAIResponses(options: { apiKey: string; timeoutMs: numb
 }
 
 /** Turns a raw model response into validated data, or throws an ExtractionError explaining what was wrong with it. */
-function parseModelResponse(response: ModelResponse): LabelExtraction {
+function parseModelResponse(response: ModelResponse): ExtractedLabel {
   if (response.status === 'failed') {
     throw new ExtractionError(
       'LLM_UNAVAILABLE',
@@ -115,7 +116,7 @@ function parseModelResponse(response: ModelResponse): LabelExtraction {
       parsed.error.issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`).join('; '),
     );
   }
-  return parsed.data;
+  return { result: parsed.data, confidence: parseConfidence((json as { confidence?: unknown }).confidence) };
 }
 
 function toModelInput(file: LabelFile): ResponseInputContent {
@@ -136,4 +137,28 @@ function findRefusal(response: ModelResponse): string | null {
     }
   }
   return null;
+}
+
+const modelFieldConfidence = z.object({ score: z.number(), reason: z.string().nullable() });
+const modelConfidence = z.object(
+  Object.fromEntries(CONFIDENCE_FIELDS.map((field) => [field, modelFieldConfidence])) as Record<
+    (typeof CONFIDENCE_FIELDS)[number],
+    typeof modelFieldConfidence
+  >,
+);
+
+/**
+ * The model's per-field scores, held to 0–100. Unlike the data, they're read leniently: scores are
+ * advisory, so missing or malformed ones mean "not scored" (null), never a failed extraction.
+ */
+function parseConfidence(value: unknown): ExtractionConfidence | null {
+  const parsed = modelConfidence.safeParse(value);
+  if (!parsed.success) return null;
+  return Object.fromEntries(
+    CONFIDENCE_FIELDS.map((field) => {
+      const { score, reason } = parsed.data[field];
+      const reasonText = reason?.trim();
+      return [field, { score: Math.round(Math.min(100, Math.max(0, score))), reasons: reasonText ? [reasonText] : [] }];
+    }),
+  ) as ExtractionConfidence;
 }

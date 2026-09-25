@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CONFIDENCE_FIELDS, type ExtractionConfidence } from './confidence.ts';
 import { NET_QUANTITY_UNITS } from './units.ts';
 
 /**
@@ -128,3 +129,16 @@ export function isEmptyExtraction(extraction: LabelExtraction): boolean {
     extraction.netWeight === null
   );
 }
+
+const fieldConfidenceSchema = z.object({
+  score: z.number().int().min(0).max(100),
+  reasons: z.array(z.string()),
+});
+
+/** Confidence as stored with an upload (see confidence.ts). */
+export const extractionConfidenceSchema: z.ZodType<ExtractionConfidence> = z.object(
+  Object.fromEntries(CONFIDENCE_FIELDS.map((field) => [field, fieldConfidenceSchema])) as Record<
+    (typeof CONFIDENCE_FIELDS)[number],
+    typeof fieldConfidenceSchema
+  >,
+);

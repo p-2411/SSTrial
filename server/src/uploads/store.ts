@@ -1,11 +1,13 @@
 import type postgres from 'postgres';
 import type {
+  ExtractionConfidence,
   LabelExtraction,
   SupportedMimeType,
   UploadErrorCode,
   UploadStatus,
 } from '@label-extractor/shared';
 import {
+  extractionConfidenceSchema,
   labelExtractionSchema,
   storedErrorCode,
   UPLOAD_TRANSITIONS,
@@ -43,6 +45,8 @@ export interface UploadRecord {
   result: LabelExtraction | null;
   /** The row has a result, but it no longer matches the extraction schema. */
   resultUnreadable: boolean;
+  /** How sure the extraction is of each field; null if it wasn't scored. */
+  confidence: ExtractionConfidence | null;
   /** The processing attempt that currently owns the upload (see `startAttempt`). */
   claimToken: string | null;
   createdAt: Date;
@@ -118,7 +122,12 @@ export interface UploadAttempts {
   /** The newest *completed* upload of an identical file other than `excludeId`, to reuse its result. */
   findCompletedTwin(sha256: string, excludeId: string): Promise<UploadRecord | null>;
   /** `processing → completed` with the validated result. Null if `claimToken` is no longer current. */
-  complete(id: string, claimToken: string, result: LabelExtraction): Promise<UploadRecord | null>;
+  complete(
+    id: string,
+    claimToken: string,
+    result: LabelExtraction,
+    confidence: ExtractionConfidence | null,
+  ): Promise<UploadRecord | null>;
   /** `processing → queued`, recording why this attempt failed; the queue will retry it. Needs the claim. */
   scheduleRetry(id: string, claimToken: string, code: UploadErrorCode): Promise<UploadRecord | null>;
   /** `processing → failed` — permanent. Needs the claim. */
@@ -244,8 +253,8 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
       return sql.begin(async (tx) => {
         const record = await oneRecord(tx`
           update uploads
-          set status = ${statusAfter('rerun')}, attempts = 0, error_code = null, result = null, completed_at = null,
-              claim_token = null
+          set status = ${statusAfter('rerun')}, attempts = 0, error_code = null, result = null, confidence = null,
+              completed_at = null, claim_token = null
           where id = ${id} and status = ${from} and ${allowedFrom('rerun')}
           returning *`);
         if (record) await jobs.enqueueExtraction(id, tx);
@@ -261,11 +270,12 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
         returning *`);
     },
 
-    complete(id, claimToken, result) {
+    complete(id, claimToken, result, confidence) {
       return oneRecord(sql`
         update uploads
-        set status = ${statusAfter('complete')}, result = ${sql.json(result as postgres.JSONValue)}, completed_at = now(),
-            error_code = null, claim_token = null
+        set status = ${statusAfter('complete')}, result = ${sql.json(result as postgres.JSONValue)},
+            confidence = ${confidence ? sql.json(confidence as unknown as postgres.JSONValue) : null},
+            completed_at = now(), error_code = null, claim_token = null
         where id = ${id} and ${allowedFrom('complete')} and claim_token = ${claimToken}
         returning *`);
     },
@@ -308,6 +318,7 @@ function toRecord(row: postgres.Row): UploadRecord {
     attempts: row.attempts,
     error: row.error_code ? { code: storedErrorCode(row.error_code) } : null,
     ...readStoredResult(row.result),
+    confidence: readStoredConfidence(row.confidence),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     completedAt: row.completed_at ?? null,
@@ -324,4 +335,11 @@ function readStoredResult(value: unknown): { result: LabelExtraction | null; res
   if (value === null || value === undefined) return { result: null, resultUnreadable: false };
   const parsed = labelExtractionSchema.safeParse(value);
   return parsed.success ? { result: parsed.data, resultUnreadable: false } : { result: null, resultUnreadable: true };
+}
+
+/** Scores are advisory: any stored in a shape this version doesn't read are treated as not scored. */
+function readStoredConfidence(value: unknown): ExtractionConfidence | null {
+  if (value === null || value === undefined) return null;
+  const parsed = extractionConfidenceSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }

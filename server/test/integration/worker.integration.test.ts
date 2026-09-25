@@ -68,7 +68,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       script.calls += 1;
       if (step === 'hang') return hung; // simulates a worker that hangs/crashes mid-job
       if (step instanceof Error) throw step;
-      return step;
+      return { result: step, confidence: null };
     },
   };
 
@@ -506,7 +506,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       confirm: (id) => uploads.markUploaded(id, 'image/png'),
       discard: (id) => uploads.discardUnfinished(id),
       claim: (id) => uploads.startAttempt(id),
-      complete: (id, claim) => uploads.complete(id, claim, SAMPLE_EXTRACTION),
+      complete: (id, claim) => uploads.complete(id, claim, SAMPLE_EXTRACTION, null),
       retryLater: (id, claim) => uploads.scheduleRetry(id, claim, 'LLM_TIMEOUT'),
       fail: (id, claim) => uploads.fail(id, claim, 'LLM_REFUSED'),
       abandon: (id) => uploads.failAbandoned(id, 'PROCESSING_TIMEOUT'),
@@ -570,11 +570,11 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       const second = await uploads.startAttempt(id); // e.g. the job was handed to another worker
 
       expect(first!.claimToken).not.toEqual(second!.claimToken);
-      expect(await uploads.complete(id, first!.claimToken!, SAMPLE_EXTRACTION)).toBeNull();
+      expect(await uploads.complete(id, first!.claimToken!, SAMPLE_EXTRACTION, null)).toBeNull();
       expect(await uploads.scheduleRetry(id, first!.claimToken!, 'LLM_TIMEOUT')).toBeNull();
       expect(await uploads.fail(id, first!.claimToken!, 'LLM_TIMEOUT')).toBeNull();
 
-      await expect(uploads.complete(id, second!.claimToken!, SAMPLE_EXTRACTION)).resolves.toMatchObject({
+      await expect(uploads.complete(id, second!.claimToken!, SAMPLE_EXTRACTION, null)).resolves.toMatchObject({
         status: 'completed',
         claimToken: null,
       });

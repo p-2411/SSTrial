@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { isEmptyExtraction, type LabelExtraction, type UploadErrorCode } from '@label-extractor/shared';
+import { isEmptyExtraction, type ExtractionConfidence, type LabelExtraction, type UploadErrorCode } from '@label-extractor/shared';
+import { applyConfidenceChecks } from '../extraction/confidence-checks.ts';
 import { ExtractionError } from '../extraction/errors.ts';
 import { decideAfterFailure } from '../extraction/retry-policy.ts';
 import type { LabelExtractor } from '../extraction/extractor.ts';
@@ -68,8 +69,8 @@ export async function processUpload(deps: ProcessUploadDeps, job: ExtractionJob)
   await deps.events.record(logEvents.extractionStarted(upload));
 
   try {
-    const { result, ...details } = await extractOrReuse(deps, upload, job.signal);
-    const completed = await deps.uploads.complete(upload.id, attempt.claim, result);
+    const { result, confidence, ...details } = await extractOrReuse(deps, upload, job.signal);
+    const completed = await deps.uploads.complete(upload.id, attempt.claim, result, confidence);
     if (!completed) return lostClaim(log);
     log.info(details, 'Extraction completed');
     await deps.events.record(logEvents.extractionCompleted(completed, { productName: result.productName, ...details }));
@@ -86,14 +87,15 @@ interface Attempt {
 }
 
 /**
- * The label data for this upload: an identical file's result if we already have one — no need to
- * ask the LLM the same question twice — otherwise a fresh, non-empty extraction.
+ * The label data for this upload, and how sure we are of it: an identical file's if we already
+ * have one — no need to ask the LLM the same question twice — otherwise a fresh, non-empty
+ * extraction, its scores capped by the confidence checks.
  */
 async function extractOrReuse(
   deps: ProcessUploadDeps,
   upload: UploadRecord,
   signal: AbortSignal | undefined,
-): Promise<{ result: LabelExtraction; reusedFrom?: string; durationMs?: number }> {
+): Promise<{ result: LabelExtraction; confidence: ExtractionConfidence | null; reusedFrom?: string; durationMs?: number }> {
   const bytes = await deps.storage.download(upload.storagePath);
   if (!bytes) throw new ExtractionError('FILE_MISSING', `No object at ${upload.storagePath}`);
 
@@ -101,16 +103,23 @@ async function extractOrReuse(
   const contentSha256 = sha256Hex(bytes);
   if (contentSha256 !== upload.contentSha256) await deps.uploads.recordContentHash(upload.id, contentSha256);
   const twin = await deps.uploads.findCompletedTwin(contentSha256, upload.id);
-  if (twin?.result) return { result: twin.result, reusedFrom: twin.id };
+  if (twin?.result) return { result: twin.result, confidence: twin.confidence, reusedFrom: twin.id };
 
   await deps.rateLimiter.acquire(signal);
   const started = performance.now();
-  const result = await deps.extractor.extract({ bytes, mimeType: upload.mimeType, fileName: upload.fileName }, { signal });
+  const { result, confidence } = await deps.extractor.extract(
+    { bytes, mimeType: upload.mimeType, fileName: upload.fileName },
+    { signal },
+  );
 
   // A well-formed answer that contains nothing means this isn't a readable label (a photo of a
   // cat, a blank page). Asking again won't change that, so it's a permanent failure.
   if (isEmptyExtraction(result)) throw new ExtractionError('NO_LABEL_DATA', 'Every extracted field was empty');
-  return { result, durationMs: Math.round(performance.now() - started) };
+  return {
+    result,
+    confidence: confidence && applyConfidenceChecks(result, confidence),
+    durationMs: Math.round(performance.now() - started),
+  };
 }
 
 /** Carries out what the retry policy decides for a failed attempt (see decideAfterFailure). */
