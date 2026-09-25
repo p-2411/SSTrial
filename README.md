@@ -64,7 +64,7 @@ uploading ─(browser confirms)─► queued ─(worker claims)─► processing
 ### Monitoring
 
 - **System status page** (`/status` in the app, from `GET /api/ops`): health checks, worker heartbeat, queue, last 24 hours, failures by reason, and the alert log.
-- **Activity log** (`/logs` in the app, from `GET /api/logs`): every step of every upload (created, queued, each extraction attempt, retries, failures and why), plus rate-limit pauses, alerts and process starts. Filter by level, event type or upload, and it updates live. Each upload's detail panel links to its own history. Kept for 30 days.
+- **Activity log** (`/logs` in the app, from `GET /api/logs`): every step of every upload (created, queued, each extraction attempt, retries, failures and why), plus rate-limit pauses, alerts and process starts. Filter by level, event type or upload, and it updates live. Kept for 30 days.
 - **`GET /api/health`** on the API (database, queue) and on the worker (plus its job loop) answers 200 or 503. Railway uses it on deploy.
 - **Alerts** open and resolve once a minute (see `server/src/ops/monitor.ts`) and are logged once each, with an `alert` field.
 

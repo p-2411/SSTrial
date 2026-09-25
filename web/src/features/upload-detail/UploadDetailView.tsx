@@ -1,18 +1,14 @@
 import type { ReactNode } from 'react';
-import { Link } from 'react-router';
-import { ScrollText } from 'lucide-react';
 import type { UploadDetail } from '@label-extractor/shared';
 import { ApiRequestError, errorMessage } from '@/api/client';
 import { useUploadDetail } from '@/api/queries';
 import { InlineError } from '@/components/InlineError';
 import { RelativeTime } from '@/components/RelativeTime';
 import { StatusPill } from '@/components/StatusPill';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatFileFacts } from '@/lib/format';
 import { useNow } from '@/lib/useNow';
 import { cn } from '@/lib/utils';
-import { uploadLogsPath } from '@/routes';
 import { CoreInformationCard } from './CoreInformationCard';
 import { JsonDisclosure } from './JsonDisclosure';
 import { SourceDocumentCard } from './SourceDocumentCard';
@@ -107,13 +103,6 @@ function Detail({ upload }: { upload: UploadDetail }) {
       {/* Keyed by id so switching uploads resets the remembered preview URL. */}
       <SourceDocumentCard key={upload.id} upload={upload} />
       {upload.result && <JsonDisclosure data={upload.result} fileName={upload.fileName} />}
-      {/* Its history (attempts, retries, timings) belongs in the activity log, not in the detail. */}
-      <Button asChild variant="ghost" size="sm" className="-ml-2 justify-self-start text-muted-foreground">
-        <Link to={uploadLogsPath(upload.id)}>
-          <ScrollText data-icon="inline-start" aria-hidden />
-          Activity log for this upload
-        </Link>
-      </Button>
     </>
   );
 }

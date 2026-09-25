@@ -4,8 +4,8 @@ import { logFilterParams, type LogFilters } from '@/api/logs';
 
 /**
  * The activity log's filters live in the URL (?level=warn&type=extraction.failed&upload=…), so they
- * survive refreshes, can be shared, and other pages can link to a filtered log (uploadLogsPath).
- * Values that aren't valid are dropped rather than sent to the server.
+ * survive refreshes and can be shared. Values that aren't valid are dropped rather than sent to
+ * the server.
  */
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

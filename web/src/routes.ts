@@ -18,8 +18,3 @@ export const UPLOAD_PATH_PATTERN = '/uploads/:id';
 export function uploadPath(id: string): string {
   return `/uploads/${id}`;
 }
-
-/** The activity log narrowed to one upload's events. */
-export function uploadLogsPath(id: string): string {
-  return `${LOGS_PATH}?upload=${encodeURIComponent(id)}`;
-}
