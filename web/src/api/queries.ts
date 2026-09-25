@@ -1,8 +1,9 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { isActiveStatus, type UploadDetail, type UploadFilter } from '@label-extractor/shared';
+import { isActiveStatus, type EditResultRequest, type UploadDetail, type UploadFilter } from '@label-extractor/shared';
+import { ApiRequestError } from './client.ts';
 import { isLiveConnected } from './liveConnection.ts';
 import { listLogs, type LogFilters } from './logs.ts';
-import { getOpsStatus, getUpload, getUploadCounts, listUploads, retryUpload } from './uploads.ts';
+import { editResult, getOpsStatus, getUpload, getUploadCounts, listUploads, retryUpload } from './uploads.ts';
 
 /**
  * Server state lives in React Query: caching, polling and retries are handled here so
@@ -111,6 +112,25 @@ export function useUploadDetail(id: string) {
     refetchInterval: (query) => {
       const upload = query.state.data as UploadDetail | undefined;
       return pollWhile(upload !== undefined && isActiveStatus(upload.status));
+    },
+  });
+}
+
+/**
+ * Save corrections to an upload's data. The cached detail is replaced with the saved one, and the
+ * lists refresh (the upload's confidence there may change). If someone else saved first, the
+ * detail is fetched again so their version shows.
+ */
+export function useEditResult(uploadId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: EditResultRequest) => editResult(uploadId, request),
+    onSuccess: async (upload) => {
+      storeUpload(queryClient, upload);
+      await refreshUploadLists(queryClient);
+    },
+    onError: async (error) => {
+      if (error instanceof ApiRequestError && error.code === 'EDIT_CONFLICT') await refreshUpload(queryClient, uploadId);
     },
   });
 }

@@ -1,17 +1,24 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ShieldCheck, Sparkles } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   isVolumeUnit,
-  type ExtractionConfidence,
-  type FieldConfidence,
+  type ConfidenceField,
   type Ingredient,
   type LabelExtraction,
+  type ResultChanges,
+  type UploadDetail,
 } from '@label-extractor/shared';
-import { confidenceDotClass, ConfidenceScore } from '@/components/Confidence';
+import { ApiRequestError, errorMessage } from '@/api/client';
+import { useEditResult } from '@/api/queries';
+import { ConfidenceScore } from '@/components/Confidence';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatQuantity } from '@/lib/quantity';
 import { TONE_CLASSES } from '@/lib/tone';
+import { useNow } from '@/lib/useNow';
 import { cn } from '@/lib/utils';
+import { AllergensEditor, IngredientsEditor, NetWeightEditor, TextEditor } from './FieldEditors';
+import { EditButton, markerClass, ReviewableField, ReviewNotes, type ReviewState } from './ReviewableField';
 
 /**
  * Everything extracted from the label in one card, laid out after SupplyScope's compliance
@@ -19,18 +26,27 @@ import { cn } from '@/lib/utils';
  * footer. Anything the label didn't show is said explicitly, so "not found" is never mistaken for
  * "not loaded".
  *
- * When the extraction was scored, each field's marker takes its confidence colour, its score sits
- * on the right, and the reasons for any doubt are spelled out under it.
+ * Every field can be corrected in place, one at a time. When the extraction was scored, each
+ * field's marker takes its confidence colour and its score sits on the right; a doubtful field can
+ * also be confirmed as right. Once a person has edited or confirmed a field, who did it shows in
+ * place of the score.
  */
-export function CoreInformationCard({
-  result,
-  confidence,
-}: {
-  result: LabelExtraction;
-  confidence: ExtractionConfidence | null;
-}) {
-  const { productName, brand, netWeight, allergens, ingredients } = result;
+export function CoreInformationCard({ upload }: { upload: UploadDetail & { result: LabelExtraction } }) {
+  const { productName, brand, netWeight, allergens, ingredients } = upload.result;
   const quantityLabel = netWeight && isVolumeUnit(netWeight.unit) ? 'Net volume' : 'Net weight';
+  const now = useNow();
+  const review = useFieldReview(upload);
+
+  const stateOf = (field: ConfidenceField): ReviewState => ({
+    confidence: upload.fieldConfidence?.[field],
+    review: upload.fieldReviews[field],
+  });
+  const fieldProps = (field: ConfidenceField) => ({
+    state: stateOf(field),
+    now,
+    onEdit: () => review.edit(field),
+    onCheck: () => review.check(field),
+  });
 
   return (
     <Card role="region" aria-label="Core information" className="gap-0 overflow-hidden border-success/40 py-0 ring-0">
@@ -44,9 +60,25 @@ export function CoreInformationCard({
 
       <CardContent className="pb-5">
         <dl className="grid gap-3.5">
-          <Field label="Product name" confidence={confidence?.productName}>{productName ? <Value>{productName}</Value> : <Missing>Not found on label</Missing>}</Field>
-          <Field label="Brand" confidence={confidence?.brand}>{brand ? <Value>{brand}</Value> : <Missing>Not found on label</Missing>}</Field>
-          <Field label={quantityLabel} confidence={confidence?.netWeight}>
+          <ReviewableField
+            label="Product name"
+            {...fieldProps('productName')}
+            editor={review.editing === 'productName' && <TextEditor field="productName" label="Product name" value={productName} {...review.editorProps} />}
+          >
+            {productName ? <Value>{productName}</Value> : <Missing>Not found on label</Missing>}
+          </ReviewableField>
+          <ReviewableField
+            label="Brand"
+            {...fieldProps('brand')}
+            editor={review.editing === 'brand' && <TextEditor field="brand" label="Brand" value={brand} {...review.editorProps} />}
+          >
+            {brand ? <Value>{brand}</Value> : <Missing>Not found on label</Missing>}
+          </ReviewableField>
+          <ReviewableField
+            label={quantityLabel}
+            {...fieldProps('netWeight')}
+            editor={review.editing === 'netWeight' && <NetWeightEditor value={netWeight} {...review.editorProps} />}
+          >
             {netWeight ? (
               <>
                 <Value>{formatQuantity(netWeight)}</Value>
@@ -58,36 +90,59 @@ export function CoreInformationCard({
             ) : (
               <Missing>Not found on label</Missing>
             )}
-          </Field>
-          <Field label="Allergens" confidence={confidence?.allergens}>
+          </ReviewableField>
+          <ReviewableField
+            label="Allergens"
+            {...fieldProps('allergens')}
+            editor={review.editing === 'allergens' && <AllergensEditor value={allergens} {...review.editorProps} />}
+          >
             {allergens.length > 0 ? <AllergenChips allergens={allergens} /> : <Missing>None declared on label</Missing>}
-          </Field>
+          </ReviewableField>
         </dl>
 
         {/* Ingredients get the full card width: they're the longest and most-checked part of a label. */}
-        <section aria-labelledby="ingredients-heading" className="mt-4 border-t pt-4">
-          <h3 id="ingredients-heading" className="flex items-center gap-2.5 text-sm font-medium">
-            <span aria-hidden className={cn('size-2 rounded-full', confidenceDotClass(confidence?.ingredients.score ?? null))} />
-            Ingredients
-            {ingredients.length > 0 && <span className="font-normal text-muted-foreground">({ingredients.length})</span>}
-            {confidence && (
-              <span className="ml-auto">
-                <ConfidenceScore score={confidence.ingredients.score} />
-              </span>
+        <section aria-labelledby="ingredients-heading" className="group mt-4 border-t pt-4">
+          <div className="flex items-center gap-2.5">
+            <h3 id="ingredients-heading" className="flex items-center gap-2.5 text-sm font-medium">
+              <span aria-hidden className={cn('size-2 rounded-full', markerClass(stateOf('ingredients')))} />
+              Ingredients
+              {ingredients.length > 0 && <span className="font-normal text-muted-foreground">({ingredients.length})</span>}
+            </h3>
+            {review.editing !== 'ingredients' && (
+              <div className="ml-auto flex items-center gap-1">
+                {upload.fieldConfidence && !upload.fieldReviews.ingredients && (
+                  <ConfidenceScore score={upload.fieldConfidence.ingredients.score} />
+                )}
+                <EditButton name="ingredients" onClick={() => review.edit('ingredients')} />
+              </div>
             )}
-          </h3>
-          {confidence && <Reasons confidence={confidence.ingredients} className="pl-[18px]" />}
-          {ingredients.length > 0 ? (
-            <IngredientList ingredients={ingredients} />
+          </div>
+          {review.editing === 'ingredients' ? (
+            <div className="mt-2 pl-[18px]">
+              <IngredientsEditor value={ingredients} {...review.editorProps} />
+            </div>
           ) : (
-            <p className="mt-2 pl-[18px] text-sm">
-              <Missing>No ingredient list found on label</Missing>
-            </p>
+            <>
+              <ReviewNotes
+                state={stateOf('ingredients')}
+                now={now}
+                name="ingredients"
+                onCheck={() => review.check('ingredients')}
+                className="pl-[18px]"
+              />
+              {ingredients.length > 0 ? (
+                <IngredientList ingredients={ingredients} />
+              ) : (
+                <p className="mt-2 pl-[18px] text-sm">
+                  <Missing>No ingredient list found on label</Missing>
+                </p>
+              )}
+            </>
           )}
         </section>
       </CardContent>
 
-      {/* Every stored result passed schema validation; say so, like SupplyScope's "verified" footer. */}
+      {/* Every stored result passed schema validation, edits included; say so, like SupplyScope's "verified" footer. */}
       <div className="flex items-center gap-2 bg-success px-6 py-3 text-sm font-medium text-white">
         <ShieldCheck className="size-4" aria-hidden />
         Validated against the label schema
@@ -96,30 +151,46 @@ export function CoreInformationCard({
   );
 }
 
-function Field({ label, confidence, children }: { label: string; confidence?: FieldConfidence; children: ReactNode }) {
-  return (
-    <div className="grid grid-cols-[auto_8rem_1fr_auto] items-baseline gap-x-2.5">
-      <span aria-hidden className={cn('size-2 translate-y-[-1px] rounded-full', confidenceDotClass(confidence?.score ?? null))} />
-      <dt className="text-sm font-medium">{label}</dt>
-      <dd className="min-w-0 text-sm">
-        {children}
-        {confidence && <Reasons confidence={confidence} />}
-      </dd>
-      {confidence ? <ConfidenceScore score={confidence.score} /> : <span />}
-    </div>
-  );
-}
+/**
+ * Editing one field at a time, and confirming fields as right. Saves name the revision on screen,
+ * so if someone else saved first nothing is overwritten: the editor closes and their version shows.
+ */
+function useFieldReview(upload: UploadDetail) {
+  const mutation = useEditResult(upload.id);
+  const [editing, setEditing] = useState<ConfidenceField | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-/** Why a field's score isn't higher: the model's own reason, and any check it failed. */
-function Reasons({ confidence, className }: { confidence: FieldConfidence; className?: string }) {
-  if (confidence.reasons.length === 0) return null;
-  return (
-    <ul className={cn('mt-1 grid gap-0.5 text-xs text-muted-foreground', className)}>
-      {confidence.reasons.map((reason) => (
-        <li key={reason}>{reason}</li>
-      ))}
-    </ul>
-  );
+  const send = async (request: { changes?: ResultChanges; checked?: ConfidenceField[] }) => {
+    setError(null);
+    try {
+      await mutation.mutateAsync({ revision: upload.revision, ...request });
+      setEditing(null);
+    } catch (failure) {
+      if (failure instanceof ApiRequestError && failure.code === 'EDIT_CONFLICT') {
+        setEditing(null);
+        toast.error('Someone else just changed this upload', { description: 'Showing their version. Make your change again if it still applies.' });
+      } else if (request.changes) {
+        setError(errorMessage(failure)); // shown in the editor, which stays open
+      } else {
+        toast.error("Couldn't mark it as checked", { description: errorMessage(failure) });
+      }
+    }
+  };
+
+  return {
+    editing,
+    edit: (field: ConfidenceField) => {
+      setError(null);
+      setEditing(field);
+    },
+    check: (field: ConfidenceField) => void send({ checked: [field] }),
+    editorProps: {
+      onSave: (changes: ResultChanges) => void send({ changes }),
+      onCancel: () => setEditing(null),
+      saving: mutation.isPending,
+      error,
+    },
+  };
 }
 
 /**

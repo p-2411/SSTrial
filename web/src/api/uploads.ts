@@ -1,4 +1,6 @@
+import { RESULT_EDIT_PATH } from '@label-extractor/shared';
 import type {
+  EditResultRequest,
   OpsStatusResponse,
   CreateUploadRequest,
   CreateUploadResponse,
@@ -38,6 +40,11 @@ export function createUpload(request: CreateUploadRequest): Promise<CreateUpload
 
 export async function completeUpload(id: string): Promise<UploadDetail> {
   return (await apiRequest<UploadResponse>(`/api/uploads/${encodeURIComponent(id)}/complete`, { method: 'POST' })).upload;
+}
+
+/** Saves a person's corrections to an upload's data, or confirms fields as right (see EditResultRequest). */
+export async function editResult(id: string, request: EditResultRequest): Promise<UploadDetail> {
+  return (await apiRequest<UploadResponse>(RESULT_EDIT_PATH(id), { method: 'PATCH', body: request })).upload;
 }
 
 export async function retryUpload(id: string): Promise<UploadDetail> {

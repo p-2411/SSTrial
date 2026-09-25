@@ -4,7 +4,7 @@ import { Link, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UploadDetail } from '@label-extractor/shared';
 import { jsonResponse, renderWithProviders } from '@/test/render';
-import { summary } from '@/test/fixtures';
+import { detail } from '@/test/fixtures';
 import { UploadDetailPanel } from './UploadDetailPanel.tsx';
 
 /** Uploads the fake API can return, by ID. "nameless" is a read label with no product name on it. */
@@ -15,11 +15,12 @@ const uploads: Record<string, UploadDetail> = Object.fromEntries(
     ['nameless', 'back-of-pack.png', null],
   ].map(([id, fileName, productName]) => [
     id,
-    {
-      ...summary({ id: id!, fileName: fileName!, productName }),
-      result: { productName, brand: null, ingredients: [], allergens: [], netWeight: null },
-      fileUrl: null,
-    },
+    detail({
+      id: id!,
+      fileName: fileName!,
+      productName,
+      result: { productName: productName ?? null, brand: null, ingredients: [], allergens: [], netWeight: null },
+    }),
   ]),
 );
 

@@ -100,7 +100,7 @@ function Detail({ upload }: { upload: UploadDetail }) {
       <StatusNotice upload={upload} />
 
       {/* Extracted data first, then the source document to check it against, then the raw JSON. */}
-      {upload.result && <CoreInformationCard result={upload.result} confidence={upload.fieldConfidence} />}
+      {upload.result && <CoreInformationCard upload={{ ...upload, result: upload.result }} />}
       {/* Keyed by id so switching uploads resets the remembered preview URL. */}
       <SourceDocumentCard key={upload.id} upload={upload} />
       {upload.result && <JsonDisclosure data={upload.result} fileName={upload.fileName} />}

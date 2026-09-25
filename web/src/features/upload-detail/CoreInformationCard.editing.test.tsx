@@ -1,0 +1,173 @@
+import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { EditResultRequest, ExtractionConfidence, LabelExtraction, UploadDetail } from '@label-extractor/shared';
+import { detail } from '@/test/fixtures';
+import { jsonResponse, renderWithProviders } from '@/test/render';
+import { CoreInformationCard } from './CoreInformationCard';
+
+const RESULT: LabelExtraction = {
+  productName: 'Maple Pecan Crunch',
+  brand: 'Harvest & Hearth',
+  ingredients: [
+    { name: 'Rolled oats', percent: 48, subIngredients: [], allergens: ['oats'] },
+    { name: 'Puffed rice', percent: null, subIngredients: ['rice', 'salt'], allergens: [] },
+  ],
+  allergens: ['oats'],
+  netWeight: { value: 500, unit: 'g', text: 'Net Wt 500 g' },
+};
+
+const CONFIDENCE: ExtractionConfidence = {
+  productName: { score: 97, reasons: [] },
+  brand: { score: 95, reasons: [] },
+  netWeight: { score: 58, reasons: ['Partly hidden by a fold.'] },
+  allergens: { score: 90, reasons: [] },
+  ingredients: { score: 92, reasons: [] },
+};
+
+type Upload = UploadDetail & { result: LabelExtraction };
+const upload = (overrides: Partial<UploadDetail> = {}): Upload =>
+  ({ ...detail({ id: 'u1', status: 'completed', fieldConfidence: CONFIDENCE, ...overrides }), result: RESULT }) as Upload;
+
+/** What the server answers to PATCH …/result: by default, the upload with the changes applied. */
+let answer: (request: EditResultRequest) => Response;
+const sent: EditResultRequest[] = [];
+
+beforeEach(() => {
+  sent.length = 0;
+  answer = (request) =>
+    jsonResponse({ upload: upload({ result: { ...RESULT, ...request.changes } as LabelExtraction, revision: 1 } as Partial<UploadDetail>) });
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'PATCH') {
+        const request = JSON.parse(String(init.body)) as EditResultRequest;
+        sent.push(request);
+        return answer(request);
+      }
+      return jsonResponse({ uploads: [], nextCursor: null, counts: {} });
+    }),
+  );
+});
+afterEach(() => vi.unstubAllGlobals());
+
+function renderCard(value: Upload = upload()) {
+  renderWithProviders(<CoreInformationCard upload={value} />);
+  return screen.getByRole('region', { name: 'Core information' });
+}
+
+describe('editing extracted data', () => {
+  it('edits a field in place and saves it against the revision it was made on', async () => {
+    renderCard(upload({ revision: 3 }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit brand' }));
+    const input = screen.getByRole('textbox', { name: 'Brand' });
+    await userEvent.clear(input);
+    await userEvent.type(input, 'Hearth & Co');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(sent).toEqual([{ revision: 3, changes: { brand: 'Hearth & Co' } }]);
+    expect(await screen.findByRole('button', { name: 'Edit brand' })).toBeInTheDocument(); // editor closed
+  });
+
+  it('saves an empty value as "not on the label"', async () => {
+    renderCard();
+    await userEvent.click(screen.getByRole('button', { name: 'Edit product name' }));
+    await userEvent.clear(screen.getByRole('textbox', { name: 'Product name' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(sent).toEqual([{ revision: 0, changes: { productName: null } }]);
+  });
+
+  it('cancels with Escape, sending nothing', async () => {
+    renderCard();
+    await userEvent.click(screen.getByRole('button', { name: 'Edit brand' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Brand' }), ' Ltd{Escape}');
+
+    expect(screen.queryByRole('textbox', { name: 'Brand' })).not.toBeInTheDocument();
+    expect(screen.getByText('Harvest & Hearth')).toBeInTheDocument();
+    expect(sent).toEqual([]);
+  });
+
+  it('keeps the editor open with the reason when a value is refused', async () => {
+    answer = () => jsonResponse({ error: { code: 'INVALID_EDIT', message: "Brand isn't valid: too long." } }, 422);
+    renderCard();
+    await userEvent.click(screen.getByRole('button', { name: 'Edit brand' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Brand' }), 'x');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText("Brand isn't valid: too long.")).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Brand' })).toBeInTheDocument();
+  });
+
+  it('edits the net weight as an amount and a unit', async () => {
+    renderCard();
+    await userEvent.click(screen.getByRole('button', { name: 'Edit net weight' }));
+    const amount = screen.getByRole('spinbutton', { name: 'Amount' });
+    await userEvent.clear(amount);
+    await userEvent.type(amount, '1.5');
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Unit' }), 'kg');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(sent).toEqual([{ revision: 0, changes: { netWeight: { value: 1.5, unit: 'kg' } } }]);
+  });
+
+  it('removes and adds allergens', async () => {
+    renderCard();
+    await userEvent.click(screen.getByRole('button', { name: 'Edit allergens' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Remove oats' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Add allergen' }), 'Milk{Enter}');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(sent).toEqual([{ revision: 0, changes: { allergens: ['milk'] } }]);
+  });
+
+  it('edits ingredients row by row, keeping what it can’t edit', async () => {
+    renderCard();
+    await userEvent.click(screen.getByRole('button', { name: 'Edit ingredients' }));
+    const firstName = screen.getByRole('textbox', { name: 'Ingredient 1' });
+    await userEvent.clear(firstName);
+    await userEvent.type(firstName, 'Oat flakes');
+    await userEvent.click(screen.getByRole('button', { name: 'Add ingredient' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Ingredient 3' }), 'Sea salt');
+    await userEvent.type(screen.getByRole('spinbutton', { name: 'Ingredient 3 percentage' }), '1');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(sent[0]!.changes!.ingredients).toEqual([
+      { name: 'Oat flakes', percent: 48, subIngredients: [], allergens: ['oats'] },
+      { name: 'Puffed rice', percent: null, subIngredients: ['rice', 'salt'], allergens: [] },
+      { name: 'Sea salt', percent: 1, subIngredients: [], allergens: [] },
+    ]);
+  });
+});
+
+describe('reviewing', () => {
+  it('offers to mark a doubtful field as checked, and only that one', async () => {
+    renderCard();
+    const buttons = screen.getAllByRole('button', { name: /Mark .* as checked/ });
+    expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['Mark net weight as checked']);
+
+    await userEvent.click(buttons[0]!);
+    expect(sent).toEqual([{ revision: 0, checked: ['netWeight'] }]);
+  });
+
+  it('shows who reviewed a field in place of its score', () => {
+    const card = renderCard(
+      upload({ fieldReviews: { netWeight: { kind: 'checked', by: 'alice@example.com', at: new Date().toISOString() } } }),
+    );
+    expect(within(card).getByText(/Checked by alice@example\.com/)).toBeInTheDocument();
+    expect(within(card).queryByText(/Confidence 58/)).not.toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: 'Mark net weight as checked' })).not.toBeInTheDocument();
+  });
+
+  it('closes the editor when someone else saved first, so their version shows', async () => {
+    answer = () => jsonResponse({ error: { code: 'EDIT_CONFLICT', message: 'Someone else just changed this upload.' } }, 409);
+    renderCard();
+    await userEvent.click(screen.getByRole('button', { name: 'Edit brand' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Brand' }), 'x');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByRole('button', { name: 'Edit brand' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Brand' })).not.toBeInTheDocument();
+  });
+});

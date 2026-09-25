@@ -1,6 +1,8 @@
-import { render, screen, within } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { ExtractionConfidence, LabelExtraction } from '@label-extractor/shared';
+import { detail } from '@/test/fixtures';
+import { renderWithProviders } from '@/test/render';
 import { CoreInformationCard } from './CoreInformationCard';
 
 const full: LabelExtraction = {
@@ -18,7 +20,7 @@ const full: LabelExtraction = {
 const empty: LabelExtraction = { productName: null, brand: null, ingredients: [], allergens: [], netWeight: null };
 
 function renderCard(result: LabelExtraction, confidence: ExtractionConfidence | null = null) {
-  render(<CoreInformationCard result={result} confidence={confidence} />);
+  renderWithProviders(<CoreInformationCard upload={{ ...detail({ fieldConfidence: confidence }), result }} />);
   return screen.getByRole('region', { name: 'Core information' });
 }
 
