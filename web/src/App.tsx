@@ -4,21 +4,21 @@ import { Separator } from '@/components/ui/separator';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { Dropzone } from '@/features/upload/Dropzone';
 import { useFileUploads } from '@/features/upload/useFileUploads';
-import { UploadDetailSheet } from '@/features/upload-detail/UploadDetailSheet';
+import { UploadDetailPanel } from '@/features/upload-detail/UploadDetailPanel';
 import { UploadList } from '@/features/uploads-list/UploadList';
 
 /**
  * Routes:
  *   /             upload + list
- *   /uploads/:id  the same page, with that upload's details open in a panel over it
+ *   /uploads/:id  the same page, with that upload's details in a panel beside the list
  * Both accept ?status=… to filter the list (see statusFilters.ts). Desktop layout only.
  */
 export const router = createBrowserRouter([
   {
     path: '/',
     element: <Workspace />,
-    // Renders nothing itself: the route only has to match. UploadDetailSheet (always mounted, so it
-    // can animate closed) reads it and opens itself.
+    // Renders nothing itself: the route only has to match. UploadDetailPanel (always mounted, so it
+    // can animate open and closed) reads it.
     children: [{ path: 'uploads/:id', element: null }],
   },
   { path: '*', element: <NotFoundPage /> },
@@ -31,13 +31,19 @@ function Workspace() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset className="bg-background">
+      {/* Full-height shell: the list and the detail panel scroll independently. */}
+      <SidebarInset className="h-svh overflow-hidden bg-background">
         <TopBar />
-        <main className="mx-auto grid w-full max-w-4xl content-start gap-4 p-6">
-          <Dropzone onFiles={addFiles} />
-          <UploadList pending={pending} onRetryPending={retry} onDismissPending={dismiss} />
-        </main>
-        <UploadDetailSheet />
+        {/* @container: the detail panel sizes itself as a share of this row's width. */}
+        <div className="@container flex min-h-0 flex-1">
+          <main className="min-w-0 flex-1 overflow-y-auto">
+            <div className="mx-auto grid max-w-4xl content-start gap-4 p-6">
+              <Dropzone onFiles={addFiles} />
+              <UploadList pending={pending} onRetryPending={retry} onDismissPending={dismiss} />
+            </div>
+          </main>
+          <UploadDetailPanel />
+        </div>
       </SidebarInset>
     </SidebarProvider>
   );
@@ -45,7 +51,7 @@ function Workspace() {
 
 function TopBar() {
   return (
-    <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b bg-card px-6">
+    <header className="flex h-14 shrink-0 items-center gap-3 border-b bg-card px-6">
       <SidebarTrigger className="-ml-1" />
       <Separator orientation="vertical" className="data-vertical:h-5 data-vertical:self-center" />
       <h1 className="text-base font-semibold">Label extraction</h1>
