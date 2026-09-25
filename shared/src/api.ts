@@ -39,6 +39,8 @@ export type ApiErrorCode =
   | 'FILE_NOT_UPLOADED' // POST …/complete: nothing arrived in storage
   | 'FILE_CONTENT_MISMATCH' // POST …/complete: the bytes aren't a supported type
   | 'NOT_RETRYABLE' // POST …/retry
+  | 'UNAUTHENTICATED' // no valid sign-in
+  | 'FORBIDDEN' // signed in, but not allowed (no access, or not an admin)
   | 'BAD_REQUEST'
   | 'NOT_FOUND'
   | 'STORAGE_UNAVAILABLE'

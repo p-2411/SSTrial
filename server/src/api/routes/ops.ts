@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { HealthReport, OpsStatusResponse } from '@label-extractor/shared';
 import { healthStatusCode } from '../../ops/health.ts';
+import { requireRole } from '../auth.ts';
 import { toOpsStatus } from '../../ops/presenter.ts';
 import type { OpsStore } from '../../ops/store.ts';
 
@@ -18,7 +19,7 @@ export async function opsRoutes(app: FastifyInstance, { health, ops }: OpsRoutes
     return report;
   });
 
-  app.get('/api/ops', async (): Promise<OpsStatusResponse> => {
+  app.get('/api/ops', { preHandler: requireRole('admin') }, async (): Promise<OpsStatusResponse> => {
     const [report, snapshot] = await Promise.all([health(), ops.snapshot()]);
     return toOpsStatus(snapshot, report);
   });

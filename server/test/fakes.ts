@@ -10,8 +10,11 @@ import {
   type SupportedMimeType,
   type LiveChange,
   type UploadErrorCode,
+  type CurrentMember,
+  type PublicConfig,
 } from '@label-extractor/shared';
 import type { AppDeps } from '../src/api/app.ts';
+import type { Authenticator } from '../src/auth/authenticator.ts';
 import { ExtractionError } from '../src/extraction/errors.ts';
 import type { RateLimiter } from '../src/extraction/rate-limiter.ts';
 import type { ChangeFeed } from '../src/infra/change-feed.ts';
@@ -301,6 +304,13 @@ export const FILE_BYTES = {
   text: new TextEncoder().encode('Just some text pretending to be an image.'),
 };
 
+export const ADMIN: CurrentMember = { id: '00000000-0000-4000-8000-00000000ad01', email: 'admin@example.com', role: 'admin' };
+export const MEMBER: CurrentMember = { id: '00000000-0000-4000-8000-00000000be01', email: 'member@example.com', role: 'member' };
+export const TEST_PUBLIC_CONFIG: PublicConfig = { supabaseUrl: 'http://supabase.test', supabasePublishableKey: 'sb_publishable_test' };
+
+/** Every request is the admin, so tests about other things don't have to sign in. */
+const signedInAsAdmin: Authenticator = { authenticate: async () => ({ outcome: 'signed-in', member: ADMIN }) };
+
 export const HEALTHY: HealthReport = { status: 'ok', checks: { database: { status: 'ok', latencyMs: 1 } } };
 
 /** Canned monitoring data for the /api/ops route: a fresh install with nothing processed yet. */
@@ -321,6 +331,8 @@ export function testAppDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     ops: { snapshot: async () => EMPTY_OPS_SNAPSHOT },
     events: new InMemoryEventStore(),
     logger: silentLogger,
+    authenticator: signedInAsAdmin,
+    publicConfig: TEST_PUBLIC_CONFIG,
     ...overrides,
   };
 }

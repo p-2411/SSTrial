@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { listLogsQuerySchema, LOG_EVENT_TYPE_IDS, LOG_EVENTS_PATH, type ListLogsResponse } from '@label-extractor/shared';
 import { toLogEvent } from '../../logs/presenter.ts';
 import type { EventQueries } from '../../logs/store.ts';
+import { requireRole } from '../auth.ts';
 import { ApiError } from '../errors.ts';
 
 export interface LogRoutesDeps {
@@ -10,7 +11,7 @@ export interface LogRoutesDeps {
 
 /** GET /api/logs — the activity log, newest first, filtered and paginated like the upload list. */
 export async function logRoutes(app: FastifyInstance, { events }: LogRoutesDeps) {
-  app.get(LOG_EVENTS_PATH, async (request): Promise<ListLogsResponse> => {
+  app.get(LOG_EVENTS_PATH, { preHandler: requireRole('admin') }, async (request): Promise<ListLogsResponse> => {
     const query = listLogsQuerySchema.safeParse(request.query);
     if (!query.success) {
       throw new ApiError(

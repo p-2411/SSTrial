@@ -1,12 +1,15 @@
 import path from 'node:path';
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
+import type { Authenticator } from '../auth/authenticator.ts';
 import type { Logger } from '../infra/logger.ts';
+import { requireSignIn } from './auth.ts';
 import { handleError, notFound } from './errors.ts';
 import { eventRoutes, type EventRoutesDeps } from './routes/events.ts';
 import { exportRoutes, type ExportRoutesDeps } from './routes/exports.ts';
 import { logRoutes, type LogRoutesDeps } from './routes/logs.ts';
 import { opsRoutes, type OpsRoutesDeps } from './routes/ops.ts';
+import { sessionRoutes, type SessionRoutesDeps } from './routes/session.ts';
 import { uploadRoutes, type UploadRoutesDeps } from './routes/uploads.ts';
 
 /** What every route needs, together. Each route module declares only the slice it uses. */
@@ -14,8 +17,11 @@ export type AppDeps = UploadRoutesDeps &
   ExportRoutesDeps &
   EventRoutesDeps &
   LogRoutesDeps &
-  OpsRoutesDeps & {
+  OpsRoutesDeps &
+  SessionRoutesDeps & {
     logger: Logger;
+    /** Who each /api request is from (see api/auth.ts). */
+    authenticator: Authenticator;
     /** Built web app to serve alongside the API (production). Omit in development: Vite serves it. */
     webDistDir?: string;
   };
@@ -32,7 +38,11 @@ export async function buildApp(deps: AppDeps) {
   });
 
   app.setErrorHandler(handleError);
+  // Before any route is registered, so every route is behind it (public paths: see api/auth.ts).
+  app.decorateRequest('member', null);
+  app.addHook('onRequest', requireSignIn(deps.authenticator));
 
+  await app.register(sessionRoutes, deps);
   await app.register(opsRoutes, deps);
   await app.register(uploadRoutes, deps);
   await app.register(exportRoutes, deps);

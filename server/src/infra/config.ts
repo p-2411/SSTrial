@@ -31,6 +31,8 @@ const apiSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   /** Directory of the built web app (web/dist). When set, the API also serves the UI. */
   WEB_DIST_DIR: z.string().optional(),
+  /** Supabase's publishable key: public (browsers get it from GET /api/config). Used to verify sign-ins. */
+  SUPABASE_PUBLISHABLE_KEY: z.string().min(1),
 });
 
 const workerSchema = z.object({

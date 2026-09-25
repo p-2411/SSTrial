@@ -4,6 +4,9 @@
  * Handles browser requests only. It never calls the LLM: it records uploads and puts jobs on the
  * queue, and the separate worker process does the slow work.
  */
+import { createAuthenticator } from '../auth/authenticator.ts';
+import { createMemberStore } from '../auth/members.ts';
+import { createSupabaseTokenVerifier } from '../auth/supabase-tokens.ts';
 import { loadApiConfig } from '../infra/config.ts';
 import { listenForChanges } from '../infra/change-feed.ts';
 import { createDb } from '../infra/db.ts';
@@ -28,9 +31,17 @@ await syncBucketSettings({ url: config.SUPABASE_URL, secretKey: config.SUPABASE_
 const boss = await startQueue({ connectionString: config.DATABASE_URL, role: 'api', logger });
 await createUploadQueues(boss);
 const events = createEventStore(sql, { source: 'api', logger });
+const members = createMemberStore(sql);
+const authenticator = createAuthenticator({
+  verifyAccessToken: createSupabaseTokenVerifier({ url: config.SUPABASE_URL, publishableKey: config.SUPABASE_PUBLISHABLE_KEY }),
+  members,
+});
 
 const app = await buildApp({
   logger,
+  authenticator,
+  // Browsers reach Supabase at the public URL where it differs (Docker); see config.ts.
+  publicConfig: { supabaseUrl: config.SUPABASE_PUBLIC_URL ?? config.SUPABASE_URL, supabasePublishableKey: config.SUPABASE_PUBLISHABLE_KEY },
   events,
   changes: await listenForChanges(sql, logger),
   health: () => runHealthChecks([databaseCheck(sql), queueCheck(boss)]),
