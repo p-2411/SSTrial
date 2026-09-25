@@ -32,16 +32,18 @@ flowchart LR
   W -- extract --> LLM
 ```
 
-| Piece | What runs it |
-|---|---|
-| **Web app** | Static files built by Vite. Served by the API process in production, or by the Vite dev server in development. |
-| **API** | Node process (`server/src/api/main.ts`). Stateless; scale by adding instances. Never calls the LLM. |
-| **Worker** | A separate Node process (`server/src/worker/main.ts`), same image with a different command. Scale by adding processes; each handles `WORKER_CONCURRENCY` jobs at once. |
-| **Queue** | [pg-boss](https://github.com/timgit/pg-boss) tables in the `pgboss` schema of the same Supabase Postgres database. |
-| **Database** | Supabase Postgres, with the `uploads` table as the source of truth for status and results. |
-| **File storage** | Supabase Storage, in a private bucket. Browsers upload with short-lived signed URLs; size and type limits are enforced by the bucket. |
+**Live:** https://api-production-4ec2.up.railway.app
 
-**Deployment status:** not deployed yet. The plan is hosted Supabase for Postgres and Storage, plus any container host running the image twice: the API service (public, port 3000) and a worker service (no port, `node server/src/worker/main.ts`). Apply the migration with `supabase link && supabase db push`, then set the variables from `server/.env.example`. `DATABASE_URL` should be the **session pooler** URL, because the direct connection is IPv6-only on Supabase's free tier.
+| Piece | What runs it | In production |
+|---|---|---|
+| **Web app** | Static files built by Vite. Served by the API process in production, or by the Vite dev server in development. | Railway `api` service |
+| **API** | Node process (`server/src/api/main.ts`). Stateless; scale by adding instances. Never calls the LLM. | Railway `api` service (Singapore), public domain above, `APP_PROCESS=api` |
+| **Worker** | A separate Node process (`server/src/worker/main.ts`), same image with `APP_PROCESS=worker`. Scale by adding replicas; each handles `WORKER_CONCURRENCY` jobs at once. | Railway `worker` service (Singapore), no public port |
+| **Queue** | [pg-boss](https://github.com/timgit/pg-boss) tables in the `pgboss` schema of the same Postgres database. | Supabase Postgres (ap-southeast-1) |
+| **Database** | Postgres, with the `uploads` table as the source of truth for status and results. | Supabase Postgres (ap-southeast-1), via the session pooler |
+| **File storage** | A private bucket. Browsers upload with short-lived signed URLs; size and type limits are enforced by the bucket. | Supabase Storage (ap-southeast-1) |
+
+**Deploying changes:** `railway up --service api` and `railway up --service worker` build the Dockerfile and roll out each service. Schema changes go through `supabase db push`. Variables are listed in `server/.env.example`. `DATABASE_URL` is the **session pooler** URL, because the direct connection is IPv6-only on Supabase's free tier, and `DATABASE_POOL_MAX=2` keeps both services inside the free tier's connection limit.
 
 ### Upload lifecycle
 
@@ -127,4 +129,4 @@ Deliberately left out to stay within the time box. The reasoning is in [DECISION
 - **Clean-up of abandoned uploads** and of files rejected on content.
 - **Push updates** (polling instead), **pagination** (list capped at 100) and **a shared rate limiter** across workers.
 - **HEIC conversion** and a **PDF page-count limit**.
-- **Deployment.** The image and the plan above are ready, but it needs Supabase and hosting accounts.
+- **CI/CD.** Deploys are run by hand with `railway up`. Next steps would be tests on every push and Railway deploying from GitHub.
