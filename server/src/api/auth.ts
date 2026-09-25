@@ -17,11 +17,15 @@ const PUBLIC_API_PATHS = new Set(['/api/health', CONFIG_PATH]);
  * An `onRequest` hook: every /api request must come from a signed-in member, checked before any
  * route runs, and `request.member` says who. Paths outside /api (the web app's own files) stay
  * public, so the sign-in page can load.
+ *
+ * It checks the route the router matched, never the URL as written: the router decodes the path
+ * first, so `/%61pi/uploads` reaches the /api/uploads handler, and a check on the raw text would
+ * let it through. A request that matched no route gets a 404 and never reaches a handler.
  */
 export function requireSignIn(authenticator: Authenticator) {
   return async (request: FastifyRequest) => {
-    const path = request.url.split('?', 1)[0]!;
-    if (!path.startsWith('/api/') || PUBLIC_API_PATHS.has(path)) return;
+    const route = request.routeOptions.url;
+    if (route === undefined || !route.startsWith('/api/') || PUBLIC_API_PATHS.has(route)) return;
 
     const result = await authenticator.authenticate(request.headers.authorization);
     if (result.outcome === 'signed-out') throw new ApiError(401, 'UNAUTHENTICATED', 'Please sign in.');

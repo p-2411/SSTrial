@@ -28,6 +28,12 @@ describe('signing in', () => {
     }
   });
 
+  it('cannot be skipped by spelling the path differently (the router decodes it; the check must too)', async () => {
+    for (const url of ['/%61pi/uploads', '/a%70i/uploads/counts', '/%61pi/exports/uploads.csv', '/%61pi/me']) {
+      expect((await get(url)).statusCode, url).toBe(401);
+    }
+  });
+
   it('refuses a valid sign-in that has no access', async () => {
     const response = await get('/api/uploads', 'stranger-token');
     expect(response.statusCode).toBe(403);
