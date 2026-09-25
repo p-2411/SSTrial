@@ -4,9 +4,13 @@ import type { LabelExtraction } from '@label-extractor/shared';
 import { CoreInformationCard } from './ExtractionCards';
 
 const full: LabelExtraction = {
-  productName: 'Barista Oat Milk',
-  brand: 'Meadow & Mill',
-  ingredients: ['Water', 'oats (10%)', 'sea salt'],
+  productName: 'Maple Pecan Crunch',
+  brand: 'Harvest & Hearth',
+  ingredients: [
+    { name: 'Rolled oats', percent: 48, subIngredients: [], allergens: ['oats', 'gluten'] },
+    { name: 'Maple syrup', percent: 12, subIngredients: [], allergens: [] },
+    { name: 'Puffed rice', percent: null, subIngredients: ['rice', 'salt'], allergens: [] },
+  ],
   allergens: ['oats', 'gluten'],
   netWeight: { value: 1, unit: 'l', text: '1 L' },
 };
@@ -22,11 +26,28 @@ describe('CoreInformationCard', () => {
   it('shows every extracted field in one card, and that the data was validated', () => {
     const card = renderCard(full);
 
-    expect(within(card).getByText('Barista Oat Milk')).toBeInTheDocument();
-    expect(within(card).getByText('Meadow & Mill')).toBeInTheDocument();
+    expect(within(card).getByText('Maple Pecan Crunch')).toBeInTheDocument();
+    expect(within(card).getByText('Harvest & Hearth')).toBeInTheDocument();
     expect(within(card).getByText('Contains oats, gluten.')).toBeInTheDocument();
-    expect(within(card).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Water', 'oats (10%)', 'sea salt']);
     expect(within(card).getByText('Validated against the label schema')).toBeInTheDocument();
+  });
+
+  it('lists ingredients in label order with percentages and sub-ingredients', () => {
+    const card = renderCard(full);
+    const items = within(within(card).getByRole('region', { name: /Ingredients/ })).getAllByRole('listitem');
+
+    expect(items).toHaveLength(3);
+    expect(items[0]).toHaveTextContent('Rolled oats');
+    expect(items[0]).toHaveTextContent('48%');
+    expect(items[2]).toHaveTextContent('Puffed rice');
+    expect(items[2]).toHaveTextContent('rice, salt');
+  });
+
+  it('marks ingredients that contain a declared allergen', () => {
+    renderCard(full);
+
+    expect(screen.getByText('(contains oats, gluten)')).toBeInTheDocument();
+    expect(screen.getByText('Highlighted ingredients contain a declared allergen.')).toBeInTheDocument();
   });
 
   it('labels liquids as volume, writes litres as L, and skips a redundant "printed as"', () => {
@@ -50,5 +71,6 @@ describe('CoreInformationCard', () => {
     expect(screen.getAllByText('Not found on label')).toHaveLength(3);
     expect(screen.getByText('None declared on label')).toBeInTheDocument();
     expect(screen.getByText('No ingredient list found on label')).toBeInTheDocument();
+    expect(screen.queryByText(/Highlighted ingredients/)).not.toBeInTheDocument();
   });
 });

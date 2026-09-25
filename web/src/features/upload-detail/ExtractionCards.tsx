@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { ShieldCheck, Sparkles } from 'lucide-react';
-import type { LabelExtraction, NetQuantity, NetQuantityUnit } from '@label-extractor/shared';
+import type { Ingredient, LabelExtraction, NetQuantity, NetQuantityUnit } from '@label-extractor/shared';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 
 /**
  * Everything extracted from the label in one card, laid out after SupplyScope's compliance
@@ -60,19 +61,23 @@ export function CoreInformationCard({ result }: { result: LabelExtraction }) {
               <Missing>None declared on label</Missing>
             )}
           </Field>
-          <Field label="Ingredients">
-            {ingredients.length > 0 ? (
-              // Written as a comma-separated run, the way labels print it, but each item stays addressable.
-              <ul className="leading-relaxed [&>li]:inline [&>li:last-child]:after:content-['.'] [&>li:not(:last-child)]:after:content-[',_']">
-                {ingredients.map((ingredient, index) => (
-                  <li key={`${index}-${ingredient}`}>{ingredient}</li>
-                ))}
-              </ul>
-            ) : (
-              <Missing>No ingredient list found on label</Missing>
-            )}
-          </Field>
         </dl>
+
+        {/* Ingredients get the full card width: they're the longest and most-checked part of a label. */}
+        <section aria-labelledby="ingredients-heading" className="mt-4 border-t pt-4">
+          <h3 id="ingredients-heading" className="flex items-center gap-2.5 text-sm font-medium">
+            <span aria-hidden className="size-2 rounded-full bg-success" />
+            Ingredients
+            {ingredients.length > 0 && <span className="font-normal text-muted-foreground">({ingredients.length})</span>}
+          </h3>
+          {ingredients.length > 0 ? (
+            <IngredientList ingredients={ingredients} />
+          ) : (
+            <p className="mt-2 pl-[18px] text-sm">
+              <Missing>No ingredient list found on label</Missing>
+            </p>
+          )}
+        </section>
       </CardContent>
 
       {/* Every stored result passed schema validation; say so, like SupplyScope's "verified" footer. */}
@@ -91,6 +96,45 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       <dt className="text-sm font-medium">{label}</dt>
       <dd className="min-w-0 text-sm">{children}</dd>
     </div>
+  );
+}
+
+/**
+ * Numbered in label order (heaviest first), with the printed percentage in its own column,
+ * sub-ingredients under their parent, and allergen-bearing ingredients tinted yellow.
+ */
+function IngredientList({ ingredients }: { ingredients: Ingredient[] }) {
+  const anyAllergens = ingredients.some((ingredient) => ingredient.allergens.length > 0);
+  return (
+    <>
+      <ol className="mt-2 grid gap-1 pl-[18px]">
+        {ingredients.map((ingredient, index) => (
+          <li key={ingredient.name} className="grid grid-cols-[1.75rem_minmax(0,1fr)_3.5rem] items-baseline text-sm">
+            <span aria-hidden className="text-muted-foreground tabular-nums">
+              {index + 1}
+            </span>
+            <div className="min-w-0">
+              <span
+                className={cn(ingredient.allergens.length > 0 && '-mx-1.5 rounded bg-warning-soft px-1.5 py-0.5 text-warning')}
+                title={ingredient.allergens.length > 0 ? `Contains ${ingredient.allergens.join(', ')}` : undefined}
+              >
+                {ingredient.name}
+              </span>
+              {ingredient.allergens.length > 0 && (
+                <span className="sr-only"> (contains {ingredient.allergens.join(', ')})</span>
+              )}
+              {ingredient.subIngredients.length > 0 && (
+                <span className="block pl-3.5 text-xs text-muted-foreground">{ingredient.subIngredients.join(', ')}</span>
+              )}
+            </div>
+            <span className="text-right tabular-nums">{ingredient.percent !== null && `${ingredient.percent}%`}</span>
+          </li>
+        ))}
+      </ol>
+      {anyAllergens && (
+        <p className="mt-3 pl-[18px] text-xs text-muted-foreground">Highlighted ingredients contain a declared allergen.</p>
+      )}
+    </>
   );
 }
 

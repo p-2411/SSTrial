@@ -55,19 +55,70 @@ export const netQuantitySchema = z.object({
   text: z.string().transform(clean).pipe(z.string().min(1).max(MAX_TEXT_LENGTH)),
 });
 
-export const labelExtractionSchema = z.object({
-  productName: optionalText,
-  brand: optionalText,
-  /** In label order. Sub-ingredients stay inside their parent, e.g. "Chocolate (sugar, cocoa butter)". */
-  ingredients: textList,
-  /** Declared allergens ("Contains: …" statements and emphasised ingredients), normalised to lowercase. */
-  allergens: textList.transform((items) => items.map((item) => item.toLowerCase())),
-  /** Net weight or volume. `null` when the label doesn't state one. */
-  netWeight: netQuantitySchema.nullable(),
+/** A list of names compared case-insensitively (allergens): cleaned, deduplicated, lowercased. */
+const lowercaseList = textList.transform((items) => items.map((item) => item.toLowerCase()));
+
+/** One ingredient, split into the parts people check on a label. */
+export const ingredientSchema = z.object({
+  /** Name without emphasis capitals, percentage or bracketed parts, e.g. "Rolled oats". */
+  name: z.string().transform(clean).pipe(z.string().min(1).max(MAX_TEXT_LENGTH)),
+  /** Percentage printed for this ingredient, e.g. 48 for "(48%)"; `null` when none is printed. */
+  percent: z.number().min(0).max(100).nullable(),
+  /** Components listed in brackets after a compound ingredient, e.g. ["rice", "salt"]. */
+  subIngredients: textList,
+  /** Which of the declared allergens this ingredient contains, e.g. ["wheat", "gluten"]. */
+  allergens: lowercaseList,
 });
+
+/**
+ * Results stored before ingredients were structured hold plain strings ("Rolled OATS (48%)").
+ * They're still accepted, as an ingredient with just a name, so old uploads keep displaying.
+ */
+const legacyIngredient = z
+  .string()
+  .transform(clean)
+  .pipe(z.string().max(MAX_TEXT_LENGTH))
+  .transform((name): z.output<typeof ingredientSchema> => ({ name, percent: null, subIngredients: [], allergens: [] }));
+
+export const labelExtractionSchema = z
+  .object({
+    productName: optionalText,
+    brand: optionalText,
+    /** In label order, which by law is heaviest first. */
+    ingredients: z
+      .array(z.union([ingredientSchema, legacyIngredient]))
+      .max(MAX_LIST_ITEMS)
+      // Drop blanks and repeats (labels don't list an ingredient twice).
+      .transform((items) => {
+        const seen = new Set<string>();
+        return items.filter((item) => {
+          const key = item.name.toLowerCase();
+          if (item.name === '' || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      }),
+    /** Declared allergens ("Contains: …" statements and emphasised ingredients), normalised to lowercase. */
+    allergens: lowercaseList,
+    /** Net weight or volume. `null` when the label doesn't state one. */
+    netWeight: netQuantitySchema.nullable(),
+  })
+  // An ingredient can only "contain" an allergen the label actually declares; drop anything else
+  // rather than highlight an allergen the rest of the result doesn't mention.
+  .transform((extraction) => {
+    const declared = new Set(extraction.allergens);
+    return {
+      ...extraction,
+      ingredients: extraction.ingredients.map((ingredient) => ({
+        ...ingredient,
+        allergens: ingredient.allergens.filter((allergen) => declared.has(allergen)),
+      })),
+    };
+  });
 
 /** What we store and what the UI renders (post-normalisation). */
 export type LabelExtraction = z.output<typeof labelExtractionSchema>;
+export type Ingredient = z.output<typeof ingredientSchema>;
 export type NetQuantity = z.output<typeof netQuantitySchema>;
 
 /** True when the model found nothing at all — e.g. the image isn't a product label. */

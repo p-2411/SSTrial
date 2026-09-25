@@ -13,7 +13,11 @@ export const silentLogger = pino({ level: 'silent' });
 export const SAMPLE_EXTRACTION: LabelExtraction = {
   productName: 'Maple Pecan Crunch',
   brand: 'Harvest & Hearth',
-  ingredients: ['Rolled oats (48%)', 'Pecans (10%)'],
+  ingredients: [
+    { name: 'Rolled oats', percent: 48, subIngredients: [], allergens: ['oats'] },
+    { name: 'Pecans', percent: 10, subIngredients: [], allergens: ['pecans'] },
+    { name: 'Puffed rice', percent: null, subIngredients: ['rice', 'salt'], allergens: [] },
+  ],
   allergens: ['oats', 'pecans'],
   netWeight: { value: 500, unit: 'g', text: 'Net Wt 500 g' },
 };

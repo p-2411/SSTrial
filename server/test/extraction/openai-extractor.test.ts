@@ -17,7 +17,11 @@ const PDF: LabelFile = { bytes: new TextEncoder().encode('%PDF-1.7'), mimeType: 
 const VALID_OUTPUT = {
   productName: 'Maple Pecan Crunch',
   brand: 'Harvest & Hearth',
-  ingredients: ['Rolled oats (48%)', 'Pecans (10%)'],
+  ingredients: [
+    { name: 'Rolled oats', percent: 48, subIngredients: [], allergens: ['oats'] },
+    { name: 'Pecans', percent: 10, subIngredients: [], allergens: ['pecans'] },
+    { name: 'Puffed rice', percent: null, subIngredients: ['rice', 'salt'], allergens: [] },
+  ],
   allergens: ['Oats', 'Pecans'],
   netWeight: { value: 500, unit: 'g', text: 'Net Wt 500 g' },
 };

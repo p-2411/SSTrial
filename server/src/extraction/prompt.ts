@@ -30,11 +30,35 @@ const labelWireSchema = z.object({
     .describe('Product name as printed, without the brand, e.g. "Crunchy Peanut Butter". null if not shown.'),
   brand: z.string().nullable().describe('Brand or manufacturer name, e.g. "Sanitarium". null if not shown.'),
   ingredients: z
-    .array(z.string())
-    .describe(
-      'Each ingredient in label order, as printed. Keep sub-ingredients in parentheses with their parent, ' +
-        'e.g. "Chocolate (sugar, cocoa butter, milk solids)". Empty list if there is no ingredient list.',
-    ),
+    .array(
+      z.object({
+        name: z
+          .string()
+          .describe(
+            'The ingredient name in sentence case, without emphasis capitals, percentages or bracketed ' +
+              'parts, e.g. "Rolled oats" for "Rolled OATS (48%)".',
+          ),
+        percent: z
+          .number()
+          .nullable()
+          .describe('The percentage printed for this ingredient, e.g. 48 for "(48%)". null if none is printed.'),
+        subIngredients: z
+          .array(z.string())
+          .describe(
+            'For a compound ingredient, the components listed in its brackets, e.g. ["rice", "salt"] for ' +
+              '"Puffed rice (rice, salt)". Empty list otherwise.',
+          ),
+        allergens: z
+          .array(z.string())
+          .describe(
+            'Every declared allergen (from the "allergens" field, same spelling) that this ingredient is or ' +
+              'contains, including the ingredient itself when it is declared. Examples, if oats, pecans, wheat, ' +
+              'gluten and milk are declared: "Rolled oats" → ["oats", "gluten"], "Pecans" → ["pecans"], ' +
+              '"Wheat flakes" → ["wheat", "gluten"], "Milk powder" → ["milk"], "Sea salt" → []. Empty list if none.',
+          ),
+      }),
+    )
+    .describe('Each ingredient in label order (heaviest first). Empty list if there is no ingredient list.'),
   allergens: z
     .array(z.string())
     .describe(

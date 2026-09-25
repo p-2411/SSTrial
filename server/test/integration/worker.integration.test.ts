@@ -155,6 +155,20 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
     expect((await uploads.findById(id))?.attempts).toBe(1);
   }, 30_000);
 
+  it('reads results stored before ingredients were structured', async () => {
+    const id = crypto.randomUUID();
+    createdIds.push(id);
+    await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png` });
+    const legacy = { ...SAMPLE_EXTRACTION, ingredients: ['Rolled OATS (48%)', 'Salt'] };
+    await sql`update uploads set status = 'completed', result = ${sql.json(legacy as postgres.JSONValue)} where id = ${id}`;
+
+    const upload = await uploads.findById(id);
+    expect(upload?.result?.ingredients).toEqual([
+      { name: 'Rolled OATS (48%)', percent: null, subIngredients: [], allergens: [] },
+      { name: 'Salt', percent: null, subIngredients: [], allergens: [] },
+    ]);
+  });
+
   it('marks an upload failed via the dead-letter queue when every attempt hangs', async () => {
     const id = await queueUpload('hang');
 

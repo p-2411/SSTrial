@@ -5,6 +5,7 @@ import type {
   UploadErrorCode,
   UploadStatus,
 } from '@label-extractor/shared';
+import { labelExtractionSchema } from '@label-extractor/shared';
 import type { ExtractionQueue } from '../infra/queue.ts';
 
 /**
@@ -177,9 +178,20 @@ function toRecord(row: postgres.Row): UploadRecord {
     status: row.status,
     attempts: row.attempts,
     error: row.error_code ? { code: row.error_code, message: row.error_message } : null,
-    result: row.result ?? null,
+    result: readStoredResult(row.result),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     completedAt: row.completed_at ?? null,
   };
+}
+
+/**
+ * Stored results are read back through the extraction schema, which upgrades older shapes (such as
+ * ingredients saved as plain strings) to the current one. Anything unreadable is treated as absent
+ * rather than passed on half-formed.
+ */
+function readStoredResult(value: unknown): LabelExtraction | null {
+  if (value === null || value === undefined) return null;
+  const parsed = labelExtractionSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
