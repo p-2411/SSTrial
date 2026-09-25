@@ -39,6 +39,14 @@ The LLM sits behind a `LabelExtractor` interface. Every failure becomes an `Extr
 - **Bands, not decimals.** The UI works in three bands (85+ fine, 60–84 check, below 60 low), because the difference between 88 and 92 means nothing. An upload's score is its least certain field: one bad field is what makes a label need review, and an average would hide it.
 - **Advisory, so lenient.** The label data is validated strictly and retried if malformed; the scores aren't worth a retry. Missing or malformed scores are stored as "not scored", and uploads from before scoring existed simply show none. Scores live in their own column, apart from the result that's exported.
 
+## Reviewing and editing extracted data
+
+- **Edits are validated like model output.** A correction is merged into the result and the whole thing goes through the same schema the model's answer does, so edited data is held to the same rules (lengths, positive amounts, allergen links). Removing a declared allergen still drops the ingredients' links to it.
+- **Sub-ingredients and per-ingredient allergen links aren't editable.** Ingredients are edited as rows of name and percentage; everything else about a row is kept as extracted, and new rows start with none. That covers the corrections labels usually need without a nested editor.
+- **No lost updates.** Every save names the revision it was made against, and the update is guarded on it (`… where result_revision = $revision`). If someone saved first, nothing is written: the API answers 409 and the UI shows their version. It's a counter rather than `updated_at` because JavaScript dates drop Postgres's microseconds, so a timestamp comparison would never match.
+- **The model's output is kept.** On the first edit it's copied to `original_result`, and every save goes to the activity log with the before and after values. `result` is what people see and export.
+- **A reviewed field is settled.** Editing a field, or confirming it as right, records who and when, and the field stops counting towards the upload's confidence score: the "check this" flag is for fields nobody has looked at yet. Without "mark as checked", a correct but low-scoring field would stay flagged for ever.
+
 ## 50,000 uploads at once
 
 1. **Ingest.** Bytes never pass through our servers; storage absorbs them. The API does two small JSON requests per file and is stateless, so it scales horizontally. At that volume I'd add a batch endpoint that signs many URLs per request.

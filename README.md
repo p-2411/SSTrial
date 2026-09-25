@@ -65,6 +65,10 @@ uploading ─(browser confirms)─► queued ─(worker claims)─► processing
 
 Every field gets a score out of 100 for how sure the extraction is, with the reasons for any doubt. The model scores each field in the same call; plain checks cap a score at 60 when the data contradicts itself (the net amount missing from its printed text, a declared allergen no ingredient contains, percentages over 100%). The detail panel shows each field's score, fine (85+), check (60–84) or low; the list flags uploads whose least certain field is below 85. How it works and its limits: [DECISIONS.md](DECISIONS.md#confidence-scores).
 
+### Reviewing and editing
+
+Any field can be corrected in place in the detail panel: the product name, brand, net weight (amount and unit), allergens, and ingredients (name and percentage, add or remove rows). A field that scored under 85 can also be marked as checked. A reviewed field shows who reviewed it instead of its score, and stops counting towards the upload's confidence. Edits are validated like model output, the model's original output is kept, and two people saving at once can't overwrite each other: the second is told and shown the first's version. Exports use the edited data.
+
 ### Monitoring
 
 Both pages are for admins only.
@@ -164,6 +168,7 @@ Every route needs `Authorization: Bearer <access token>` from Supabase Auth, exc
 | `GET` | `/api/uploads/counts` | How many uploads each view holds |
 | `GET` | `/api/uploads/:id` | One upload with its extracted data and a preview URL |
 | `POST` | `/api/uploads/:id/retry` | Run extraction again, for failures that could succeed and results that can't be read |
+| `PATCH` | `/api/uploads/:id/result` | Correct fields (`changes`) or confirm them (`checked`), made against `revision`. 422 for an invalid value, 409 if someone saved since |
 | `GET` | `/api/events` | Server-sent events announcing upload changes and new activity-log events |
 | `GET` | `/api/logs?type=&type=&upload=&cursor=&limit=` | Admins only. One page of the activity log, newest first, with `nextCursor`. One `type` per type of event wanted; none means every type |
 | `GET` | `/api/health` | Public. Health checks: 200 or 503 |
