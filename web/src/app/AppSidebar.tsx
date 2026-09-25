@@ -1,5 +1,5 @@
 import { Link, matchPath, useLocation } from 'react-router';
-import { Activity, Files, ScanText, ScrollText } from 'lucide-react';
+import { Activity, Files, LogOut, ScanText, ScrollText } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -12,17 +12,21 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
+import { useAuth, useSignedInMember } from '@/auth/AuthProvider';
+import { Button } from '@/components/ui/button';
 import { loadLogsPage } from '@/features/logs/loadLogsPage';
 import { loadSystemStatusPage } from '@/features/system-status/loadSystemStatusPage';
 import { HOME_PATH, LOGS_PATH, STATUS_PATH, UPLOAD_PATH_PATTERN } from '@/routes';
 
 /**
  * The app shell's dark sidebar, following the SupplyScope product layout. It holds destinations
- * only: Uploads, System status and the activity log. Filtering the upload list is not a
- * destination, so its status tabs live in the list itself.
+ * only (Uploads for everyone; System status and the activity log for admins), then who is signed
+ * in. Filtering the upload list is not a destination, so its status tabs live in the list itself.
  */
 export function AppSidebar() {
   const { pathname } = useLocation();
+  const member = useSignedInMember();
+  const { signOut } = useAuth();
 
   // The list and an open upload are both part of Uploads.
   const onUploadsPage = pathname === HOME_PATH || matchPath(UPLOAD_PATH_PATTERN, pathname) !== null;
@@ -61,43 +65,61 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-foreground/60">System</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={onStatusPage}>
-                  {/* The page's code is split out; start fetching it as soon as a visit looks likely. */}
-                  <Link
-                    to={STATUS_PATH}
-                    aria-current={onStatusPage ? 'page' : undefined}
-                    onMouseEnter={() => void loadSystemStatusPage()}
-                    onFocus={() => void loadSystemStatusPage()}
-                  >
-                    <Activity aria-hidden />
-                    <span>System status</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={onLogsPage}>
-                  <Link
-                    to={LOGS_PATH}
-                    aria-current={onLogsPage ? 'page' : undefined}
-                    onMouseEnter={() => void loadLogsPage()}
-                    onFocus={() => void loadLogsPage()}
-                  >
-                    <ScrollText aria-hidden />
-                    <span>Activity log</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {member.role === 'admin' && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-sidebar-foreground/60">System</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={onStatusPage}>
+                    {/* The page's code is split out; start fetching it as soon as a visit looks likely. */}
+                    <Link
+                      to={STATUS_PATH}
+                      aria-current={onStatusPage ? 'page' : undefined}
+                      onMouseEnter={() => void loadSystemStatusPage()}
+                      onFocus={() => void loadSystemStatusPage()}
+                    >
+                      <Activity aria-hidden />
+                      <span>System status</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={onLogsPage}>
+                    <Link
+                      to={LOGS_PATH}
+                      aria-current={onLogsPage ? 'page' : undefined}
+                      onMouseEnter={() => void loadLogsPage()}
+                      onFocus={() => void loadLogsPage()}
+                    >
+                      <ScrollText aria-hidden />
+                      <span>Activity log</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
-      <SidebarFooter className="px-4 pb-5 text-xs text-sidebar-foreground/60">Built for the SupplyScope trial</SidebarFooter>
+      <SidebarFooter className="gap-2 px-4 pb-5">
+        <div className="min-w-0 text-xs">
+          <p className="truncate font-medium text-white" title={member.email}>
+            {member.email}
+          </p>
+          <p className="text-sidebar-foreground/60">{member.role === 'admin' ? 'Admin' : 'Member'}</p>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="justify-start px-0 text-sidebar-foreground/80 hover:bg-transparent hover:text-white"
+          onClick={() => void signOut()}
+        >
+          <LogOut data-icon="inline-start" aria-hidden />
+          Sign out
+        </Button>
+      </SidebarFooter>
     </Sidebar>
   );
 }

@@ -92,6 +92,7 @@ function Detail({ upload }: { upload: UploadDetail }) {
           </Fact>
           <Fact label="Uploaded" className="shrink-0">
             <RelativeTime iso={upload.createdAt} now={now} />
+            {upload.uploadedBy && <span className="text-muted-foreground"> by {upload.uploadedBy}</span>}
           </Fact>
         </dl>
       </header>
