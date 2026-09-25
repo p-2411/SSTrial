@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { jsonResponse, renderWithProviders } from '../../test/render.tsx';
@@ -78,9 +78,12 @@ describe('UploadList', () => {
     expect(screen.getByText('Reading label')).toBeInTheDocument();
     expect(screen.getByText('The AI service is rate-limiting requests. Retrying automatically.')).toBeInTheDocument();
     expect(screen.getByText("Couldn't find any product label information in this file.")).toBeInTheDocument();
-    expect(screen.getByText('4 files, 2 in progress')).toBeInTheDocument();
+    // Counts sit on the status tabs; statuses on each row (scoped, since tab labels share the words).
+    expect(await screen.findByRole('tab', { name: 'All 4' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'In progress 2' })).toBeInTheDocument();
+    const rows = within(screen.getByRole('tabpanel'));
     for (const status of ['Completed', 'Processing', 'Queued', 'Failed']) {
-      expect(screen.getByText(status)).toBeInTheDocument();
+      expect(rows.getByText(status)).toBeInTheDocument();
     }
   });
 
@@ -96,7 +99,26 @@ describe('UploadList', () => {
     // The server does the filtering; the browser only asks for the view.
     expect(requested).toContain('/api/uploads?status=failed');
     expect(screen.queryByText('done.png')).not.toBeInTheDocument();
-    expect(screen.getByText('Failed', { selector: '[data-slot=card-title]' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^Failed/, selected: true })).toBeInTheDocument();
+  });
+
+  it('switches the list when another status tab is chosen', async () => {
+    const uploads = [
+      summary({ id: 'a', fileName: 'done.png', status: 'completed' }),
+      summary({ id: 'b', fileName: 'broken.png', status: 'failed', error: { code: 'NO_LABEL_DATA', message: 'Nothing found.' } }),
+    ];
+    const requested = stubApi(uploads);
+    renderList('/');
+    expect(await screen.findByText('broken.png')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('tab', { name: /^Completed/ }));
+
+    expect(await screen.findByRole('tab', { name: /^Completed/, selected: true })).toBeInTheDocument();
+    expect(requested).toContain('/api/uploads?status=completed');
+    expect(await screen.findByText('done.png')).toBeInTheDocument();
+    expect(screen.queryByText('broken.png')).not.toBeInTheDocument();
+    // Counts are fetched again, so the tab's number agrees with the rows now showing.
+    await vi.waitFor(() => expect(requested.filter((url) => url === '/api/uploads/counts').length).toBeGreaterThan(1));
   });
 
   it('shows an empty message for a filter with no matches', async () => {

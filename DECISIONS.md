@@ -48,7 +48,7 @@ The UI uses the same stack as SupplyScope's app: Tailwind v4 and shadcn/ui on Ra
 
 It's also styled with their brand, taken from supplyscope.io and their product screenshots:
 - **Colours:** warm off-white `#F6F5F3` background, near-black `#1B1B1B` buttons, indigo `#5048E5` reserved for AI features ("BETA" pill, "Retry extraction", AI sparkles) and green `#027A48` for validated data.
-- **Layout:** a dark sidebar shell.
+- **Layout:** a dark sidebar shell. The sidebar holds destinations only (today just Uploads); the status filter is a tab row in the list's own header, because it narrows one panel rather than taking you somewhere new.
 - **Detail view:** modelled on their compliance screen, with a "Core information" card, a pastel card for allergens, and the source document alongside.
 - **Not copied:** their logo or product name (the deployed app is public, and it shouldn't pass as an official SupplyScope product) and their display typeface (Labil Grotesk is commercially licensed). Inter, which their app itself uses, stands in with tight heading tracking.
 - **Desktop only:** there's no mobile layout. It's a desktop operations tool, and supporting phones would have added complexity for little benefit.

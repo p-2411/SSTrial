@@ -1,5 +1,5 @@
-import { Link, useLocation } from 'react-router';
-import { ScanText } from 'lucide-react';
+import { Link } from 'react-router';
+import { Files, ScanText } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -9,22 +9,16 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { useUploadCounts } from '@/api/queries';
-import { filterSearch, STATUS_FILTERS, useStatusFilter } from '@/features/uploads-list/statusFilters';
 
 /**
- * The app shell's dark sidebar, following the SupplyScope product layout. Its navigation is the
- * status filter for the upload list, with live counts.
+ * The app shell's dark sidebar, following the SupplyScope product layout. It holds destinations
+ * only — today there's one, Uploads. Filtering the list is not a destination, so its status tabs
+ * live in the list itself.
  */
 export function AppSidebar() {
-  const active = useStatusFilter();
-  const { pathname } = useLocation();
-  const { data: counts } = useUploadCounts();
-
   return (
     <Sidebar>
       <SidebarHeader className="px-4 pt-5 pb-3">
@@ -45,22 +39,15 @@ export function AppSidebar() {
           <SidebarGroupLabel className="text-sidebar-foreground/60">Label extraction</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {STATUS_FILTERS.map((filter) => {
-                const count = counts?.[filter.id];
-                const isActive = filter === active;
-                return (
-                  <SidebarMenuItem key={filter.id}>
-                    <SidebarMenuButton asChild isActive={isActive}>
-                      {/* Keep the open upload (if any) when switching filters. */}
-                      <Link to={{ pathname, search: filterSearch(filter) }} aria-current={isActive ? 'page' : undefined}>
-                        <filter.icon aria-hidden />
-                        <span>{filter.label}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                    {count !== undefined && <SidebarMenuBadge className="tabular-nums">{count}</SidebarMenuBadge>}
-                  </SidebarMenuItem>
-                );
-              })}
+              <SidebarMenuItem>
+                {/* Every page in the app is part of Uploads, so it's always the current section. */}
+                <SidebarMenuButton asChild isActive>
+                  <Link to="/" aria-current="page">
+                    <Files aria-hidden />
+                    <span>Uploads</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
