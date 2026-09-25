@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { zodTextFormat } from 'openai/helpers/zod';
-import { NET_QUANTITY_UNITS } from '@label-extractor/shared';
+import { CONFIDENT_SCORE, DOUBTFUL_SCORE, NET_QUANTITY_UNITS } from '@label-extractor/shared';
 
 /**
  * What we send the model: instructions plus a JSON Schema it must follow ("structured outputs").
@@ -22,10 +22,10 @@ Rules:
 
 Confidence: for each field, score from 0 to 100 how sure you are that your value matches the label
 (for a null or empty field: that the label really doesn't show it).
-- 90–100: clearly printed and clearly read.
-- 60–89: partly obscured, blurred, cut off or ambiguous, or you had to choose between readings.
-- Below 60: hard to read, or mostly inferred.
-Give a short reason for any score below 85, naming what made it uncertain; otherwise null.
+- ${CONFIDENT_SCORE}–100: clearly printed and clearly read.
+- ${DOUBTFUL_SCORE}–${CONFIDENT_SCORE - 1}: partly obscured, blurred, cut off or ambiguous, or you had to choose between readings.
+- Below ${DOUBTFUL_SCORE}: hard to read, or mostly inferred.
+Give a short reason for any score below ${CONFIDENT_SCORE}, naming what made it uncertain; otherwise null.
 `.trim();
 
 export const EXTRACTION_USER_PROMPT = 'Extract the product information from this label.';
@@ -36,7 +36,7 @@ const fieldConfidence = z.object({
   reason: z
     .string()
     .nullable()
-    .describe('For a score below 85: what made it uncertain, e.g. "Partly hidden by a fold". Otherwise null.'),
+    .describe(`For a score below ${CONFIDENT_SCORE}: what made it uncertain, e.g. "Partly hidden by a fold". Otherwise null.`),
 });
 
 const labelWireSchema = z.object({
