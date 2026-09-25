@@ -13,6 +13,8 @@ import { createDb } from '../infra/db.ts';
 import { createLogger } from '../infra/logger.ts';
 import { startQueue } from '../infra/queue.ts';
 import { createSupabaseStorage } from '../infra/storage.ts';
+import { logEvents } from '../logs/events.ts';
+import { createEventStore } from '../logs/store.ts';
 import { databaseCheck, healthStatusCode, queueCheck, runHealthChecks, workerLoopCheck } from '../ops/health.ts';
 import { createOpsStore } from '../ops/store.ts';
 import { createUploadJobs, createUploadQueues } from '../uploads/jobs.ts';
@@ -32,12 +34,14 @@ const storage = createSupabaseStorage({
   secretKey: config.SUPABASE_SECRET_KEY,
   bucket: config.STORAGE_BUCKET,
 });
+const events = createEventStore(sql, { source: 'worker', logger });
 
 await startExtractionWorker({
   boss,
   logger,
   uploads,
   storage,
+  events,
   concurrency: config.WORKER_CONCURRENCY,
   rateLimiter: createPostgresRateLimiter(sql, { key: 'openai', requestsPerMinute: config.OPENAI_REQUESTS_PER_MINUTE }),
   extractor: createOpenAIExtractor({
@@ -45,8 +49,9 @@ await startExtractionWorker({
     createResponse: createOpenAIResponses({ apiKey: config.OPENAI_API_KEY, timeoutMs: config.OPENAI_TIMEOUT_MS }),
   }),
 });
-await startFinaliseWorker({ boss, logger, uploads, storage });
-await startMonitor({ boss, logger, ops: createOpsStore(sql) });
+await startFinaliseWorker({ boss, logger, uploads, storage, events });
+await startMonitor({ boss, logger, events, ops: createOpsStore(sql) });
+await events.record(logEvents.processStarted('Worker', { concurrency: config.WORKER_CONCURRENCY }));
 
 // The worker's only HTTP endpoint: GET /api/health, so the host can tell whether it's working.
 const health = createServer(async (request, response) => {

@@ -6,6 +6,8 @@ import {
   type SupportedMimeType,
 } from '@label-extractor/shared';
 import type { FileStorage } from '../infra/storage.ts';
+import { logEvents } from '../logs/events.ts';
+import type { EventLog } from '../logs/store.ts';
 import type { UploadIntake, UploadQueries, UploadRecord } from './store.ts';
 
 /**
@@ -22,6 +24,7 @@ export type UploadRequestResult =
 export interface IntakeDeps {
   uploads: Pick<UploadQueries, 'findByContentHash'> & Pick<UploadIntake, 'create'>;
   storage: Pick<FileStorage, 'createUploadUrl'>;
+  events: EventLog;
 }
 
 export async function requestUpload(deps: IntakeDeps, request: CreateUploadRequest): Promise<UploadRequestResult> {
@@ -32,7 +35,10 @@ export async function requestUpload(deps: IntakeDeps, request: CreateUploadReque
   // The hash is the browser's claim; the worker checks the real bytes before reusing any result.
   if (request.sha256) {
     const existing = await deps.uploads.findByContentHash(request.sha256);
-    if (existing) return { outcome: 'duplicate', upload: existing };
+    if (existing) {
+      await deps.events.record(logEvents.uploadDuplicate(existing, request.fileName.trim()));
+      return { outcome: 'duplicate', upload: existing };
+    }
   }
 
   const id = crypto.randomUUID();
@@ -47,6 +53,7 @@ export async function requestUpload(deps: IntakeDeps, request: CreateUploadReque
     storagePath,
     contentSha256: request.sha256 ?? null,
   });
+  await deps.events.record(logEvents.uploadCreated(upload));
   return { outcome: 'created', upload, uploadUrl };
 }
 

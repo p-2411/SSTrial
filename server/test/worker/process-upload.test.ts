@@ -5,18 +5,28 @@ import type { LabelExtractor } from '../../src/extraction/extractor.ts';
 import { createOpenAIExtractor, type ModelResponse } from '../../src/extraction/openai-extractor.ts';
 import { MAX_EXTRACTION_ATTEMPTS } from '../../src/uploads/jobs.ts';
 import { processUpload, type ExtractionJob, type JobOutcome } from '../../src/worker/process-upload.ts';
-import { FakeRateLimiter, FILE_BYTES, InMemoryStorage, InMemoryUploadStore, SAMPLE_EXTRACTION, silentLogger } from '../fakes.ts';
+import {
+  FakeRateLimiter,
+  FILE_BYTES,
+  InMemoryEventStore,
+  InMemoryStorage,
+  InMemoryUploadStore,
+  SAMPLE_EXTRACTION,
+  silentLogger,
+} from '../fakes.ts';
 
 const UPLOAD_ID = '6f1c2f1e-0000-4000-8000-000000000001';
 
 let uploads: InMemoryUploadStore;
 let storage: InMemoryStorage;
 let rateLimiter: FakeRateLimiter;
+let events: InMemoryEventStore;
 
 beforeEach(() => {
   uploads = new InMemoryUploadStore();
   storage = new InMemoryStorage();
   rateLimiter = new FakeRateLimiter();
+  events = new InMemoryEventStore();
   const upload = uploads.seed({ id: UPLOAD_ID, status: 'queued' });
   storage.put(upload.storagePath, FILE_BYTES.png);
 });
@@ -42,7 +52,7 @@ function scriptedExtractor(...script: Array<typeof SAMPLE_EXTRACTION | Error>): 
 
 function run(extractor: LabelExtractor, job: Partial<ExtractionJob> = {}) {
   return processUpload(
-    { uploads, storage, extractor, rateLimiter, logger: silentLogger },
+    { uploads, storage, extractor, rateLimiter, events, logger: silentLogger },
     { uploadId: UPLOAD_ID, attempt: 1, isFinalAttempt: false, ...job },
   );
 }
@@ -67,6 +77,11 @@ describe('processUpload — success', () => {
 
     expect(outcome).toEqual({ status: 'completed' });
     expect(uploads.get(UPLOAD_ID)).toMatchObject({ status: 'completed', attempts: 1, result: SAMPLE_EXTRACTION, error: null });
+    expect(events.events).toMatchObject([
+      { type: 'extraction.started', uploadId: UPLOAD_ID, data: { attempt: 1 } },
+      { type: 'extraction.completed', uploadId: UPLOAD_ID, level: 'info', data: { productName: 'Maple Pecan Crunch' } },
+    ]);
+    expect(events.events[1]!.data.durationMs).toEqual(expect.any(Number));
   });
 
   it('passes the file bytes, type and the abort signal to the extractor', async () => {
@@ -91,6 +106,7 @@ describe('processUpload — retry behaviour', () => {
       attempts: 1,
       error: { code: 'LLM_TIMEOUT' },
     });
+    expect(events.events.at(-1)).toMatchObject({ type: 'extraction.retry_scheduled', level: 'warn', data: { code: 'LLM_TIMEOUT', attempt: 1 } });
   });
 
   it('recovers when a later attempt succeeds', async () => {
@@ -114,6 +130,9 @@ describe('processUpload — retry behaviour', () => {
       attempts: MAX_EXTRACTION_ATTEMPTS,
       error: { code: 'LLM_TIMEOUT' },
     });
+    const failed = events.events.at(-1)!;
+    expect(failed).toMatchObject({ type: 'extraction.failed', level: 'error', data: { code: 'LLM_TIMEOUT' } });
+    expect(failed.message).toContain(`Gave up after ${MAX_EXTRACTION_ATTEMPTS} attempts`);
   });
 
   it('fails immediately, without retrying, when the error is not transient', async () => {
@@ -124,6 +143,8 @@ describe('processUpload — retry behaviour', () => {
     expect(extractor.calls).toBe(1);
     expect(outcomes).toEqual([{ status: 'failed', code: 'LLM_MISCONFIGURED' }]);
     expect(uploads.get(UPLOAD_ID)).toMatchObject({ status: 'failed', attempts: 1 });
+    expect(events.types).toEqual(['extraction.started', 'extraction.failed']);
+    expect(events.events[1]!.message).toContain("Retrying wouldn't help");
   });
 
   it('retries when storage is temporarily unavailable', async () => {
@@ -200,6 +221,7 @@ describe('processUpload — duplicate and stale jobs', () => {
     await expect(run(extractor)).resolves.toMatchObject({ status: 'skipped' });
     expect(extractor.calls).toBe(0);
     expect(uploads.get(UPLOAD_ID).status).toBe(status);
+    expect(events.types).toEqual([]); // a stale delivery isn't worth a log line
   });
 
   it('skips a job whose upload no longer exists', async () => {
@@ -223,6 +245,8 @@ describe('processUpload — identical files', () => {
     await expect(run(extractor)).resolves.toEqual({ status: 'completed' });
     expect(extractor.calls).toBe(0);
     expect(uploads.get(UPLOAD_ID)).toMatchObject({ status: 'completed', result: SAMPLE_EXTRACTION, contentSha256: hash });
+    expect(events.events.at(-1)).toMatchObject({ type: 'extraction.completed', data: { reusedFrom: 'twin' } });
+    expect(events.events.at(-1)!.message).toContain('reused the result of an identical file');
   });
 
   it("records the real hash even when the browser's claim was wrong", async () => {
@@ -253,6 +277,8 @@ describe('processUpload — shared rate limiting', () => {
   it('pauses every worker for as long as the provider asked, and retries the job', async () => {
     await expect(run(scriptedExtractor(rateLimited(7000)))).resolves.toMatchObject({ status: 'retry', code: 'LLM_RATE_LIMITED' });
     expect(rateLimiter.pauses).toEqual([7000]);
+    expect(events.types).toEqual(['extraction.started', 'ratelimit.paused', 'extraction.retry_scheduled']);
+    expect(events.events[1]).toMatchObject({ level: 'warn', data: { pauseMs: 7000 } });
   });
 
 
@@ -293,6 +319,7 @@ describe('processUpload — an attempt taken over by another worker', () => {
     await expect(run(takenOverWhile(SAMPLE_EXTRACTION))).resolves.toMatchObject({ status: 'skipped' });
     // Still owned by, and waiting on, the attempt that took over.
     expect(uploads.get(UPLOAD_ID)).toMatchObject({ status: 'processing', result: null, attempts: 2 });
+    expect(events.types).toEqual(['extraction.started']); // no completion it didn't make
   });
 
   it("can't schedule a retry or fail the upload either", async () => {

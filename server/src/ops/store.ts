@@ -48,8 +48,8 @@ export interface OpsStore {
   signals(windowMinutes: number, stuckAfterMinutes: number): Promise<MonitorSignals>;
   /** Opens an alert for `key`, or updates the open one. Returns true if it was newly opened. */
   raiseAlert(alert: FiringAlert): Promise<boolean>;
-  /** Resolves open alerts whose rules are no longer firing. Returns the keys it resolved. */
-  resolveAlertsExcept(firingKeys: string[]): Promise<string[]>;
+  /** Resolves open alerts whose rules are no longer firing. Returns the alerts it resolved. */
+  resolveAlertsExcept(firingKeys: string[]): Promise<Array<{ key: string; title: string }>>;
   recordWorkerHeartbeat(): Promise<void>;
   snapshot(): Promise<OpsSnapshot>;
 }
@@ -109,8 +109,8 @@ export function createOpsStore(sql: postgres.Sql): OpsStore {
       const rows = await sql`
         update ops_alerts set resolved_at = now()
         where resolved_at is null and not (key = any(${firingKeys}::text[]))
-        returning key`;
-      return rows.map((row) => row.key as string);
+        returning key, title`;
+      return rows.map((row) => ({ key: row.key as string, title: row.title as string }));
     },
 
     async recordWorkerHeartbeat() {

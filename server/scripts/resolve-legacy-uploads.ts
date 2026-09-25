@@ -14,6 +14,7 @@ import { createDb } from '../src/infra/db.ts';
 import { createLogger } from '../src/infra/logger.ts';
 import { startQueue } from '../src/infra/queue.ts';
 import { createSupabaseStorage, SIGNED_UPLOAD_URL_TTL_SECONDS } from '../src/infra/storage.ts';
+import { createEventStore } from '../src/logs/store.ts';
 import { finaliseUpload } from '../src/uploads/finalise.ts';
 import { createUploadJobs, createUploadQueues } from '../src/uploads/jobs.ts';
 import { createUploadStore } from '../src/uploads/store.ts';
@@ -30,6 +31,8 @@ const storage = createSupabaseStorage({
   secretKey: config.SUPABASE_SECRET_KEY,
   bucket: config.STORAGE_BUCKET,
 });
+// It does the finalise job's work, so it logs the same events as the worker would.
+const events = createEventStore(sql, { source: 'worker', logger });
 
 try {
   // 1. Rejected files that were kept.
@@ -49,7 +52,7 @@ try {
       await jobs.scheduleFinalise(row.id);
       continue;
     }
-    const result = await finaliseUpload({ uploads, storage }, row.id, { caller: 'finalise-job' });
+    const result = await finaliseUpload({ uploads, storage, events }, row.id, { caller: 'finalise-job' });
     logger.info({ uploadId: row.id, outcome: result.outcome }, 'Finalised an unconfirmed upload');
   }
   logger.info({ count: unfinished.length }, 'Settled uploads left in "uploading"');

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { MAX_FILE_SIZE_BYTES } from '@label-extractor/shared';
 import { buildApp, type App } from '../../src/api/app.ts';
-import { FILE_BYTES, InMemoryStorage, InMemoryUploadStore, SAMPLE_EXTRACTION, testAppDeps } from '../fakes.ts';
+import { FILE_BYTES, InMemoryEventStore, InMemoryStorage, InMemoryUploadStore, SAMPLE_EXTRACTION, testAppDeps } from '../fakes.ts';
 
 // HTTP-level tests: real routing, validation and error handling via Fastify's `inject()`, with
 // in-memory fakes in place of Postgres, the queue and Supabase Storage.
@@ -9,11 +9,13 @@ import { FILE_BYTES, InMemoryStorage, InMemoryUploadStore, SAMPLE_EXTRACTION, te
 let app: App;
 let uploads: InMemoryUploadStore;
 let storage: InMemoryStorage;
+let events: InMemoryEventStore;
 
 beforeEach(async () => {
   uploads = new InMemoryUploadStore();
   storage = new InMemoryStorage();
-  app = await buildApp(testAppDeps({ uploads, storage }));
+  events = new InMemoryEventStore();
+  app = await buildApp(testAppDeps({ uploads, storage, events }));
 });
 
 afterEach(() => app.close());
@@ -46,6 +48,9 @@ describe('POST /api/uploads — request a signed upload URL', () => {
     // The storage key is generated from the ID, never from the user-supplied file name.
     expect(row.storagePath).toMatch(new RegExp(`^\\d{4}-\\d{2}-\\d{2}/${row.id}\\.png$`));
     expect(body.upload).not.toHaveProperty('storagePath');
+    expect(events.events).toMatchObject([
+      { type: 'upload.created', uploadId: row.id, message: 'label.png started uploading (PNG, 4.9 KB).' },
+    ]);
   });
 
   it.each([
@@ -59,6 +64,7 @@ describe('POST /api/uploads — request a signed upload URL', () => {
     expect(response.statusCode).toBe(422);
     expect(response.json().error.code).toBe('UNSUPPORTED_FILE_TYPE');
     expect(uploads.rows.size).toBe(0);
+    expect(events.types).toEqual([]); // turned away at the door: nothing happened worth keeping
   });
 
   it('rejects files over the size limit and empty files', async () => {
@@ -99,6 +105,7 @@ describe('POST /api/uploads — duplicate files', () => {
     expect(response.json()).toMatchObject({ kind: 'duplicate', upload: { id: ID, status: 'completed' } });
     expect(uploads.rows.size).toBe(1);
     expect(uploads.finaliseScheduled).toEqual([]);
+    expect(events.events).toMatchObject([{ type: 'upload.duplicate', uploadId: ID }]);
   });
 
   it.each(['failed', 'uploading'] as const)('does not treat a %s upload of the same file as a duplicate', async (status) => {
@@ -313,6 +320,7 @@ describe('POST /api/uploads/:id/retry — manual retry', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().upload).toMatchObject({ status: 'queued', attempts: 0, error: null });
     expect(uploads.enqueued).toEqual([ID]);
+    expect(events.events).toMatchObject([{ type: 'upload.retry_requested', uploadId: ID }]);
   });
 
   it('refuses to retry a file that is itself the problem', async () => {
@@ -323,6 +331,7 @@ describe('POST /api/uploads/:id/retry — manual retry', () => {
     expect(response.statusCode).toBe(409);
     expect(response.json().error.code).toBe('NOT_RETRYABLE');
     expect(uploads.enqueued).toEqual([]);
+    expect(events.types).toEqual([]);
   });
 
   it('refuses to retry an upload that has not failed', async () => {

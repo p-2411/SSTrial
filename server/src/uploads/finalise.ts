@@ -1,5 +1,7 @@
 import { detectFileType, SIGNATURE_BYTES } from '../infra/file-signature.ts';
 import type { FileStorage } from '../infra/storage.ts';
+import { logEvents } from '../logs/events.ts';
+import type { EventLog } from '../logs/store.ts';
 import type { UploadRecord, UploadStore } from './store.ts';
 
 /**
@@ -31,6 +33,7 @@ export type FinaliseResult =
 export interface FinaliseDeps {
   uploads: Pick<UploadStore, 'findById' | 'markUploaded' | 'discardUnfinished'>;
   storage: Pick<FileStorage, 'readHead' | 'remove'>;
+  events: EventLog;
 }
 
 export interface FinaliseOptions {
@@ -50,7 +53,8 @@ export async function finaliseUpload(deps: FinaliseDeps, id: string, { caller }:
   const head = await deps.storage.readHead(upload.storagePath, SIGNATURE_BYTES);
   if (!head || head.length === 0) {
     if (caller === 'browser') return { outcome: 'not-uploaded' };
-    await deps.uploads.discardUnfinished(upload.id);
+    // Only log what this call actually did: a concurrent confirmation may have got there first.
+    if (await deps.uploads.discardUnfinished(upload.id)) await deps.events.record(logEvents.uploadDiscarded(upload));
     return { outcome: 'discarded' };
   }
 
@@ -60,13 +64,18 @@ export async function finaliseUpload(deps: FinaliseDeps, id: string, { caller }:
     // Not something we'd ever process (e.g. a renamed .exe), so don't keep it. File first: if the
     // delete fails, the row survives and the finalise job tries again later.
     await deps.storage.remove(upload.storagePath);
-    await deps.uploads.discardUnfinished(upload.id, settle);
+    if (await deps.uploads.discardUnfinished(upload.id, settle)) await deps.events.record(logEvents.uploadRejected(upload));
     return { outcome: 'rejected' };
   }
 
   // A valid file with the wrong extension (a PNG saved as .jpg) is accepted under its real type.
   const queued = await deps.uploads.markUploaded(upload.id, detected, settle);
-  if (queued) return { outcome: 'queued', upload: queued };
+  if (queued) {
+    await deps.events.record(
+      logEvents.uploadQueued(queued, { byFinaliseJob: caller === 'finalise-job', claimedType: upload.mimeType }),
+    );
+    return { outcome: 'queued', upload: queued };
+  }
 
   // The other caller finalised it between our read and our update.
   const current = await deps.uploads.findById(id);

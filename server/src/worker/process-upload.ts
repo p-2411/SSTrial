@@ -5,6 +5,8 @@ import type { LabelExtractor } from '../extraction/extractor.ts';
 import type { RateLimiter } from '../extraction/rate-limiter.ts';
 import type { Logger } from '../infra/logger.ts';
 import { StorageUnavailableError, type FileStorage } from '../infra/storage.ts';
+import { logEvents } from '../logs/events.ts';
+import type { EventLog } from '../logs/store.ts';
 import type { UploadAttempts, UploadRecord } from '../uploads/store.ts';
 
 /**
@@ -22,6 +24,8 @@ export interface ProcessUploadDeps {
   /** Shared across all workers, so together they stay under the provider's request rate. */
   rateLimiter: RateLimiter;
   logger: Logger;
+  /** The activity log: each attempt's start and outcome. */
+  events: EventLog;
 }
 
 export interface ExtractionJob {
@@ -60,11 +64,14 @@ export async function processUpload(deps: ProcessUploadDeps, job: ExtractionJob)
   // Every write below presents this token. If another attempt takes the upload over meanwhile (our
   // job was handed to another worker), our writes are refused and this attempt simply stands down.
   const attempt: Attempt = { upload, claim: upload.claimToken!, log };
+  await deps.events.record(logEvents.extractionStarted(upload));
 
   try {
     const { result, ...details } = await extractOrReuse(deps, upload, job.signal);
-    if (!(await deps.uploads.complete(upload.id, attempt.claim, result))) return lostClaim(log);
+    const completed = await deps.uploads.complete(upload.id, attempt.claim, result);
+    if (!completed) return lostClaim(log);
     log.info(details, 'Extraction completed');
+    await deps.events.record(logEvents.extractionCompleted(completed, { productName: result.productName, ...details }));
     return { status: 'completed' };
   } catch (thrown) {
     return recordFailure(deps, attempt, toExtractionError(thrown), job.isFinalAttempt);
@@ -118,17 +125,22 @@ async function recordFailure(
   if (error.providerBackoffMs !== undefined) {
     await deps.rateLimiter.pauseFor(error.providerBackoffMs);
     log.warn({ pauseMs: error.providerBackoffMs }, 'Provider asked us to back off; paused all LLM requests');
+    await deps.events.record(logEvents.rateLimitPaused(upload, error.providerBackoffMs));
   }
 
   if (error.retryable && !isFinalAttempt) {
-    if (!(await deps.uploads.scheduleRetry(upload.id, claim, error.code))) return lostClaim(log);
+    const queued = await deps.uploads.scheduleRetry(upload.id, claim, error.code);
+    if (!queued) return lostClaim(log);
     log.warn(logContext, 'Attempt failed with a transient error; will retry');
+    await deps.events.record(logEvents.retryScheduled(queued, error.code));
     return { status: 'retry', code: error.code };
   }
 
   // Attempt counts go to the logs, not the user: the reason is what they can act on.
-  if (!(await deps.uploads.fail(upload.id, claim, error.code))) return lostClaim(log);
+  const failed = await deps.uploads.fail(upload.id, claim, error.code);
+  if (!failed) return lostClaim(log);
   log.error(logContext, 'Extraction failed permanently');
+  await deps.events.record(logEvents.extractionFailed(failed, error.code));
   return { status: 'failed', code: error.code };
 }
 

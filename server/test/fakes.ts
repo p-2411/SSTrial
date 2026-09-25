@@ -1,9 +1,19 @@
 import { pino } from 'pino';
-import type { HealthReport, LabelExtraction, SupportedMimeType, UploadChange, UploadErrorCode } from '@label-extractor/shared';
+import {
+  LOG_LEVELS,
+  type HealthReport,
+  type LabelExtraction,
+  type LogEventType,
+  type LogLevelFilter,
+  type SupportedMimeType,
+  type UploadChange,
+  type UploadErrorCode,
+} from '@label-extractor/shared';
 import type { AppDeps } from '../src/api/app.ts';
 import { ExtractionError } from '../src/extraction/errors.ts';
 import type { RateLimiter } from '../src/extraction/rate-limiter.ts';
 import { StorageUnavailableError, type FileStorage } from '../src/infra/storage.ts';
+import type { EventStore, LogEventRecord, NewLogEvent } from '../src/logs/store.ts';
 import type { OpsSnapshot } from '../src/ops/store.ts';
 import type { UploadChangeFeed } from '../src/uploads/change-feed.ts';
 import type { NewUpload, SettleOptions, UploadRecord, UploadStore } from '../src/uploads/store.ts';
@@ -229,6 +239,56 @@ export class InMemoryStorage implements FileStorage {
   }
 }
 
+/** The activity log in memory. Mirrors the real store's filters, ordering and pagination. */
+export class InMemoryEventStore implements EventStore {
+  readonly events: LogEventRecord[] = [];
+  private nextId = 1;
+
+  /** Types recorded so far, oldest first: the usual thing a test asserts on. */
+  get types(): LogEventType[] {
+    return this.events.map((event) => event.type);
+  }
+
+  /** Adds an event as if written at `occurredAt`, for the page and pruning tests. */
+  seed(event: NewLogEvent & { occurredAt?: Date; source?: LogEventRecord['source'] }): LogEventRecord {
+    const record: LogEventRecord = {
+      id: String(this.nextId++),
+      occurredAt: event.occurredAt ?? new Date(),
+      source: event.source ?? 'api',
+      level: event.level,
+      type: event.type,
+      uploadId: event.uploadId ?? null,
+      message: event.message,
+      data: event.data ?? {},
+    };
+    this.events.push(record);
+    return record;
+  }
+
+  async record(event: NewLogEvent) {
+    this.seed(event);
+  }
+
+  async list({ level, type, uploadId, limit, after }: { level: LogLevelFilter; type?: LogEventType; uploadId?: string; limit: number; after?: string }) {
+    const minimum = level === 'all' ? 0 : LOG_LEVELS.indexOf(level);
+    return this.events
+      .filter((event) => LOG_LEVELS.indexOf(event.level) >= minimum)
+      .filter((event) => !type || event.type === type)
+      .filter((event) => !uploadId || event.uploadId === uploadId)
+      .filter((event) => !after || Number(event.id) < Number(after))
+      .toSorted((a, b) => Number(b.id) - Number(a.id))
+      .slice(0, limit);
+  }
+
+  async pruneOlderThan(days: number) {
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    const kept = this.events.filter((event) => event.occurredAt.getTime() >= cutoff);
+    const pruned = this.events.length - kept.length;
+    this.events.splice(0, this.events.length, ...kept);
+    return pruned;
+  }
+}
+
 /** Leading bytes of each supported type, enough for magic-byte detection. */
 export const FILE_BYTES = {
   png: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]),
@@ -256,6 +316,7 @@ export function testAppDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     changes: new FakeChangeFeed(),
     health: async () => HEALTHY,
     ops: { snapshot: async () => EMPTY_OPS_SNAPSHOT },
+    events: new InMemoryEventStore(),
     logger: silentLogger,
     ...overrides,
   };

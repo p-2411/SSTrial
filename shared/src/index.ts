@@ -2,6 +2,7 @@
 export * from './api.ts';
 export * from './extraction.ts';
 export * from './files.ts';
+export * from './logs.ts';
 export * from './ops.ts';
 export * from './requests.ts';
 export * from './units.ts';

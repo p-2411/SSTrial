@@ -5,6 +5,7 @@ import type { Logger } from '../infra/logger.ts';
 import { handleError, notFound } from './errors.ts';
 import { eventRoutes, type EventRoutesDeps } from './routes/events.ts';
 import { exportRoutes, type ExportRoutesDeps } from './routes/exports.ts';
+import { logRoutes, type LogRoutesDeps } from './routes/logs.ts';
 import { opsRoutes, type OpsRoutesDeps } from './routes/ops.ts';
 import { uploadRoutes, type UploadRoutesDeps } from './routes/uploads.ts';
 
@@ -12,6 +13,7 @@ import { uploadRoutes, type UploadRoutesDeps } from './routes/uploads.ts';
 export type AppDeps = UploadRoutesDeps &
   ExportRoutesDeps &
   EventRoutesDeps &
+  LogRoutesDeps &
   OpsRoutesDeps & {
     logger: Logger;
     /** Built web app to serve alongside the API (production). Omit in development: Vite serves it. */
@@ -35,6 +37,7 @@ export async function buildApp(deps: AppDeps) {
   await app.register(uploadRoutes, deps);
   await app.register(exportRoutes, deps);
   await app.register(eventRoutes, deps);
+  await app.register(logRoutes, deps);
 
   if (deps.webDistDir) {
     // Serve the single-page app; any non-API path falls back to index.html for client routing.

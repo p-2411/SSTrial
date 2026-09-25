@@ -1,18 +1,20 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { finaliseUpload } from '../../src/uploads/finalise.ts';
-import { FILE_BYTES, InMemoryStorage, InMemoryUploadStore } from '../fakes.ts';
+import { FILE_BYTES, InMemoryEventStore, InMemoryStorage, InMemoryUploadStore } from '../fakes.ts';
 
 const ID = '5c0ffee0-0000-4000-8000-000000000001';
 
 let uploads: InMemoryUploadStore;
 let storage: InMemoryStorage;
+let events: InMemoryEventStore;
 
 beforeEach(() => {
   uploads = new InMemoryUploadStore();
   storage = new InMemoryStorage();
+  events = new InMemoryEventStore();
 });
 
-const finalise = (caller: 'browser' | 'finalise-job' = 'browser') => finaliseUpload({ uploads, storage }, ID, { caller });
+const finalise = (caller: 'browser' | 'finalise-job' = 'browser') => finaliseUpload({ uploads, storage, events }, ID, { caller });
 
 describe('finaliseUpload', () => {
   it('queues extraction when a supported file has arrived', async () => {
@@ -21,6 +23,7 @@ describe('finaliseUpload', () => {
 
     await expect(finalise()).resolves.toMatchObject({ outcome: 'queued', upload: { status: 'queued' } });
     expect(uploads.enqueued).toEqual([ID]);
+    expect(events.events).toMatchObject([{ type: 'upload.queued', level: 'info', uploadId: ID }]);
   });
 
   it('accepts a valid file with the wrong extension under its real type', async () => {
@@ -28,6 +31,7 @@ describe('finaliseUpload', () => {
     storage.put(upload.storagePath, FILE_BYTES.png);
 
     await expect(finalise()).resolves.toMatchObject({ upload: { mimeType: 'image/png' } });
+    expect(events.events[0]!.message).toMatch('sent as a JPEG but is a PNG');
   });
 
   it('deletes both the file and the upload when the content is not a supported type', async () => {
@@ -38,6 +42,7 @@ describe('finaliseUpload', () => {
     expect(storage.files.has(upload.storagePath)).toBe(false);
     expect(uploads.rows.has(ID)).toBe(false);
     expect(uploads.enqueued).toEqual([]);
+    expect(events.events).toMatchObject([{ type: 'upload.rejected', level: 'warn', uploadId: ID }]);
   });
 
   it('keeps the upload if deleting a rejected file fails, so the finalise job can try again', async () => {
@@ -47,6 +52,7 @@ describe('finaliseUpload', () => {
 
     await expect(finalise()).rejects.toThrow();
     expect(uploads.rows.has(ID)).toBe(true);
+    expect(events.types).toEqual([]); // nothing happened yet
   });
 
   it('leaves the upload for the browser when its file has not arrived yet', async () => {
@@ -54,6 +60,7 @@ describe('finaliseUpload', () => {
 
     await expect(finalise('browser')).resolves.toEqual({ outcome: 'not-uploaded' });
     expect(uploads.get(ID).status).toBe('uploading');
+    expect(events.types).toEqual([]);
   });
 
   it('discards the upload when the finalise job finds no file (none can arrive any more)', async () => {
@@ -62,6 +69,7 @@ describe('finaliseUpload', () => {
     await expect(finalise('finalise-job')).resolves.toEqual({ outcome: 'discarded' });
     expect(uploads.rows.has(ID)).toBe(false);
     expect(uploads.finaliseCancelled).toEqual([]);
+    expect(events.types).toEqual(['upload.discarded']);
   });
 
   it('is a no-op for an upload that was already finalised (the other caller won)', async () => {
@@ -70,6 +78,7 @@ describe('finaliseUpload', () => {
 
     await expect(finalise()).resolves.toMatchObject({ outcome: 'already-finalised' });
     expect(uploads.enqueued).toEqual([]);
+    expect(events.types).toEqual([]); // the winner logged it
   });
 
   it('cancels the finalise job when the browser confirms the upload', async () => {

@@ -1,4 +1,6 @@
 import type { Logger } from '../infra/logger.ts';
+import { logEvents } from '../logs/events.ts';
+import type { EventLog } from '../logs/store.ts';
 import { EXTRACTION_EXPIRY_SECONDS } from '../uploads/jobs.ts';
 import type { FiringAlert, MonitorSignals, OpsStore } from './store.ts';
 
@@ -79,8 +81,8 @@ export function evaluateRules(signals: MonitorSignals): FiringAlert[] {
   return alerts;
 }
 
-export async function runMonitor(deps: { ops: OpsStore; logger: Logger }): Promise<FiringAlert[]> {
-  const { ops, logger } = deps;
+export async function runMonitor(deps: { ops: OpsStore; events: EventLog; logger: Logger }): Promise<FiringAlert[]> {
+  const { ops, events, logger } = deps;
   await ops.recordWorkerHeartbeat();
 
   const firing = evaluateRules(await ops.signals(MONITOR_RULES.windowMinutes, MONITOR_RULES.stuckAfterMinutes));
@@ -88,10 +90,12 @@ export async function runMonitor(deps: { ops: OpsStore; logger: Logger }): Promi
     if (await ops.raiseAlert(alert)) {
       // A structured `alert` field makes these easy to find or match in any log tool.
       logger.error({ alert: alert.key, severity: alert.severity }, `ALERT: ${alert.title}. ${alert.message}`);
+      await events.record(logEvents.alertOpened(alert));
     }
   }
-  for (const key of await ops.resolveAlertsExcept(firing.map((alert) => alert.key))) {
-    logger.info({ alert: key }, 'Alert resolved');
+  for (const resolved of await ops.resolveAlertsExcept(firing.map((alert) => alert.key))) {
+    logger.info({ alert: resolved.key }, 'Alert resolved');
+    await events.record(logEvents.alertResolved(resolved));
   }
   return firing;
 }

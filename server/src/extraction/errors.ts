@@ -9,6 +9,11 @@ const RETRYABLE_CODES: ReadonlySet<UploadErrorCode> = new Set<UploadErrorCode>([
   'INTERNAL_ERROR', // most likely a passing hiccup (storage, network); a real bug fails on the last attempt
 ]);
 
+/** Whether a failure with this code is worth another attempt (see RETRYABLE_CODES). */
+export function isRetryableCode(code: UploadErrorCode): boolean {
+  return RETRYABLE_CODES.has(code);
+}
+
 /**
  * Every way extraction can fail, reduced to what the worker needs to know:
  *   - `code`: what went wrong. It's all that gets stored; users see the shared catalogue's message.
@@ -33,6 +38,6 @@ export class ExtractionError extends Error {
   }
 
   get retryable(): boolean {
-    return RETRYABLE_CODES.has(this.code);
+    return isRetryableCode(this.code);
   }
 }

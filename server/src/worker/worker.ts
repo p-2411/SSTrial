@@ -1,5 +1,7 @@
 import type { Job, JobResult, JobWithMetadata, PgBoss } from 'pg-boss';
 import type { Logger } from '../infra/logger.ts';
+import { logEvents } from '../logs/events.ts';
+import { EVENT_RETENTION_DAYS, type EventLog, type EventRetention } from '../logs/store.ts';
 import { runMonitor } from '../ops/monitor.ts';
 import type { OpsStore } from '../ops/store.ts';
 import { finaliseUpload, type FinaliseDeps } from '../uploads/finalise.ts';
@@ -61,7 +63,10 @@ export async function startExtractionWorker(deps: ExtractionWorkerDeps): Promise
   await boss.work(EXTRACTION_DEAD_LETTER_QUEUE, { batchSize: 1 }, async ([job]: Job<ExtractionJobData>[]) => {
     if (!job) return;
     const failed = await deps.uploads.failAbandoned(job.data.uploadId, 'PROCESSING_TIMEOUT');
-    if (failed) logger.error({ uploadId: job.data.uploadId }, 'Marked upload failed from the dead-letter queue');
+    if (failed) {
+      logger.error({ uploadId: job.data.uploadId }, 'Marked upload failed from the dead-letter queue');
+      await deps.events.record(logEvents.extractionAbandoned(failed, 'PROCESSING_TIMEOUT'));
+    }
   });
 
   logger.info({ concurrency: deps.concurrency }, 'Worker is waiting for jobs');
@@ -84,20 +89,41 @@ export async function startFinaliseWorker(deps: FinaliseDeps & { boss: PgBoss; l
   });
 }
 
-/** Runs the monitoring rules once a minute (see ops/monitor.ts). */
+/** Runs the monitoring rules once a minute (see ops/monitor.ts), and keeps the activity log pruned. */
 const OPS_MONITOR_QUEUE = 'ops-monitor';
 
-export async function startMonitor({ boss, ops, logger }: { boss: PgBoss; ops: OpsStore; logger: Logger }): Promise<void> {
+export interface MonitorDeps {
+  boss: PgBoss;
+  ops: OpsStore;
+  events: EventLog & EventRetention;
+  logger: Logger;
+}
+
+export async function startMonitor({ boss, ops, events, logger }: MonitorDeps): Promise<void> {
   if (!(await boss.getQueue(OPS_MONITOR_QUEUE))) {
     // A missed run is simply replaced by the next minute's, so never retry.
     await boss.createQueue(OPS_MONITOR_QUEUE, { retryLimit: 0, expireInSeconds: 50 });
   }
   await boss.work(OPS_MONITOR_QUEUE, { batchSize: 1 }, async () => {
-    await runMonitor({ ops, logger });
+    await runMonitor({ ops, events, logger });
+    await pruneActivityLog({ events, logger });
   });
   // Every minute, cluster-wide: pg-boss creates one job per tick however many workers there are.
   await boss.schedule(OPS_MONITOR_QUEUE, '* * * * *');
-  await runMonitor({ ops, logger }); // don't wait a minute for the first heartbeat
+  await runMonitor({ ops, events, logger }); // don't wait a minute for the first heartbeat
+}
+
+/**
+ * Deletes activity-log events past their retention. Every minute, so each run only removes a
+ * minute's worth. A failure is logged and left for the next run: it must not stop the monitor.
+ */
+export async function pruneActivityLog({ events, logger }: Pick<MonitorDeps, 'events' | 'logger'>): Promise<void> {
+  try {
+    const pruned = await events.pruneOlderThan(EVENT_RETENTION_DAYS);
+    if (pruned > 0) logger.info({ pruned }, 'Pruned old activity log events');
+  } catch (err) {
+    logger.warn({ err }, 'Could not prune the activity log; will try again next minute');
+  }
 }
 
 /** How each outcome maps onto pg-boss's per-job result. */

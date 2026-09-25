@@ -9,6 +9,8 @@ import { createDb } from '../infra/db.ts';
 import { createLogger } from '../infra/logger.ts';
 import { startQueue } from '../infra/queue.ts';
 import { createSupabaseStorage, syncBucketSettings } from '../infra/storage.ts';
+import { logEvents } from '../logs/events.ts';
+import { createEventStore } from '../logs/store.ts';
 import { databaseCheck, queueCheck, runHealthChecks } from '../ops/health.ts';
 import { createOpsStore } from '../ops/store.ts';
 import { listenForUploadChanges } from '../uploads/change-feed.ts';
@@ -25,9 +27,11 @@ const sql = createDb(config.DATABASE_URL, { max: config.DATABASE_POOL_MAX });
 await syncBucketSettings({ url: config.SUPABASE_URL, secretKey: config.SUPABASE_SECRET_KEY, bucket: config.STORAGE_BUCKET });
 const boss = await startQueue({ connectionString: config.DATABASE_URL, role: 'api', logger });
 await createUploadQueues(boss);
+const events = createEventStore(sql, { source: 'api', logger });
 
 const app = await buildApp({
   logger,
+  events,
   changes: await listenForUploadChanges(sql, logger),
   health: () => runHealthChecks([databaseCheck(sql), queueCheck(boss)]),
   ops: createOpsStore(sql),
@@ -42,6 +46,8 @@ const app = await buildApp({
 });
 
 await app.listen({ host: config.HOST, port: config.PORT });
+// Deploys and restarts show up in the activity log, next to whatever they affected.
+await events.record(logEvents.processStarted('API'));
 
 // Graceful shutdown: stop accepting connections, let in-flight requests finish, then disconnect.
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

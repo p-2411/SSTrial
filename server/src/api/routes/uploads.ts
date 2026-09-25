@@ -12,6 +12,7 @@ import {
   type UploadResponse,
 } from '@label-extractor/shared';
 import type { FileStorage } from '../../infra/storage.ts';
+import type { EventLog } from '../../logs/store.ts';
 import { finaliseUpload } from '../../uploads/finalise.ts';
 import { requestUpload } from '../../uploads/intake.ts';
 import { toUploadCounts, toUploadDetail, toUploadSummary } from '../../uploads/presenter.ts';
@@ -22,6 +23,8 @@ import { ApiError, notFound } from '../errors.ts';
 export interface UploadRoutesDeps {
   uploads: UploadQueries & UploadIntake;
   storage: FileStorage;
+  /** The use cases record what they did to the activity log. */
+  events: EventLog;
 }
 
 /** How long preview links in the detail view stay valid. */
@@ -38,7 +41,7 @@ const idParams = z.object({ id: z.uuid() });
  *   2. PUT  <signed URL>              → browser sends the bytes straight to storage (not via us)
  *   3. POST /api/uploads/:id/complete → verify the bytes, then queue the extraction job
  */
-export async function uploadRoutes(app: FastifyInstance, { uploads, storage }: UploadRoutesDeps) {
+export async function uploadRoutes(app: FastifyInstance, { uploads, storage, events }: UploadRoutesDeps) {
   /** The `:id` route param, or a 404 for a malformed ID (it can't name an upload). */
   function uploadId(params: unknown): string {
     const parsed = idParams.safeParse(params);
@@ -67,7 +70,7 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage }: U
     if (!body.success) {
       throw new ApiError(400, 'BAD_REQUEST', 'Expected a JSON body with fileName, mimeType and sizeBytes.');
     }
-    const result = await requestUpload({ uploads, storage }, body.data);
+    const result = await requestUpload({ uploads, storage, events }, body.data);
 
     switch (result.outcome) {
       case 'invalid':
@@ -82,7 +85,7 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage }: U
 
   // 3. Confirm the upload finished ---------------------------------------------------------------
   app.post('/api/uploads/:id/complete', async (request): Promise<UploadResponse> => {
-    const result = await finaliseUpload({ uploads, storage }, uploadId(request.params), { caller: 'browser' });
+    const result = await finaliseUpload({ uploads, storage, events }, uploadId(request.params), { caller: 'browser' });
 
     switch (result.outcome) {
       case 'queued':
@@ -128,7 +131,7 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage }: U
 
   // Manual retry of a failed upload ------------------------------------------------------------
   app.post('/api/uploads/:id/retry', async (request): Promise<UploadResponse> => {
-    const result = await retryUpload({ uploads }, uploadId(request.params));
+    const result = await retryUpload({ uploads, events }, uploadId(request.params));
 
     switch (result.outcome) {
       case 'requeued':

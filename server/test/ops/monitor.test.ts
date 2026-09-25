@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { evaluateRules, runMonitor } from '../../src/ops/monitor.ts';
 import type { FiringAlert, MonitorSignals, OpsStore } from '../../src/ops/store.ts';
-import { silentLogger } from '../fakes.ts';
+import { InMemoryEventStore, silentLogger } from '../fakes.ts';
 
 const quiet: MonitorSignals = {
   waiting: 0,
@@ -54,7 +54,9 @@ describe('runMonitor', () => {
     const ops: OpsStore = {
       signals: async () => ({ ...quiet, ...signals }),
       raiseAlert: vi.fn(async (alert: FiringAlert) => !open.has(alert.key) && Boolean(open.add(alert.key))),
-      resolveAlertsExcept: vi.fn(async (firing: string[]) => [...open].filter((key) => !firing.includes(key))),
+      resolveAlertsExcept: vi.fn(async (firing: string[]) =>
+        [...open].filter((key) => !firing.includes(key)).map((key) => ({ key, title: `Title of ${key}` })),
+      ),
       recordWorkerHeartbeat: vi.fn(async () => {}),
       snapshot: vi.fn(),
     };
@@ -64,21 +66,36 @@ describe('runMonitor', () => {
   it('records a heartbeat, raises what fires and resolves what stopped', async () => {
     const ops = fakeOps({ waiting: 600 }, ['queue-stalled']);
     const logger = { ...silentLogger, error: vi.fn(), info: vi.fn() } as unknown as typeof silentLogger;
+    const events = new InMemoryEventStore();
 
-    const firing = await runMonitor({ ops, logger });
+    const firing = await runMonitor({ ops, events, logger });
 
     expect(ops.recordWorkerHeartbeat).toHaveBeenCalled();
     expect(firing.map((alert) => alert.key)).toEqual(['queue-backlog']);
     expect(ops.resolveAlertsExcept).toHaveBeenCalledWith(['queue-backlog']);
     expect(logger.error).toHaveBeenCalledTimes(1); // opened once
+    expect(events.events).toMatchObject([
+      { type: 'alert.opened', level: 'warn', data: { key: 'queue-backlog' } },
+      { type: 'alert.resolved', level: 'info', message: 'Resolved: Title of queue-stalled.' },
+    ]);
+  });
+
+  it('logs a critical alert as an error', async () => {
+    const events = new InMemoryEventStore();
+
+    await runMonitor({ ops: fakeOps({ recentConfigFailures: 1 }), events, logger: silentLogger });
+
+    expect(events.events).toMatchObject([{ type: 'alert.opened', level: 'error', data: { key: 'llm-config', severity: 'critical' } }]);
   });
 
   it('logs an alert only when it opens, not on every run it keeps firing', async () => {
     const ops = fakeOps({ waiting: 600 }, ['queue-backlog']);
     const logger = { ...silentLogger, error: vi.fn(), info: vi.fn() } as unknown as typeof silentLogger;
+    const events = new InMemoryEventStore();
 
-    await runMonitor({ ops, logger });
+    await runMonitor({ ops, events, logger });
 
     expect(logger.error).not.toHaveBeenCalled();
+    expect(events.types).toEqual([]);
   });
 });
