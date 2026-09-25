@@ -1,20 +1,21 @@
 import type { ServerResponse } from 'node:http';
 import type { FastifyInstance } from 'fastify';
 import { LIVE_EVENTS_PATH } from '@label-extractor/shared';
-import type { UploadChangeFeed } from '../../uploads/change-feed.ts';
+import type { ChangeFeed } from '../../infra/change-feed.ts';
 
 export interface EventRoutesDeps {
-  changes: UploadChangeFeed;
+  changes: ChangeFeed;
 }
 
 /** A comment line every 25 seconds keeps idle connections open through proxies and load balancers. */
 const HEARTBEAT_MS = 25_000;
 
 /**
- * GET /api/events (LIVE_EVENTS_PATH) — server-sent events announcing upload changes, so the UI
- * refreshes exactly when something changes instead of polling.
+ * GET /api/events (LIVE_EVENTS_PATH) — server-sent events announcing changes, so the UI refreshes
+ * exactly when something changes instead of polling.
  *
  *   event: upload   data: {"type":"upload","id":"…","status":"completed"}
+ *   event: log      data: {"type":"log"}        (new activity-log events: refetch the log)
  *   event: resync   data: {"type":"resync"}     (the server may have missed changes: refetch all)
  */
 export async function eventRoutes(app: FastifyInstance, { changes }: EventRoutesDeps) {

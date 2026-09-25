@@ -49,6 +49,16 @@ describe('GET /api/events', () => {
     stream.close();
   });
 
+  it('announces new activity-log events', async () => {
+    const stream = await openStream();
+    await stream.readUntil('retry:');
+
+    changes.publish({ type: 'log' });
+
+    expect(await stream.readUntil('"log"')).toContain('event: log\ndata: {"type":"log"}\n\n');
+    stream.close();
+  });
+
   it('tells browsers to resync when the server may have missed changes', async () => {
     const stream = await openStream();
     await stream.readUntil('retry:');

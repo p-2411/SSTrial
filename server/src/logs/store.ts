@@ -55,9 +55,6 @@ export interface EventRetention {
 
 export type EventStore = EventLog & EventQueries & EventRetention;
 
-/** How long events are kept. The Logs page is for recent history; stdout logs cover the rest. */
-export const EVENT_RETENTION_DAYS = 30;
-
 export function createEventStore(sql: postgres.Sql, options: { source: LogSource; logger: Logger }): EventStore {
   const { source, logger } = options;
 

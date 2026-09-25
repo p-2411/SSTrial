@@ -1,6 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { isActiveStatus, type UploadDetail, type UploadFilter } from '@label-extractor/shared';
 import { isLiveConnected } from './liveConnection.ts';
+import { listLogs, type LogFilters } from './logs.ts';
 import { getOpsStatus, getUpload, getUploadCounts, listUploads, retryUpload } from './uploads.ts';
 
 /**
@@ -33,6 +34,14 @@ export const opsKeys = {
   all: ['ops'] as const,
 };
 
+export const logKeys = {
+  all: ['logs'] as const,
+  list: (filters: LogFilters) => [...logKeys.all, 'list', filters] as const,
+};
+
+/** How often the activity log polls when the live update stream is down (it's live otherwise). */
+const LOG_POLL_INTERVAL_MS = 10_000;
+
 /** How often the System status page (and the sidebar's alert dot) refresh. */
 export const OPS_REFRESH_MS = 15_000;
 
@@ -53,6 +62,11 @@ export async function refreshUploadLists(queryClient: QueryClient): Promise<void
 /** Refetches just the per-view counts, e.g. the tab numbers beside a list that's being switched. */
 export function refreshUploadCounts(queryClient: QueryClient): Promise<void> {
   return queryClient.invalidateQueries({ queryKey: uploadKeys.counts() });
+}
+
+/** Refetches the activity log, in whichever views of it are cached. */
+export function refreshLogs(queryClient: QueryClient): Promise<void> {
+  return queryClient.invalidateQueries({ queryKey: logKeys.all });
 }
 
 /** Refetches one upload's detail, if it's cached. */
@@ -110,6 +124,20 @@ export function useRetryUpload() {
       storeUpload(queryClient, upload);
       await refreshUploadLists(queryClient);
     },
+  });
+}
+
+/**
+ * The activity log, newest first, filtered and paginated by the server ("Load more" fetches older
+ * events). Live: new events arrive through the update stream, which refetches it (useLiveUpdates).
+ */
+export function useLogs(filters: LogFilters) {
+  return useInfiniteQuery({
+    queryKey: logKeys.list(filters),
+    queryFn: ({ pageParam }) => listLogs(filters, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    refetchInterval: () => (isLiveConnected() ? false : LOG_POLL_INTERVAL_MS),
   });
 }
 

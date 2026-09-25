@@ -12,6 +12,9 @@ export const LOG_EVENTS_PATH = '/api/logs';
 export const LOG_LEVELS = ['info', 'warn', 'error'] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
+/** How long events are kept. The Logs page is for recent history; the processes' stdout logs cover the rest. */
+export const LOG_RETENTION_DAYS = 30;
+
 /** Which process wrote the event. */
 export type LogSource = 'api' | 'worker';
 

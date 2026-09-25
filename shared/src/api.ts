@@ -50,12 +50,14 @@ export interface ApiErrorBody {
 }
 
 /**
- * GET /api/events — server-sent events announcing upload changes, so the UI refreshes exactly when
+ * GET /api/events — server-sent events announcing changes, so the UI refreshes exactly when
  * something changes. Each event is named after its `type`, with the change as JSON data.
  */
 export const LIVE_EVENTS_PATH = '/api/events';
 
-export type UploadChange =
+export type LiveChange =
   | { type: 'upload'; id: string; status: UploadStatus }
+  /** New events were written to the activity log (GET /api/logs). */
+  | { type: 'log' }
   /** The server may have missed changes (its database feed reconnected): refetch everything. */
   | { type: 'resync' };

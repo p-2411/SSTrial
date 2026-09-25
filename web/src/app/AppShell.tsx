@@ -5,7 +5,7 @@ import { useLiveUpdates } from '@/api/useLiveUpdates';
 import { Separator } from '@/components/ui/separator';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { FileUploadsProvider } from '@/features/upload/FileUploadsProvider';
-import { STATUS_PATH, uploadPath } from '@/routes';
+import { LOGS_PATH, STATUS_PATH, uploadPath } from '@/routes';
 import { AppSidebar } from './AppSidebar';
 
 /**
@@ -38,15 +38,24 @@ export function AppShell() {
   );
 }
 
-function TopBar() {
+/** The top bar's title on the System pages. Everywhere else is the label extraction feature. */
+function useSystemPageTitle(): string | null {
   const onStatusPage = useMatch(STATUS_PATH) !== null;
+  const onLogsPage = useMatch(LOGS_PATH) !== null;
+  if (onStatusPage) return 'System status';
+  if (onLogsPage) return 'Activity log';
+  return null;
+}
+
+function TopBar() {
+  const systemPageTitle = useSystemPageTitle();
   return (
     <header className="flex h-14 shrink-0 items-center gap-3 border-b bg-card px-6">
       <SidebarTrigger className="-ml-1" />
       <Separator orientation="vertical" className="data-vertical:h-5 data-vertical:self-center" />
-      <h1 className="text-base font-semibold">{onStatusPage ? 'System status' : 'Label extraction'}</h1>
+      <h1 className="text-base font-semibold">{systemPageTitle ?? 'Label extraction'}</h1>
       {/* The indigo BETA pill SupplyScope puts beside new AI features. */}
-      {!onStatusPage && (
+      {!systemPageTitle && (
         <span className="rounded-full bg-brand px-1.5 py-0.5 text-[10px] leading-none font-semibold tracking-wide text-brand-foreground">
           BETA
         </span>

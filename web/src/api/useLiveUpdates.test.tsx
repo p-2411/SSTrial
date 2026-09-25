@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { createTestQueryClient, Providers } from '@/test/render';
 import { isLiveConnected } from './liveConnection.ts';
-import { uploadKeys } from './queries.ts';
+import { logKeys, uploadKeys } from './queries.ts';
 import { useLiveUpdates } from './useLiveUpdates.ts';
 
 /** Stands in for the browser's EventSource so the test can play server events. */
@@ -72,13 +72,27 @@ describe('useLiveUpdates', () => {
     expect(invalidatedKeys(invalidate)).toEqual([uploadKeys.lists(), uploadKeys.counts(), uploadKeys.detail('a'), uploadKeys.detail('b')]);
   });
 
+  it('refreshes only the activity log when it has new events', () => {
+    const { source, invalidate } = setup();
+    act(() => source.onopen?.());
+    invalidate.mockClear();
+
+    act(() => {
+      source.emit('log', { type: 'log' });
+      source.emit('log', { type: 'log' });
+    });
+    act(() => vi.advanceTimersByTime(300));
+
+    expect(invalidatedKeys(invalidate)).toEqual([logKeys.all]);
+  });
+
   it('refetches everything on resync, and falls back to polling when the stream drops', () => {
     const { source, invalidate } = setup();
     act(() => source.onopen?.());
     invalidate.mockClear();
 
     act(() => source.emit('resync', { type: 'resync' }));
-    expect(invalidatedKeys(invalidate)).toEqual([uploadKeys.all]);
+    expect(invalidatedKeys(invalidate)).toEqual([uploadKeys.all, logKeys.all]);
 
     act(() => source.onerror?.());
     expect(isLiveConnected()).toBe(false);

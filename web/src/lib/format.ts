@@ -5,6 +5,8 @@ import { formatBytes, SUPPORTED_FILE_TYPES, type SupportedMimeType } from '@labe
 const relative = new Intl.RelativeTimeFormat('en', { numeric: 'auto', style: 'long' });
 const absolute = new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 const full = new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' });
+const fullWithSeconds = new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'medium' });
+const timeOfDay = new Intl.DateTimeFormat('en', { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
 
 /** "just now", "3 minutes ago", "2 hours ago", then an absolute date for anything older than a day. */
 export function formatRelativeTime(iso: string, now: number = Date.now()): string {
@@ -19,6 +21,16 @@ export function formatRelativeTime(iso: string, now: number = Date.now()): strin
 /** Full date and time, for tooltips next to relative times. */
 export function formatDateTime(iso: string): string {
   return full.format(new Date(iso));
+}
+
+/** "14:05:09". For logs, where events seconds apart need telling apart. */
+export function formatTimeOfDay(iso: string): string {
+  return timeOfDay.format(new Date(iso));
+}
+
+/** Full date and time to the second, for tooltips on log times. */
+export function formatDateTimeWithSeconds(iso: string): string {
+  return fullWithSeconds.format(new Date(iso));
 }
 
 /** "PNG", "PDF"… */

@@ -3,6 +3,7 @@ import type postgres from 'postgres';
 import type { PgBoss } from 'pg-boss';
 import { ExtractionError } from '../../src/extraction/errors.ts';
 import type { LabelExtractor } from '../../src/extraction/extractor.ts';
+import { listenForChanges } from '../../src/infra/change-feed.ts';
 import { createDb } from '../../src/infra/db.ts';
 import { startQueue } from '../../src/infra/queue.ts';
 import {
@@ -16,7 +17,6 @@ import {
 } from '../../src/uploads/jobs.ts';
 import { createUploadStore, type UploadRecord, type UploadStore } from '../../src/uploads/store.ts';
 import { createPostgresRateLimiter } from '../../src/extraction/rate-limiter.ts';
-import { listenForUploadChanges } from '../../src/uploads/change-feed.ts';
 import { createEventStore, type EventStore } from '../../src/logs/store.ts';
 import { createOpsStore } from '../../src/ops/store.ts';
 import { startExtractionWorker, startFinaliseWorker } from '../../src/worker/worker.ts';
@@ -387,9 +387,9 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
     }, 15_000);
   });
 
-  describe('upload change notifications (real Postgres trigger)', () => {
+  describe('change notifications (real Postgres triggers)', () => {
     it('announces visible changes, and stays quiet for uploads still being uploaded', async () => {
-      const feed = await listenForUploadChanges(sql, silentLogger);
+      const feed = await listenForChanges(sql, silentLogger);
       const seen: string[] = [];
       const id = crypto.randomUUID();
       const unsubscribe = feed.subscribe((change) => {
@@ -402,6 +402,21 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
 
       await expect.poll(() => seen, { timeout: 5000 }).toContain('queued');
       expect(seen[0]).toBe('queued'); // the 'uploading' insert was not announced
+      unsubscribe();
+    });
+
+    it('announces new activity-log events', async () => {
+      const feed = await listenForChanges(sql, silentLogger);
+      let announced = 0;
+      const unsubscribe = feed.subscribe((change) => {
+        if (change.type === 'log') announced += 1;
+      });
+      const uploadId = crypto.randomUUID();
+      createdIds.push(uploadId);
+
+      await events.record({ level: 'info', type: 'extraction.started', uploadId, message: 'x' });
+
+      await expect.poll(() => announced, { timeout: 5000 }).toBeGreaterThan(0);
       unsubscribe();
     });
   });

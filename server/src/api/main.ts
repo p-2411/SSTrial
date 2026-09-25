@@ -5,6 +5,7 @@
  * queue, and the separate worker process does the slow work.
  */
 import { loadApiConfig } from '../infra/config.ts';
+import { listenForChanges } from '../infra/change-feed.ts';
 import { createDb } from '../infra/db.ts';
 import { createLogger } from '../infra/logger.ts';
 import { startQueue } from '../infra/queue.ts';
@@ -13,7 +14,6 @@ import { logEvents } from '../logs/events.ts';
 import { createEventStore } from '../logs/store.ts';
 import { databaseCheck, queueCheck, runHealthChecks } from '../ops/health.ts';
 import { createOpsStore } from '../ops/store.ts';
-import { listenForUploadChanges } from '../uploads/change-feed.ts';
 import { createUploadJobs, createUploadQueues } from '../uploads/jobs.ts';
 import { createUploadStore } from '../uploads/store.ts';
 import { buildApp } from './app.ts';
@@ -32,7 +32,7 @@ const events = createEventStore(sql, { source: 'api', logger });
 const app = await buildApp({
   logger,
   events,
-  changes: await listenForUploadChanges(sql, logger),
+  changes: await listenForChanges(sql, logger),
   health: () => runHealthChecks([databaseCheck(sql), queueCheck(boss)]),
   ops: createOpsStore(sql),
   webDistDir: config.WEB_DIST_DIR,

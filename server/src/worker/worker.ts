@@ -1,7 +1,8 @@
 import type { Job, JobResult, JobWithMetadata, PgBoss } from 'pg-boss';
+import { LOG_RETENTION_DAYS } from '@label-extractor/shared';
 import type { Logger } from '../infra/logger.ts';
 import { logEvents } from '../logs/events.ts';
-import { EVENT_RETENTION_DAYS, type EventLog, type EventRetention } from '../logs/store.ts';
+import type { EventLog, EventRetention } from '../logs/store.ts';
 import { runMonitor } from '../ops/monitor.ts';
 import type { OpsStore } from '../ops/store.ts';
 import { finaliseUpload, type FinaliseDeps } from '../uploads/finalise.ts';
@@ -119,7 +120,7 @@ export async function startMonitor({ boss, ops, events, logger }: MonitorDeps): 
  */
 export async function pruneActivityLog({ events, logger }: Pick<MonitorDeps, 'events' | 'logger'>): Promise<void> {
   try {
-    const pruned = await events.pruneOlderThan(EVENT_RETENTION_DAYS);
+    const pruned = await events.pruneOlderThan(LOG_RETENTION_DAYS);
     if (pruned > 0) logger.info({ pruned }, 'Pruned old activity log events');
   } catch (err) {
     logger.warn({ err }, 'Could not prune the activity log; will try again next minute');

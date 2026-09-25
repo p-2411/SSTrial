@@ -6,16 +6,16 @@ import {
   type LogEventType,
   type LogLevelFilter,
   type SupportedMimeType,
-  type UploadChange,
+  type LiveChange,
   type UploadErrorCode,
 } from '@label-extractor/shared';
 import type { AppDeps } from '../src/api/app.ts';
 import { ExtractionError } from '../src/extraction/errors.ts';
 import type { RateLimiter } from '../src/extraction/rate-limiter.ts';
+import type { ChangeFeed } from '../src/infra/change-feed.ts';
 import { StorageUnavailableError, type FileStorage } from '../src/infra/storage.ts';
 import type { EventStore, LogEventRecord, NewLogEvent } from '../src/logs/store.ts';
 import type { OpsSnapshot } from '../src/ops/store.ts';
-import type { UploadChangeFeed } from '../src/uploads/change-feed.ts';
 import type { NewUpload, SettleOptions, UploadRecord, UploadStore } from '../src/uploads/store.ts';
 
 /**
@@ -174,16 +174,16 @@ export class InMemoryUploadStore implements UploadStore {
 }
 
 /** A change feed the test drives by hand with `publish()`. */
-export class FakeChangeFeed implements UploadChangeFeed {
-  private readonly listeners = new Set<(change: UploadChange) => void>();
+export class FakeChangeFeed implements ChangeFeed {
+  private readonly listeners = new Set<(change: LiveChange) => void>();
   get subscribers() {
     return this.listeners.size;
   }
-  subscribe(listener: (change: UploadChange) => void) {
+  subscribe(listener: (change: LiveChange) => void) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
-  publish(change: UploadChange) {
+  publish(change: LiveChange) {
     this.listeners.forEach((listener) => listener(change));
   }
 }

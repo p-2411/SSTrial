@@ -9,9 +9,17 @@ export const HOME_PATH = '/';
 /** System status: health, queue, throughput and the alert log. */
 export const STATUS_PATH = '/status';
 
+/** The activity log: what happened to each upload and to the system. */
+export const LOGS_PATH = '/logs';
+
 /** One upload open in a panel beside the list; the pattern the router and useMatch use. */
 export const UPLOAD_PATH_PATTERN = '/uploads/:id';
 
 export function uploadPath(id: string): string {
   return `/uploads/${id}`;
+}
+
+/** The activity log narrowed to one upload's events. */
+export function uploadLogsPath(id: string): string {
+  return `${LOGS_PATH}?upload=${encodeURIComponent(id)}`;
 }
