@@ -84,9 +84,15 @@ describe('editResult', () => {
     expect(Object.keys(fieldReviews)).toEqual(['allergens']);
   });
 
-  it("keeps the pack's printed wording when the amount changes, and writes it when there was none", async () => {
+  it("keeps the pack's printed wording when it shows the corrected amount", async () => {
+    uploads.seed({ id: ID, status: 'completed', result: { ...SAMPLE_EXTRACTION, netWeight: { value: 16, unit: 'oz', text: 'Net Wt 16 oz (454 g)' } } });
+    await edit({ revision: 0, changes: { netWeight: { value: 454, unit: 'g' } } });
+    expect(uploads.get(ID).result!.netWeight).toEqual({ value: 454, unit: 'g', text: 'Net Wt 16 oz (454 g)' });
+  });
+
+  it("replaces the printed wording when it doesn't show the corrected amount (it was misread too), or there was none", async () => {
     await edit({ revision: 0, changes: { netWeight: { value: 450, unit: 'g' } } });
-    expect(uploads.get(ID).result!.netWeight).toEqual({ value: 450, unit: 'g', text: 'Net Wt 500 g' });
+    expect(uploads.get(ID).result!.netWeight).toEqual({ value: 450, unit: 'g', text: '450 g' });
 
     uploads.seed({ id: ID, status: 'completed', result: { ...SAMPLE_EXTRACTION, netWeight: null } });
     await edit({ revision: 0, changes: { netWeight: { value: 1.5, unit: 'l' } } });

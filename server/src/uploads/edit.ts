@@ -7,6 +7,7 @@ import {
   type LabelExtraction,
   type ResultChanges,
 } from '@label-extractor/shared';
+import { textShowsAmount } from '../extraction/confidence-checks.ts';
 import { logEvents } from '../logs/events.ts';
 import type { EventLog } from '../logs/store.ts';
 import type { StoredFieldReviews, UploadQueries, UploadRecord, UploadReviews } from './store.ts';
@@ -89,8 +90,13 @@ function applyChanges(current: LabelExtraction, changes: ResultChanges): unknown
   }
   if ('netWeight' in changes) {
     const amount = changes.netWeight;
-    // The pack's own wording stays as printed; with none to keep, the amount stands in for it.
-    next.netWeight = amount ? { ...amount, text: current.netWeight?.text ?? `${amount.value} ${amount.unit}` } : null;
+    // The pack's wording stays if it states the corrected amount ("16 oz (454 g)" corrected to 454 g).
+    // If it doesn't, it was most likely misread along with the amount, so the correction replaces it
+    // rather than leave data that contradicts itself.
+    const printed = current.netWeight?.text;
+    next.netWeight = amount
+      ? { ...amount, text: printed && textShowsAmount(printed, amount.value) ? printed : `${amount.value} ${amount.unit}` }
+      : null;
   }
   return next;
 }

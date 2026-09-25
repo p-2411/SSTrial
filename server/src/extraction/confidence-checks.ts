@@ -13,7 +13,7 @@ export function applyConfidenceChecks(result: LabelExtraction, confidence: Extra
   };
 
   // The amount is copied from the printed statement, so it should appear in it.
-  if (result.netWeight && !numbersIn(result.netWeight.text).some((n) => Math.abs(n - result.netWeight!.value) < 1e-9)) {
+  if (result.netWeight && !textShowsAmount(result.netWeight.text, result.netWeight.value)) {
     flag('netWeight', "The amount isn't in the printed net quantity.");
   }
 
@@ -29,6 +29,11 @@ export function applyConfidenceChecks(result: LabelExtraction, confidence: Extra
   if (total > 100.5) flag('ingredients', `The percentages add up to ${Math.round(total * 10) / 10}%.`);
 
   return checked;
+}
+
+/** Whether a printed net quantity ("Net Wt 16 oz (454 g)") states this amount. */
+export function textShowsAmount(text: string, amount: number): boolean {
+  return numbersIn(text).some((n) => Math.abs(n - amount) < 1e-9);
 }
 
 /** Every number written in the text, reading "454,0" (decimal comma) as 454. */

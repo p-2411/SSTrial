@@ -11,7 +11,10 @@ import type { NetQuantityUnit } from './units.ts';
 export interface ResultChanges {
   productName?: string | null;
   brand?: string | null;
-  /** The amount and unit. The pack's printed wording is kept (or, if there was none, set to the amount). */
+  /**
+   * The amount and unit. The pack's printed wording is kept if it states this amount; otherwise
+   * (it was misread too, or there was none) it becomes the amount.
+   */
   netWeight?: { value: number; unit: NetQuantityUnit } | null;
   allergens?: string[];
   /** The whole list, in label order. Existing rows keep their sub-ingredients and allergen links. */
