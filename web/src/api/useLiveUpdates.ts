@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { LIVE_EVENTS_PATH, type LiveChange } from '@label-extractor/shared';
+import { authHeaders } from './client.ts';
+import { AuthorizedEventSource } from './eventStream.ts';
 import { isLiveConnected, setLiveConnected } from './liveConnection.ts';
 import { refreshAllUploads, refreshLogs, refreshUpload, refreshUploadLists } from './queries.ts';
 
@@ -10,16 +12,14 @@ const BATCH_MS = 250;
 /**
  * Subscribes to the server's live update stream (LIVE_EVENTS_PATH) and refreshes exactly what
  * changed: the lists and counts, plus the detail of each changed upload if it's cached, and the
- * activity log when it has new events. The browser reconnects automatically if the stream drops;
+ * activity log when it has new events. The stream reconnects by itself if it drops (see eventStream.ts);
  * anything missed meanwhile is refetched on reconnect.
  */
 export function useLiveUpdates(): void {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    if (typeof EventSource === 'undefined') return; // e.g. tests: queries keep polling instead
-
-    const source = new EventSource(LIVE_EVENTS_PATH);
+    const source = new AuthorizedEventSource(LIVE_EVENTS_PATH, authHeaders);
     const changed = new Set<string>();
     let logChanged = false;
     let flushTimer: ReturnType<typeof setTimeout> | undefined;
@@ -61,7 +61,7 @@ export function useLiveUpdates(): void {
       refreshEverything();
     };
     source.onerror = () => {
-      // Dropped: EventSource retries by itself. Refetch now so queries switch back to polling.
+      // Dropped: the stream retries by itself. Refetch now so queries switch back to polling.
       if (isLiveConnected()) {
         setLiveConnected(false);
         refreshEverything();

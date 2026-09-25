@@ -6,32 +6,35 @@ import { isLiveConnected } from './liveConnection.ts';
 import { logKeys, uploadKeys } from './queries.ts';
 import { useLiveUpdates } from './useLiveUpdates.ts';
 
-/** Stands in for the browser's EventSource so the test can play server events. */
-class FakeEventSource {
-  static last: FakeEventSource;
-  readonly listeners = new Map<string, (event: MessageEvent) => void>();
-  onopen: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  closed = false;
-  readonly url: string;
-  constructor(url: string) {
-    this.url = url;
-    FakeEventSource.last = this;
+/** Stands in for the authorized event stream so the test can play server events. */
+const { FakeEventSource } = vi.hoisted(() => {
+  class FakeEventSource {
+    static last: FakeEventSource;
+    readonly listeners = new Map<string, (event: MessageEvent) => void>();
+    onopen: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    closed = false;
+    readonly url: string;
+    constructor(url: string) {
+      this.url = url;
+      FakeEventSource.last = this;
+    }
+    addEventListener(type: string, listener: (event: MessageEvent) => void) {
+      this.listeners.set(type, listener);
+    }
+    close() {
+      this.closed = true;
+    }
+    emit(type: string, data: unknown) {
+      this.listeners.get(type)?.(new MessageEvent(type, { data: JSON.stringify(data) }));
+    }
   }
-  addEventListener(type: string, listener: (event: MessageEvent) => void) {
-    this.listeners.set(type, listener);
-  }
-  close() {
-    this.closed = true;
-  }
-  emit(type: string, data: unknown) {
-    this.listeners.get(type)?.(new MessageEvent(type, { data: JSON.stringify(data) }));
-  }
-}
+  return { FakeEventSource };
+});
+vi.mock('./eventStream.ts', () => ({ AuthorizedEventSource: FakeEventSource }));
 
 beforeEach(() => {
   vi.useFakeTimers();
-  vi.stubGlobal('EventSource', FakeEventSource);
 });
 afterEach(() => {
   vi.useRealTimers();
