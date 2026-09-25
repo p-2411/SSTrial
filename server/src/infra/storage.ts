@@ -20,13 +20,29 @@ export class StorageUnavailableError extends Error {
   override name = 'StorageUnavailableError';
 }
 
-export function createSupabaseStorage(options: { url: string; secretKey: string; bucket: string }): FileStorage {
+export interface SupabaseStorageOptions {
+  url: string;
+  secretKey: string;
+  bucket: string;
+  /**
+   * Origin browsers should use for signed URLs, when it differs from `url` — e.g. in Docker the
+   * server reaches Supabase at host.docker.internal but the browser needs localhost.
+   */
+  publicUrl?: string;
+}
+
+export function createSupabaseStorage(options: SupabaseStorageOptions): FileStorage {
   const client = createClient(options.url, options.secretKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const bucket = () => client.storage.from(options.bucket);
 
-  async function createDownloadUrl(path: string, expiresInSeconds: number): Promise<string | null> {
+  /** Rewrites a signed URL for the browser. The signature covers the path, not the host. */
+  const forBrowser = (signedUrl: string) =>
+    options.publicUrl ? signedUrl.replace(options.url.replace(/\/$/, ''), options.publicUrl.replace(/\/$/, '')) : signedUrl;
+
+  /** A signed download URL on the internal origin, for the server's own reads. */
+  async function signedDownloadUrl(path: string, expiresInSeconds: number): Promise<string | null> {
     const { data, error } = await bucket().createSignedUrl(path, expiresInSeconds);
     if (error) {
       if (isNotFound(error)) return null;
@@ -36,24 +52,27 @@ export function createSupabaseStorage(options: { url: string; secretKey: string;
   }
 
   return {
-    createDownloadUrl,
+    async createDownloadUrl(path, expiresInSeconds) {
+      const url = await signedDownloadUrl(path, expiresInSeconds);
+      return url && forBrowser(url);
+    },
 
     async createUploadUrl(path) {
       const { data, error } = await bucket().createSignedUploadUrl(path);
       if (error) throw new StorageUnavailableError(`Could not create upload URL: ${error.message}`, { cause: error });
-      return data.signedUrl;
+      return forBrowser(data.signedUrl);
     },
 
     async readHead(path, byteCount) {
       // Supabase's download helper always fetches the whole object, so go via a signed URL and ask
       // for just the first bytes with an HTTP Range request.
-      const url = await createDownloadUrl(path, 60);
+      const url = await signedDownloadUrl(path, 60);
       if (!url) return null;
       const response = await fetch(url, { headers: { Range: `bytes=0-${byteCount - 1}` } });
       if (response.status === 404 || response.status === 400) return null;
       if (!response.ok) throw new StorageUnavailableError(`Storage responded ${response.status} reading ${path}`);
       // If the server ignored the Range header we'd get the whole file; only keep what we asked for.
-      return (await readAtMost(response, byteCount));
+      return readAtMost(response, byteCount);
     },
 
     async download(path) {

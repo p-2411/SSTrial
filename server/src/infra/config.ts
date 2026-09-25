@@ -20,6 +20,8 @@ const shared = {
   SUPABASE_URL: z.url(),
   /** Server-side Supabase key (sb_secret_… or the legacy service_role JWT). Never sent to browsers. */
   SUPABASE_SECRET_KEY: z.string().min(1),
+  /** Only when browsers must reach Supabase at a different address than the server does (Docker). */
+  SUPABASE_PUBLIC_URL: z.url().optional(),
   STORAGE_BUCKET: z.string().min(1).default('labels'),
 };
 

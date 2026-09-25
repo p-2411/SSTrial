@@ -26,6 +26,7 @@ const app = await buildApp({
     url: config.SUPABASE_URL,
     secretKey: config.SUPABASE_SECRET_KEY,
     bucket: config.STORAGE_BUCKET,
+    publicUrl: config.SUPABASE_PUBLIC_URL,
   }),
 });
 

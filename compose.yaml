@@ -1,0 +1,34 @@
+# Runs the production image locally: the API (serving the built UI) on http://localhost:3000 and
+# two worker replicas, against the Supabase stack from `supabase start`. Secrets come from
+# server/.env; the overrides below point the containers at the host's Supabase ports.
+#
+#   supabase start && docker compose up --build
+
+x-supabase: &supabase
+  env_file: server/.env
+  environment:
+    NODE_ENV: production
+    LOG_LEVEL: info
+    DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:54322/postgres
+    SUPABASE_URL: http://host.docker.internal:54321
+    # Signed URLs go to the browser, which reaches Supabase on localhost, not host.docker.internal.
+    SUPABASE_PUBLIC_URL: http://127.0.0.1:54321
+  extra_hosts:
+    - host.docker.internal:host-gateway
+
+services:
+  api:
+    <<: *supabase
+    build: .
+    image: label-extractor
+    ports:
+      - "3000:3000"
+
+  worker:
+    <<: *supabase
+    image: label-extractor
+    command: ["node", "server/src/worker/main.ts"]
+    depends_on:
+      - api # only so the image is built first
+    deploy:
+      replicas: 2 # more processes = more throughput; the queue shares jobs between them
