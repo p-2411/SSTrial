@@ -15,11 +15,27 @@ import type { SupportedMimeType } from './files.ts';
 export const UPLOAD_STATUSES = ['uploading', 'queued', 'processing', 'completed', 'failed'] as const;
 export type UploadStatus = (typeof UPLOAD_STATUSES)[number];
 
-/** Statuses the UI keeps polling for. */
-export const ACTIVE_STATUSES: readonly UploadStatus[] = ['queued', 'processing'];
+export function isUploadStatus(value: string): value is UploadStatus {
+  return (UPLOAD_STATUSES as readonly string[]).includes(value);
+}
 
+/**
+ * The views of the upload list. The server does the filtering and counting, so both stay correct
+ * however many uploads there are. `uploading` is in none of them: the browser shows its own.
+ */
+export const UPLOAD_FILTERS = {
+  all: ['queued', 'processing', 'completed', 'failed'],
+  'in-progress': ['queued', 'processing'],
+  completed: ['completed'],
+  failed: ['failed'],
+} as const satisfies Record<string, readonly Exclude<UploadStatus, 'uploading'>[]>;
+
+export type UploadFilter = keyof typeof UPLOAD_FILTERS;
+export const UPLOAD_FILTER_IDS = Object.keys(UPLOAD_FILTERS) as UploadFilter[];
+
+/** Whether the upload is still being worked on (and so worth watching for changes). */
 export function isActiveStatus(status: UploadStatus): boolean {
-  return ACTIVE_STATUSES.includes(status);
+  return (UPLOAD_FILTERS['in-progress'] as readonly UploadStatus[]).includes(status);
 }
 
 /**
@@ -46,8 +62,16 @@ export const UPLOAD_ERROR_MESSAGES = {
 
 export type UploadErrorCode = keyof typeof UPLOAD_ERROR_MESSAGES;
 
+/**
+ * A code read back from storage. One this version no longer knows (renamed or removed since it was
+ * stored) reads as a generic failure, so there's always a message to show.
+ */
+export function storedErrorCode(value: string): UploadErrorCode {
+  return Object.hasOwn(UPLOAD_ERROR_MESSAGES, value) ? (value as UploadErrorCode) : 'INTERNAL_ERROR';
+}
+
 export function uploadErrorMessage(code: UploadErrorCode): string {
-  return UPLOAD_ERROR_MESSAGES[code] ?? UPLOAD_ERROR_MESSAGES.INTERNAL_ERROR;
+  return UPLOAD_ERROR_MESSAGES[code];
 }
 
 /** Failures caused by the file itself: running it through the pipeline again can't help. */
@@ -103,54 +127,4 @@ export interface UploadDetail extends UploadSummary {
   result: LabelExtraction | null;
   /** Short-lived signed URL for previewing the original file, or `null` if unavailable. */
   fileUrl: string | null;
-}
-
-// ---------------------------------------------------------------------------------------------
-// HTTP API contracts: response types here; request schemas (Zod) in requests.ts, which the web
-// app never loads at runtime.
-// ---------------------------------------------------------------------------------------------
-
-export type CreateUploadResponse =
-  | {
-      kind: 'created';
-      upload: UploadSummary;
-      /** Upload the file with `PUT uploadUrl` (body = raw file bytes, `Content-Type` = file type). */
-      uploadUrl: string;
-    }
-  /** An identical file is already queued, processing or done: nothing to upload. */
-  | { kind: 'duplicate'; upload: UploadSummary };
-
-/**
- * The views of the upload list. The server does the filtering and counting, so both stay correct
- * however many uploads there are.
- */
-export const UPLOAD_FILTERS = {
-  all: ['queued', 'processing', 'completed', 'failed'],
-  'in-progress': ['queued', 'processing'],
-  completed: ['completed'],
-  failed: ['failed'],
-} as const satisfies Record<string, readonly UploadStatus[]>;
-
-export type UploadFilter = keyof typeof UPLOAD_FILTERS;
-export const UPLOAD_FILTER_IDS = Object.keys(UPLOAD_FILTERS) as UploadFilter[];
-
-export interface ListUploadsResponse {
-  uploads: UploadSummary[];
-  /** Pass as `cursor` to get the next page; `null` on the last page. */
-  nextCursor: string | null;
-}
-
-/** GET /api/uploads/counts — how many uploads each view holds. */
-export interface UploadCountsResponse {
-  counts: Record<UploadFilter, number>;
-}
-
-/** GET /api/uploads/:id, POST /api/uploads/:id/complete, POST /api/uploads/:id/retry */
-export interface UploadResponse {
-  upload: UploadDetail;
-}
-
-/** Every non-2xx response has this shape. */
-export interface ApiErrorBody {
-  error: { code: string; message: string };
 }

@@ -1,5 +1,5 @@
 import type postgres from 'postgres';
-import type { UploadStatus } from '@label-extractor/shared';
+import { isUploadStatus, type UploadChange } from '@label-extractor/shared';
 import type { Logger } from '../infra/logger.ts';
 
 /**
@@ -7,11 +7,6 @@ import type { Logger } from '../infra/logger.ts';
  * 'upload_changes' channel and this process LISTENs. Changes made by any process — this API,
  * another API instance, a worker — reach every connected browser.
  */
-export type UploadChange =
-  | { type: 'upload'; id: string; status: UploadStatus }
-  /** The feed reconnected and may have missed changes: browsers should refetch everything. */
-  | { type: 'resync' };
-
 export interface UploadChangeFeed {
   /** Calls `listener` for every change until the returned function is called. */
   subscribe(listener: (change: UploadChange) => void): () => void;
@@ -27,12 +22,9 @@ export async function listenForUploadChanges(sql: postgres.Sql, logger: Logger):
   await sql.listen(
     'upload_changes',
     (payload) => {
-      try {
-        const { id, status } = JSON.parse(payload) as { id: string; status: UploadStatus };
-        publish({ type: 'upload', id, status });
-      } catch (err) {
-        logger.warn({ err, payload }, 'Ignored an unreadable upload change notification');
-      }
+      const change = parseNotification(payload);
+      if (change) publish(change);
+      else logger.warn({ payload }, 'Ignored an unreadable upload change notification');
     },
     () => {
       if (connectedBefore) {
@@ -49,4 +41,15 @@ export async function listenForUploadChanges(sql: postgres.Sql, logger: Logger):
       return () => listeners.delete(listener);
     },
   };
+}
+
+/** The trigger sends `{"id": …, "status": …}`; anything else is ignored rather than passed on. */
+function parseNotification(payload: string): UploadChange | null {
+  try {
+    const { id, status } = JSON.parse(payload) as { id?: unknown; status?: unknown };
+    if (typeof id !== 'string' || typeof status !== 'string' || !isUploadStatus(status)) return null;
+    return { type: 'upload', id, status };
+  } catch {
+    return null;
+  }
 }

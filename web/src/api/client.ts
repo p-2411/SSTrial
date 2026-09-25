@@ -1,4 +1,7 @@
-import type { ApiErrorBody } from '@label-extractor/shared';
+import type { ApiErrorBody, ApiErrorCode } from '@label-extractor/shared';
+
+/** The server's codes, plus two for when no answer came from our API at all. */
+export type RequestErrorCode = ApiErrorCode | 'NETWORK_ERROR' | 'HTTP_ERROR';
 
 /**
  * A failed API call, carrying the server's error code and its user-facing message.
@@ -7,9 +10,9 @@ import type { ApiErrorBody } from '@label-extractor/shared';
 export class ApiRequestError extends Error {
   override name = 'ApiRequestError';
   readonly status: number;
-  readonly code: string;
+  readonly code: RequestErrorCode;
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: RequestErrorCode, message: string) {
     super(message);
     this.status = status;
     this.code = code;

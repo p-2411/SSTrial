@@ -1,5 +1,5 @@
 import type { FastifyError, FastifyReply, FastifyRequest } from 'fastify';
-import type { ApiErrorBody } from '@label-extractor/shared';
+import type { ApiErrorBody, ApiErrorCode } from '@label-extractor/shared';
 import { StorageUnavailableError } from '../infra/storage.ts';
 
 /**
@@ -9,9 +9,9 @@ import { StorageUnavailableError } from '../infra/storage.ts';
 export class ApiError extends Error {
   override name = 'ApiError';
   readonly statusCode: number;
-  readonly code: string;
+  readonly code: ApiErrorCode;
 
-  constructor(statusCode: number, code: string, message: string) {
+  constructor(statusCode: number, code: ApiErrorCode, message: string) {
     super(message);
     this.statusCode = statusCode;
     this.code = code;
@@ -25,7 +25,7 @@ export const notFound = (what = 'Upload') => new ApiError(404, 'NOT_FOUND', `${w
  * Unexpected errors are logged in full but reported to the client generically.
  */
 export function handleError(error: FastifyError | Error, request: FastifyRequest, reply: FastifyReply) {
-  const send = (status: number, code: string, message: string) =>
+  const send = (status: number, code: ApiErrorCode, message: string) =>
     reply.status(status).send({ error: { code, message } } satisfies ApiErrorBody);
 
   if (error instanceof ApiError) {

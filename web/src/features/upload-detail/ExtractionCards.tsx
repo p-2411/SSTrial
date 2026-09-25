@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { ShieldCheck, Sparkles } from 'lucide-react';
-import type { Ingredient, LabelExtraction, NetQuantity, NetQuantityUnit } from '@label-extractor/shared';
+import { isVolumeUnit, type Ingredient, type LabelExtraction, type NetQuantity, type NetQuantityUnit } from '@label-extractor/shared';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
  */
 export function CoreInformationCard({ result }: { result: LabelExtraction }) {
   const { productName, brand, netWeight, allergens, ingredients } = result;
-  const quantityLabel = netWeight && VOLUME_UNITS.has(netWeight.unit) ? 'Net volume' : 'Net weight';
+  const quantityLabel = netWeight && isVolumeUnit(netWeight.unit) ? 'Net volume' : 'Net weight';
 
   return (
     <Card role="region" aria-label="Core information" className="gap-0 overflow-hidden border-success/40 py-0 ring-0">
@@ -145,8 +145,6 @@ function Value({ children }: { children: ReactNode }) {
 function Missing({ children }: { children: ReactNode }) {
   return <span className="text-muted-foreground italic">{children}</span>;
 }
-
-const VOLUME_UNITS = new Set<NetQuantityUnit>(['ml', 'cl', 'l', 'fl oz']);
 
 /** Litres as "L": a lowercase l is easily misread as the digit 1 ("1 l"). */
 const UNIT_DISPLAY: Partial<Record<NetQuantityUnit, string>> = { l: 'L' };

@@ -1,8 +1,9 @@
 import { pino } from 'pino';
 import type { HealthReport, LabelExtraction, SupportedMimeType, UploadErrorCode } from '@label-extractor/shared';
 import type { AppDeps } from '../src/api/app.ts';
-import type { UploadChange, UploadChangeFeed } from '../src/api/upload-changes.ts';
-import type { OpsStore } from '../src/ops/store.ts';
+import type { UploadChange } from '@label-extractor/shared';
+import type { UploadChangeFeed } from '../src/uploads/change-feed.ts';
+import type { OpsSnapshot } from '../src/ops/store.ts';
 import { RateLimitWaitTooLong, type RateLimiter } from '../src/extraction/rate-limiter.ts';
 import { StorageUnavailableError, type FileStorage } from '../src/infra/storage.ts';
 import type { NewUpload, SettleOptions, UploadRecord, UploadStore } from '../src/uploads/store.ts';
@@ -237,12 +238,12 @@ export const FILE_BYTES = {
 
 export const HEALTHY: HealthReport = { status: 'ok', checks: { database: { status: 'ok', latencyMs: 1 } } };
 
-/** Canned monitoring data for the /api/ops route. */
-export const EMPTY_OPS_STATUS: Awaited<ReturnType<OpsStore['status']>> = {
+/** Canned monitoring data for the /api/ops route: a fresh install with nothing processed yet. */
+export const EMPTY_OPS_SNAPSHOT: OpsSnapshot = {
   worker: { lastSeenAt: null, healthy: false },
   queue: { waiting: 0, retrying: 0, processing: 0, oldestWaitingSeconds: null },
-  last24h: { completed: 0, failed: 0, failureRate: null, medianSecondsToResult: null },
-  failuresByReason: [],
+  recent: { completed: 0, failed: 0, medianSecondsToResult: null },
+  failures: [],
   alerts: { open: [], recent: [] },
 };
 
@@ -253,7 +254,7 @@ export function testAppDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     storage: new InMemoryStorage(),
     changes: new FakeChangeFeed(),
     health: async () => HEALTHY,
-    ops: { status: async () => EMPTY_OPS_STATUS },
+    ops: { snapshot: async () => EMPTY_OPS_SNAPSHOT },
     logger: silentLogger,
     ...overrides,
   };

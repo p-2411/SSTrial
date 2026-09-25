@@ -79,7 +79,7 @@ export function evaluateRules(signals: MonitorSignals, rules = MONITOR_RULES): F
 
 export async function runMonitor(deps: { ops: OpsStore; logger: Logger }): Promise<FiringAlert[]> {
   const { ops, logger } = deps;
-  await ops.recordHeartbeat('worker');
+  await ops.recordWorkerHeartbeat();
 
   const firing = evaluateRules(await ops.signals(MONITOR_RULES.windowMinutes, MONITOR_RULES.stuckAfterMinutes));
   for (const alert of firing) {

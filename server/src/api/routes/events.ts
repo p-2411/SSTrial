@@ -1,6 +1,7 @@
 import type { ServerResponse } from 'node:http';
 import type { FastifyInstance } from 'fastify';
-import type { UploadChangeFeed } from '../upload-changes.ts';
+import { LIVE_EVENTS_PATH } from '@label-extractor/shared';
+import type { UploadChangeFeed } from '../../uploads/change-feed.ts';
 
 export interface EventRoutesDeps {
   changes: UploadChangeFeed;
@@ -10,8 +11,8 @@ export interface EventRoutesDeps {
 const HEARTBEAT_MS = 25_000;
 
 /**
- * GET /api/events — server-sent events announcing upload changes, so the UI refreshes exactly when
- * something changes instead of polling.
+ * GET /api/events (LIVE_EVENTS_PATH) — server-sent events announcing upload changes, so the UI
+ * refreshes exactly when something changes instead of polling.
  *
  *   event: upload   data: {"type":"upload","id":"…","status":"completed"}
  *   event: resync   data: {"type":"resync"}     (the server may have missed changes: refetch all)
@@ -24,7 +25,7 @@ export async function eventRoutes(app: FastifyInstance, { changes }: EventRoutes
     for (const response of open) response.end();
   });
 
-  app.get('/api/events', (request, reply) => {
+  app.get(LIVE_EVENTS_PATH, (request, reply) => {
     // Take over the raw response: Fastify's reply lifecycle expects one response body, not a stream.
     reply.hijack();
     const response = reply.raw;

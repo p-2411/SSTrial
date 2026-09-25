@@ -13,7 +13,7 @@ import { createUploadStore } from '../uploads/store.ts';
 import { databaseCheck, queueCheck, runHealthChecks } from '../ops/health.ts';
 import { createOpsStore } from '../ops/store.ts';
 import { buildApp } from './app.ts';
-import { listenForUploadChanges } from './upload-changes.ts';
+import { listenForUploadChanges } from '../uploads/change-feed.ts';
 
 const config = loadApiConfig();
 const logger = createLogger({ name: 'api', level: config.LOG_LEVEL, pretty: config.NODE_ENV === 'development' });

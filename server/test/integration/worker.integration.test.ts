@@ -15,7 +15,7 @@ import {
 } from '../../src/infra/queue.ts';
 import { createUploadStore, type UploadRecord, type UploadStore } from '../../src/uploads/store.ts';
 import { createPostgresRateLimiter } from '../../src/extraction/rate-limiter.ts';
-import { listenForUploadChanges } from '../../src/api/upload-changes.ts';
+import { listenForUploadChanges } from '../../src/uploads/change-feed.ts';
 import { createOpsStore } from '../../src/ops/store.ts';
 import { startExtractionWorker } from '../../src/worker/worker.ts';
 import { FILE_BYTES, InMemoryStorage, SAMPLE_EXTRACTION, silentLogger } from '../fakes.ts';
@@ -393,26 +393,26 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
 
       expect(await store.raiseAlert(alert)).toBe(true);
       expect(await store.raiseAlert({ ...alert, message: 'second' })).toBe(false);
-      let { alerts } = await store.status();
+      let { alerts } = await store.snapshot();
       expect(alerts.open.find((a) => a.key === alertKey)).toMatchObject({ message: 'second', occurrences: 2, resolvedAt: null });
 
       const openKeys = alerts.open.map((a) => a.key).filter((k) => k !== alertKey);
       expect(await store.resolveAlertsExcept(openKeys)).toContain(alertKey);
-      ({ alerts } = await store.status());
+      ({ alerts } = await store.snapshot());
       expect(alerts.recent.find((a) => a.key === alertKey)?.resolvedAt).not.toBeNull();
     });
 
     it('reports the worker as healthy right after a heartbeat', async () => {
       const store = ops();
-      await store.recordHeartbeat('worker');
-      expect((await store.status()).worker).toMatchObject({ healthy: true, lastSeenAt: expect.any(String) });
+      await store.recordWorkerHeartbeat();
+      expect((await store.snapshot()).worker).toMatchObject({ healthy: true, lastSeenAt: expect.any(Date) });
     });
 
     it('computes the signals and status from real uploads', async () => {
       const signals = await ops().signals(15, 10);
       expect(signals).toEqual(expect.objectContaining({ waiting: expect.any(Number), recentCompleted: expect.any(Number) }));
-      const status = await ops().status();
-      expect(status.last24h.completed).toBeGreaterThan(0); // earlier tests completed uploads
+      const snapshot = await ops().snapshot();
+      expect(snapshot.recent.completed).toBeGreaterThan(0); // earlier tests completed uploads
     });
   });
 

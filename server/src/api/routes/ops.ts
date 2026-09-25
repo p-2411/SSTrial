@@ -1,11 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import type { HealthReport, OpsStatusResponse } from '@label-extractor/shared';
+import { toOpsStatus } from '../../ops/presenter.ts';
 import type { OpsStore } from '../../ops/store.ts';
 
 export interface OpsRoutesDeps {
   /** Runs the API's readiness checks (database, queue). */
   health: () => Promise<HealthReport>;
-  ops: Pick<OpsStore, 'status'>;
+  ops: Pick<OpsStore, 'snapshot'>;
 }
 
 /** Health and monitoring endpoints. The System status page reads GET /api/ops. */
@@ -19,7 +20,7 @@ export async function opsRoutes(app: FastifyInstance, { health, ops }: OpsRoutes
   });
 
   app.get('/api/ops', async (): Promise<OpsStatusResponse> => {
-    const [report, status] = await Promise.all([health(), ops.status()]);
-    return { generatedAt: new Date().toISOString(), health: report, ...status };
+    const [report, snapshot] = await Promise.all([health(), ops.snapshot()]);
+    return toOpsStatus(snapshot, report, new Date());
   });
 }

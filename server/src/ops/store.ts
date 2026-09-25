@@ -1,11 +1,5 @@
 import type postgres from 'postgres';
-import {
-  uploadErrorMessage,
-  type AlertSeverity,
-  type OpsAlert,
-  type OpsStatusResponse,
-  type UploadErrorCode,
-} from '@label-extractor/shared';
+import { storedErrorCode, type AlertSeverity, type UploadErrorCode } from '@label-extractor/shared';
 
 /** The numbers the alert rules look at. All come from the uploads table, so they cover every worker. */
 export interface MonitorSignals {
@@ -22,11 +16,32 @@ export interface MonitorSignals {
   recentProcessingTimeouts: number;
 }
 
+/** Failures that no retry can fix: the API key, model access or billing needs attention. */
+export const CONFIG_FAILURE_CODES = ['LLM_MISCONFIGURED', 'LLM_QUOTA_EXCEEDED'] as const satisfies readonly UploadErrorCode[];
+
 export interface FiringAlert {
   key: string;
   severity: AlertSeverity;
   title: string;
   message: string;
+}
+
+export interface AlertRecord extends FiringAlert {
+  id: number;
+  occurrences: number;
+  firstSeenAt: Date;
+  lastSeenAt: Date;
+  resolvedAt: Date | null;
+}
+
+/** Everything the System status page shows, as stored. ops/presenter.ts shapes it for the API. */
+export interface OpsSnapshot {
+  worker: { lastSeenAt: Date | null; healthy: boolean };
+  queue: { waiting: number; retrying: number; processing: number; oldestWaitingSeconds: number | null };
+  /** Over the last STATUS_WINDOW_HOURS. */
+  recent: { completed: number; failed: number; medianSecondsToResult: number | null };
+  failures: Array<{ code: UploadErrorCode; count: number }>;
+  alerts: { open: AlertRecord[]; recent: AlertRecord[] };
 }
 
 export interface OpsStore {
@@ -35,12 +50,16 @@ export interface OpsStore {
   raiseAlert(alert: FiringAlert): Promise<boolean>;
   /** Resolves open alerts whose rules are no longer firing. Returns the keys it resolved. */
   resolveAlertsExcept(firingKeys: string[]): Promise<string[]>;
-  recordHeartbeat(process: string): Promise<void>;
-  status(): Promise<Omit<OpsStatusResponse, 'health' | 'generatedAt'>>;
+  recordWorkerHeartbeat(): Promise<void>;
+  snapshot(): Promise<OpsSnapshot>;
 }
 
 /** A worker that hasn't checked in for this long is treated as down. */
-export const WORKER_SILENT_AFTER_SECONDS = 180;
+const WORKER_SILENT_AFTER_SECONDS = 180;
+/** The System status page's throughput and failure figures cover this window (`last24h`). */
+const STATUS_WINDOW_HOURS = 24;
+/** Heartbeats are keyed by process type; only workers send them (the API answers health checks). */
+const WORKER = 'worker';
 
 export function createOpsStore(sql: postgres.Sql): OpsStore {
   return {
@@ -54,9 +73,9 @@ export function createOpsStore(sql: postgres.Sql): OpsStore {
           count(*) filter (where status = 'completed' and completed_at > ${window})::int as recent_completed,
           count(*) filter (where status = 'failed' and updated_at > ${window})::int as recent_failed,
           count(*) filter (where status = 'failed' and updated_at > ${window}
-                            and error_code in ('LLM_MISCONFIGURED', 'LLM_QUOTA_EXCEEDED'))::int as recent_config_failures,
+                            and error_code = any(${CONFIG_FAILURE_CODES}))::int as recent_config_failures,
           count(*) filter (where status = 'failed' and updated_at > ${window}
-                            and error_code = 'PROCESSING_TIMEOUT')::int as recent_processing_timeouts
+                            and error_code = ${'PROCESSING_TIMEOUT' satisfies UploadErrorCode})::int as recent_processing_timeouts
         from uploads`;
       return {
         waiting: row!.waiting,
@@ -94,13 +113,14 @@ export function createOpsStore(sql: postgres.Sql): OpsStore {
       return rows.map((row) => row.key as string);
     },
 
-    async recordHeartbeat(process) {
+    async recordWorkerHeartbeat() {
       await sql`
-        insert into ops_heartbeats (process) values (${process})
+        insert into ops_heartbeats (process) values (${WORKER})
         on conflict (process) do update set last_seen_at = now()`;
     },
 
-    async status() {
+    async snapshot() {
+      const window = sql`now() - make_interval(hours => ${STATUS_WINDOW_HOURS})`;
       const [queue] = await sql`
         select
           count(*) filter (where status = 'queued')::int as waiting,
@@ -108,50 +128,44 @@ export function createOpsStore(sql: postgres.Sql): OpsStore {
           count(*) filter (where status = 'processing')::int as processing,
           extract(epoch from now() - min(updated_at) filter (where status = 'queued'))::float8 as oldest_waiting_seconds
         from uploads`;
-      const [day] = await sql`
+      const [recent] = await sql`
         select
-          count(*) filter (where status = 'completed' and completed_at > now() - interval '24 hours')::int as completed,
-          count(*) filter (where status = 'failed' and updated_at > now() - interval '24 hours')::int as failed,
+          count(*) filter (where status = 'completed' and completed_at > ${window})::int as completed,
+          count(*) filter (where status = 'failed' and updated_at > ${window})::int as failed,
           percentile_cont(0.5) within group (order by extract(epoch from completed_at - created_at))
-            filter (where status = 'completed' and completed_at > now() - interval '24 hours') as median_seconds
+            filter (where status = 'completed' and completed_at > ${window}) as median_seconds
         from uploads`;
-      const reasons = await sql`
+      const failures = await sql`
         select error_code, count(*)::int as count from uploads
-        where status = 'failed' and updated_at > now() - interval '24 hours'
+        where status = 'failed' and updated_at > ${window}
         group by error_code order by count desc`;
       const open = await sql`select * from ops_alerts where resolved_at is null order by first_seen_at desc`;
-      const recent = await sql`select * from ops_alerts where resolved_at is not null order by resolved_at desc limit 20`;
+      const resolved = await sql`select * from ops_alerts where resolved_at is not null order by resolved_at desc limit 20`;
       const [heartbeat] = await sql`
         select last_seen_at, last_seen_at > now() - make_interval(secs => ${WORKER_SILENT_AFTER_SECONDS}) as healthy
-        from ops_heartbeats where process = 'worker'`;
+        from ops_heartbeats where process = ${WORKER}`;
 
-      const finished = day!.completed + day!.failed;
       return {
-        worker: { lastSeenAt: heartbeat?.last_seen_at?.toISOString() ?? null, healthy: heartbeat?.healthy ?? false },
+        worker: { lastSeenAt: heartbeat?.last_seen_at ?? null, healthy: heartbeat?.healthy ?? false },
         queue: {
           waiting: queue!.waiting,
           retrying: queue!.retrying,
           processing: queue!.processing,
-          oldestWaitingSeconds: queue!.oldest_waiting_seconds === null ? null : Math.round(queue!.oldest_waiting_seconds),
+          oldestWaitingSeconds: queue!.oldest_waiting_seconds,
         },
-        last24h: {
-          completed: day!.completed,
-          failed: day!.failed,
-          failureRate: finished === 0 ? null : day!.failed / finished,
-          medianSecondsToResult: day!.median_seconds === null ? null : Math.round(Number(day!.median_seconds)),
+        recent: {
+          completed: recent!.completed,
+          failed: recent!.failed,
+          medianSecondsToResult: recent!.median_seconds === null ? null : Number(recent!.median_seconds),
         },
-        failuresByReason: reasons.map((row) => ({
-          code: row.error_code as UploadErrorCode,
-          message: uploadErrorMessage(row.error_code as UploadErrorCode),
-          count: row.count,
-        })),
-        alerts: { open: open.map(toAlert), recent: recent.map(toAlert) },
+        failures: failures.map((row) => ({ code: storedErrorCode(row.error_code), count: row.count })),
+        alerts: { open: open.map(toAlert), recent: resolved.map(toAlert) },
       };
     },
   };
 }
 
-function toAlert(row: postgres.Row): OpsAlert {
+function toAlert(row: postgres.Row): AlertRecord {
   return {
     id: Number(row.id),
     key: row.key,
@@ -159,8 +173,8 @@ function toAlert(row: postgres.Row): OpsAlert {
     title: row.title,
     message: row.message,
     occurrences: row.occurrences,
-    firstSeenAt: row.first_seen_at.toISOString(),
-    lastSeenAt: row.last_seen_at.toISOString(),
-    resolvedAt: row.resolved_at?.toISOString() ?? null,
+    firstSeenAt: row.first_seen_at,
+    lastSeenAt: row.last_seen_at,
+    resolvedAt: row.resolved_at ?? null,
   };
 }

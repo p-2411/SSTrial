@@ -5,7 +5,7 @@ import type {
   UploadErrorCode,
   UploadStatus,
 } from '@label-extractor/shared';
-import { labelExtractionSchema } from '@label-extractor/shared';
+import { labelExtractionSchema, storedErrorCode } from '@label-extractor/shared';
 import type { UploadJobs } from '../infra/queue.ts';
 
 /**
@@ -280,7 +280,7 @@ function toRecord(row: postgres.Row): UploadRecord {
     claimToken: row.claim_token ?? null,
     status: row.status,
     attempts: row.attempts,
-    error: row.error_code ? { code: row.error_code } : null,
+    error: row.error_code ? { code: storedErrorCode(row.error_code) } : null,
     ...readStoredResult(row.result),
     createdAt: row.created_at,
     updatedAt: row.updated_at,

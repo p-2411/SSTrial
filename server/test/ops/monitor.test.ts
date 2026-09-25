@@ -55,8 +55,8 @@ describe('runMonitor', () => {
       signals: async () => ({ ...quiet, ...signals }),
       raiseAlert: vi.fn(async (alert: FiringAlert) => !open.has(alert.key) && Boolean(open.add(alert.key))),
       resolveAlertsExcept: vi.fn(async (firing: string[]) => [...open].filter((key) => !firing.includes(key))),
-      recordHeartbeat: vi.fn(async () => {}),
-      status: vi.fn(),
+      recordWorkerHeartbeat: vi.fn(async () => {}),
+      snapshot: vi.fn(),
     };
     return ops;
   }
@@ -67,7 +67,7 @@ describe('runMonitor', () => {
 
     const firing = await runMonitor({ ops, logger });
 
-    expect(ops.recordHeartbeat).toHaveBeenCalledWith('worker');
+    expect(ops.recordWorkerHeartbeat).toHaveBeenCalled();
     expect(firing.map((alert) => alert.key)).toEqual(['queue-backlog']);
     expect(ops.resolveAlertsExcept).toHaveBeenCalledWith(['queue-backlog']);
     expect(logger.error).toHaveBeenCalledTimes(1); // opened once

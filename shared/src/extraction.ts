@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { NET_QUANTITY_UNITS } from './units.ts';
 
 /**
  * The structured data we extract from a product label — our own schema, independent of any LLM.
@@ -11,10 +12,6 @@ import { z } from 'zod';
  * The prompt/JSON-schema we *send* to the model lives in `server/src/extraction` — that's the
  * wire contract with an unreliable dependency; this file is the domain contract we trust.
  */
-
-/** Units we accept for net quantity. Labels state either mass or volume. */
-export const NET_QUANTITY_UNITS = ['mg', 'g', 'kg', 'oz', 'lb', 'ml', 'cl', 'l', 'fl oz'] as const;
-export type NetQuantityUnit = (typeof NET_QUANTITY_UNITS)[number];
 
 /** Guards against runaway output (e.g. a model looping) being stored as "data". */
 const MAX_TEXT_LENGTH = 300;
@@ -47,7 +44,7 @@ const textList = z
   })
   .pipe(z.array(z.string().max(MAX_TEXT_LENGTH)));
 
-export const netQuantitySchema = z.object({
+const netQuantitySchema = z.object({
   /** Numeric amount, e.g. 500. */
   value: z.number().positive().finite(),
   unit: z.enum(NET_QUANTITY_UNITS),
@@ -59,7 +56,7 @@ export const netQuantitySchema = z.object({
 const lowercaseList = textList.transform((items) => items.map((item) => item.toLowerCase()));
 
 /** One ingredient, split into the parts people check on a label. */
-export const ingredientSchema = z.object({
+const ingredientSchema = z.object({
   /** Name without emphasis capitals, percentage or bracketed parts, e.g. "Rolled oats". */
   name: z.string().transform(clean).pipe(z.string().min(1).max(MAX_TEXT_LENGTH)),
   /** Percentage printed for this ingredient, e.g. 48 for "(48%)"; `null` when none is printed. */

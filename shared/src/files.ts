@@ -4,25 +4,26 @@
  * These rules run in three places:
  *   1. the browser, so the user gets instant feedback without a network round-trip;
  *   2. the API, because the browser can't be trusted;
- *   3. Supabase Storage (bucket `allowed_mime_types` / `file_size_limit`), so a signed upload URL
- *      can't be abused to push a different or larger file.
+ *   3. Supabase Storage (bucket `allowed_mime_types` / `file_size_limit`, which the API sets from
+ *      these constants on start-up), so a signed upload URL can't be used to push a different or
+ *      larger file.
  *
- * Metadata can lie (a `.exe` renamed to `.jpg`), so after upload the API also sniffs the file's
- * leading bytes — see `server/src/lib/file-signature.ts`.
+ * Metadata can lie (a `.exe` renamed to `.jpg`), so once the file has arrived its leading bytes
+ * are checked too — see `server/src/infra/file-signature.ts`.
  */
 
 /** 10 MB — comfortably fits a phone photo or a multi-page label PDF, and keeps LLM payloads sane. */
 export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
 /** Longest file name we store. Most filesystems cap names at 255 bytes. */
-export const MAX_FILE_NAME_LENGTH = 255;
+const MAX_FILE_NAME_LENGTH = 255;
 
-/** Supported MIME types → human label and the extensions we accept for them. */
+/** Supported MIME types → human label, whether it's a photo or a document, and its extensions. */
 export const SUPPORTED_FILE_TYPES = {
-  'image/jpeg': { label: 'JPEG', extensions: ['.jpg', '.jpeg'] },
-  'image/png': { label: 'PNG', extensions: ['.png'] },
-  'image/webp': { label: 'WebP', extensions: ['.webp'] },
-  'application/pdf': { label: 'PDF', extensions: ['.pdf'] },
+  'image/jpeg': { label: 'JPEG', kind: 'image', extensions: ['.jpg', '.jpeg'] },
+  'image/png': { label: 'PNG', kind: 'image', extensions: ['.png'] },
+  'image/webp': { label: 'WebP', kind: 'image', extensions: ['.webp'] },
+  'application/pdf': { label: 'PDF', kind: 'document', extensions: ['.pdf'] },
 } as const;
 
 export type SupportedMimeType = keyof typeof SUPPORTED_FILE_TYPES;
@@ -38,7 +39,7 @@ export const FILE_INPUT_ACCEPT = SUPPORTED_MIME_TYPES.flatMap((mime) => [
 /** e.g. "JPEG, PNG, WebP or PDF" — used in UI copy and error messages. */
 export const SUPPORTED_TYPES_LABEL = formatList(SUPPORTED_MIME_TYPES.map((m) => SUPPORTED_FILE_TYPES[m].label));
 
-export function isSupportedMimeType(value: string): value is SupportedMimeType {
+function isSupportedMimeType(value: string): value is SupportedMimeType {
   return Object.hasOwn(SUPPORTED_FILE_TYPES, value);
 }
 
@@ -89,7 +90,7 @@ export function validateFileMetadata(file: FileMetadata): FileValidationResult {
 }
 
 /** Best-effort MIME type from a file name's extension, or `null` if we don't recognise it. */
-export function mimeTypeFromFileName(name: string): SupportedMimeType | null {
+function mimeTypeFromFileName(name: string): SupportedMimeType | null {
   const extension = extensionOf(name);
   if (!extension) return null;
   return SUPPORTED_MIME_TYPES.find((mime) =>
