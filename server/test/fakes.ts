@@ -66,6 +66,12 @@ export class InMemoryUploadStore implements UploadStore {
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(0, limit);
   }
+  async *streamCompleted() {
+    const completed = [...this.rows.values()]
+      .filter((row) => row.status === 'completed')
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    yield* completed;
+  }
   async markUploaded(id: string, mimeType: SupportedMimeType) {
     const row = this.transition(id, ['uploading'], { status: 'queued', mimeType });
     if (row) this.enqueued.push(id);

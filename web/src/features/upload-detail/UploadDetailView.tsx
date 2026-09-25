@@ -69,7 +69,7 @@ function Detail({ upload }: { upload: UploadDetail }) {
       {upload.result && <CoreInformationCard result={upload.result} />}
       {/* Keyed by id so switching uploads resets the remembered preview URL. */}
       <SourceDocumentCard key={upload.id} upload={upload} />
-      {upload.result && <JsonDisclosure data={upload.result} />}
+      {upload.result && <JsonDisclosure data={upload.result} fileName={upload.fileName} />}
     </>
   );
 }

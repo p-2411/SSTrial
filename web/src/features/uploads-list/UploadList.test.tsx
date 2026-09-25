@@ -1,4 +1,5 @@
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { jsonResponse, renderWithProviders } from '../../test/render.tsx';
 import { summary } from '../../test/fixtures.ts';
@@ -79,5 +80,23 @@ describe('UploadList', () => {
     renderList('/?status=in-progress');
 
     expect(await screen.findByText('Nothing is being processed right now.')).toBeInTheDocument();
+  });
+
+  it('offers CSV and JSON exports once something has completed', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ uploads: [summary({ status: 'completed' })] })));
+    renderList();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Export' }));
+
+    expect(screen.getByRole('menuitem', { name: /CSV/ })).toHaveAttribute('href', '/api/exports/uploads.csv');
+    expect(screen.getByRole('menuitem', { name: /JSON/ })).toHaveAttribute('href', '/api/exports/uploads.json');
+  });
+
+  it('hides the export menu when nothing has completed yet', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ uploads: [summary({ status: 'queued' })] })));
+    renderList();
+
+    expect(await screen.findByText('Waiting to be processed')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Export' })).not.toBeInTheDocument();
   });
 });

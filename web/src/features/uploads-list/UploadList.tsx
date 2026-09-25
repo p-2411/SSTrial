@@ -2,11 +2,12 @@ import { Inbox } from 'lucide-react';
 import { errorMessage } from '@/api/client';
 import { useUploadList } from '@/api/queries';
 import { InlineError } from '@/components/InlineError';
-import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardAction, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useNow } from '@/lib/useNow';
 import { PendingUploadRow } from '@/features/upload/PendingUploadRow';
 import type { PendingUpload } from '@/features/upload/useFileUploads';
+import { ExportMenu } from './ExportMenu';
 import { rowClassName, UploadRow } from './UploadRow';
 import { useStatusFilter } from './statusFilters';
 import { useStatusAnnouncements } from './useStatusAnnouncements';
@@ -27,6 +28,7 @@ export function UploadList({ pending, onRetryPending, onDismissPending }: Upload
   const visible = uploads?.filter((upload) => filter.matches(upload.status));
   const inProgress = uploads?.filter((u) => u.status === 'queued' || u.status === 'processing').length ?? 0;
   const hasRows = pending.length > 0 || (visible !== undefined && visible.length > 0);
+  const hasCompleted = uploads?.some((u) => u.status === 'completed') ?? false;
 
   return (
     <Card aria-labelledby="uploads-heading" className="gap-0 py-0" role="region">
@@ -39,6 +41,12 @@ export function UploadList({ pending, onRetryPending, onDismissPending }: Upload
             {uploads.length} {uploads.length === 1 ? 'file' : 'files'}
             {inProgress > 0 && `, ${inProgress} in progress`}
           </CardDescription>
+        )}
+        {/* Only offered once there's extracted data to export. */}
+        {hasCompleted && (
+          <CardAction>
+            <ExportMenu />
+          </CardAction>
         )}
       </CardHeader>
 

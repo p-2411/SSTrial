@@ -121,6 +121,8 @@ supabase/        Local config and the SQL migration (uploads table, storage buck
 | `GET` | `/api/uploads` | Newest 100 uploads |
 | `GET` | `/api/uploads/:id` | One upload with its extracted data and a preview URL |
 | `POST` | `/api/uploads/:id/retry` | Re-queue a failed upload when retrying could help |
+| `GET` | `/api/exports/uploads.csv` | Every completed extraction as CSV, one row per product (streamed) |
+| `GET` | `/api/exports/uploads.json` | The same, as JSON with the full structured data |
 
 Errors are always `{ "error": { "code", "message" } }`, with a message written for users.
 

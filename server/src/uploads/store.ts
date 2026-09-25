@@ -51,6 +51,8 @@ export interface UploadStore {
   findById(id: string): Promise<UploadRecord | null>;
   /** Newest first, excluding rows the browser hasn't finished uploading. */
   listRecent(limit: number): Promise<UploadRecord[]>;
+  /** Every completed upload, newest first, read in batches so an export of any size can stream. */
+  streamCompleted(): AsyncIterable<UploadRecord>;
   /** `uploading → queued` and enqueue the job, atomically. `mimeType` is the type sniffed from the bytes. */
   markUploaded(id: string, mimeType: SupportedMimeType): Promise<UploadRecord | null>;
   /** `uploading → failed`, for files rejected after upload (e.g. content isn't really an image). */
@@ -100,6 +102,16 @@ export function createUploadStore(sql: postgres.Sql, queue: ExtractionQueue): Up
         order by created_at desc
         limit ${limit}`;
       return rows.map(toRecord);
+    },
+
+    async *streamCompleted() {
+      const batches = sql`
+        select * from uploads
+        where status = 'completed'
+        order by created_at desc`.cursor(500);
+      for await (const rows of batches) {
+        for (const row of rows) yield toRecord(row);
+      }
     },
 
     async markUploaded(id, mimeType) {

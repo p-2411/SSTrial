@@ -155,6 +155,18 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
     expect((await uploads.findById(id))?.attempts).toBe(1);
   }, 30_000);
 
+  it('streams completed uploads for export', async () => {
+    const id = await queueUpload(SAMPLE_EXTRACTION);
+    await waitForStatus(id, 'completed');
+
+    const exported: string[] = [];
+    for await (const upload of uploads.streamCompleted()) {
+      expect(upload.status).toBe('completed');
+      exported.push(upload.id);
+    }
+    expect(exported).toContain(id);
+  });
+
   it('reads results stored before ingredients were structured', async () => {
     const id = crypto.randomUUID();
     createdIds.push(id);
