@@ -1,23 +1,24 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type postgres from 'postgres';
 import type { PgBoss } from 'pg-boss';
-import { APIConnectionTimeoutError, APIError } from 'openai';
+import { ExtractionError } from '../../src/extraction/errors.ts';
 import type { LabelExtractor } from '../../src/extraction/extractor.ts';
 import { createDb } from '../../src/infra/db.ts';
+import { startQueue } from '../../src/infra/queue.ts';
 import {
   createUploadJobs,
+  createUploadQueues,
   EXTRACTION_DEAD_LETTER_QUEUE,
   EXTRACTION_HEARTBEAT_SECONDS,
   EXTRACTION_QUEUE,
   FINALISE_DELAY_SECONDS,
   FINALISE_QUEUE,
-  startQueue,
-} from '../../src/infra/queue.ts';
+} from '../../src/uploads/jobs.ts';
 import { createUploadStore, type UploadRecord, type UploadStore } from '../../src/uploads/store.ts';
 import { createPostgresRateLimiter } from '../../src/extraction/rate-limiter.ts';
 import { listenForUploadChanges } from '../../src/uploads/change-feed.ts';
 import { createOpsStore } from '../../src/ops/store.ts';
-import { startExtractionWorker } from '../../src/worker/worker.ts';
+import { startExtractionWorker, startFinaliseWorker } from '../../src/worker/worker.ts';
 import { FILE_BYTES, InMemoryStorage, SAMPLE_EXTRACTION, silentLogger } from '../fakes.ts';
 
 /**
@@ -73,10 +74,11 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       connectionString: DATABASE_URL!,
       role: 'worker',
       logger: silentLogger,
-      retryPolicy: { retryLimit: RETRY_LIMIT, retryDelay: 1, retryBackoff: false, expireInSeconds: 2 },
       overrides: { schema: TEST_SCHEMA, superviseIntervalSeconds: 1, monitorIntervalSeconds: 1 },
     });
+    await createUploadQueues(boss, { retryLimit: RETRY_LIMIT, retryDelay: 1, retryBackoff: false, expireInSeconds: 2 });
     uploads = createUploadStore(sql, createUploadJobs(boss));
+    await startFinaliseWorker({ boss, uploads, storage, logger: silentLogger });
     await startExtractionWorker({
       boss,
       uploads,
@@ -125,7 +127,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
     }
   }
 
-  const timeout = () => new APIConnectionTimeoutError();
+  const timeout = () => new ExtractionError('LLM_TIMEOUT');
 
   it('processes a queued upload to completion', async () => {
     const id = await queueUpload(SAMPLE_EXTRACTION);
@@ -162,8 +164,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
   }, 30_000);
 
   it('does not retry a permanent failure', async () => {
-    const badKey = APIError.generate(401, { error: { code: 'invalid_api_key', message: 'bad key' } }, undefined, new Headers());
-    const id = await queueUpload(badKey);
+    const id = await queueUpload(new ExtractionError('LLM_MISCONFIGURED', 'HTTP 401 invalid_api_key'));
 
     const upload = await waitForStatus(id, 'failed');
     expect(upload).toMatchObject({ attempts: 1, error: { code: 'LLM_MISCONFIGURED' } });

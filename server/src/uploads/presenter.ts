@@ -1,5 +1,13 @@
-import { uploadErrorMessage, type UploadDetail, type UploadSummary } from '@label-extractor/shared';
-import { MAX_EXTRACTION_ATTEMPTS } from '../infra/queue.ts';
+import {
+  UPLOAD_FILTER_IDS,
+  UPLOAD_FILTERS,
+  uploadErrorMessage,
+  type UploadCountsResponse,
+  type UploadDetail,
+  type UploadStatus,
+  type UploadSummary,
+} from '@label-extractor/shared';
+import { MAX_EXTRACTION_ATTEMPTS } from './jobs.ts';
 import type { UploadRecord } from './store.ts';
 
 /**
@@ -31,5 +39,13 @@ export function toUploadDetail(record: UploadRecord, fileUrl: string | null): Up
     ...toUploadSummary(record),
     result: record.status === 'completed' ? record.result : null,
     fileUrl,
+  };
+}
+
+/** How many uploads each list view holds, from the per-status counts. */
+export function toUploadCounts(byStatus: Partial<Record<UploadStatus, number>>): UploadCountsResponse {
+  const total = (statuses: readonly UploadStatus[]) => statuses.reduce((sum, status) => sum + (byStatus[status] ?? 0), 0);
+  return {
+    counts: Object.fromEntries(UPLOAD_FILTER_IDS.map((id) => [id, total(UPLOAD_FILTERS[id])])) as UploadCountsResponse['counts'],
   };
 }

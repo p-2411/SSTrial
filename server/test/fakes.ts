@@ -1,11 +1,11 @@
 import { pino } from 'pino';
-import type { HealthReport, LabelExtraction, SupportedMimeType, UploadErrorCode } from '@label-extractor/shared';
+import type { HealthReport, LabelExtraction, SupportedMimeType, UploadChange, UploadErrorCode } from '@label-extractor/shared';
 import type { AppDeps } from '../src/api/app.ts';
-import type { UploadChange } from '@label-extractor/shared';
-import type { UploadChangeFeed } from '../src/uploads/change-feed.ts';
-import type { OpsSnapshot } from '../src/ops/store.ts';
-import { RateLimitWaitTooLong, type RateLimiter } from '../src/extraction/rate-limiter.ts';
+import { ExtractionError } from '../src/extraction/errors.ts';
+import type { RateLimiter } from '../src/extraction/rate-limiter.ts';
 import { StorageUnavailableError, type FileStorage } from '../src/infra/storage.ts';
+import type { OpsSnapshot } from '../src/ops/store.ts';
+import type { UploadChangeFeed } from '../src/uploads/change-feed.ts';
 import type { NewUpload, SettleOptions, UploadRecord, UploadStore } from '../src/uploads/store.ts';
 
 /**
@@ -185,7 +185,8 @@ export class FakeRateLimiter implements RateLimiter {
   refuse = false;
 
   async acquire() {
-    if (this.refuse) throw new RateLimitWaitTooLong(60_000);
+    // What the real limiter throws when its bucket stays empty too long: no provider back-off.
+    if (this.refuse) throw new ExtractionError('LLM_RATE_LIMITED', 'Shared rate limit: next slot in 60000ms');
     this.acquired += 1;
   }
   async pauseFor(ms: number) {

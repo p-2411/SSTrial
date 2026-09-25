@@ -4,15 +4,19 @@ import fastifyStatic from '@fastify/static';
 import type { Logger } from '../infra/logger.ts';
 import { handleError, notFound } from './errors.ts';
 import { eventRoutes, type EventRoutesDeps } from './routes/events.ts';
-import { exportRoutes } from './routes/exports.ts';
+import { exportRoutes, type ExportRoutesDeps } from './routes/exports.ts';
 import { opsRoutes, type OpsRoutesDeps } from './routes/ops.ts';
 import { uploadRoutes, type UploadRoutesDeps } from './routes/uploads.ts';
 
-export interface AppDeps extends UploadRoutesDeps, EventRoutesDeps, OpsRoutesDeps {
-  logger: Logger;
-  /** Built web app to serve alongside the API (production). Omit in development: Vite serves it. */
-  webDistDir?: string;
-}
+/** What every route needs, together. Each route module declares only the slice it uses. */
+export type AppDeps = UploadRoutesDeps &
+  ExportRoutesDeps &
+  EventRoutesDeps &
+  OpsRoutesDeps & {
+    logger: Logger;
+    /** Built web app to serve alongside the API (production). Omit in development: Vite serves it. */
+    webDistDir?: string;
+  };
 
 /**
  * Builds the HTTP app from its dependencies without starting it. Tests call this with in-memory

@@ -1,4 +1,5 @@
 import type { Logger } from '../infra/logger.ts';
+import { EXTRACTION_EXPIRY_SECONDS } from '../uploads/jobs.ts';
 import type { FiringAlert, MonitorSignals, OpsStore } from './store.ts';
 
 /**
@@ -14,14 +15,15 @@ export const MONITOR_RULES = {
   /** An upload waiting longer than this means workers are down or badly behind. */
   stalledAfterSeconds: 10 * 60,
   backlogSize: 500,
-  /** No single attempt can legitimately take this long (jobs expire after 3 minutes). */
-  stuckAfterMinutes: 10,
+  /** Several times longer than a single attempt can run before it's presumed dead. */
+  stuckAfterMinutes: Math.ceil((3 * EXTRACTION_EXPIRY_SECONDS) / 60),
   failureRate: 0.25,
   /** Too few results to judge a failure rate below this. */
   failureRateMinimumSample: 4,
 } as const;
 
-export function evaluateRules(signals: MonitorSignals, rules = MONITOR_RULES): FiringAlert[] {
+export function evaluateRules(signals: MonitorSignals): FiringAlert[] {
+  const rules = MONITOR_RULES;
   const alerts: FiringAlert[] = [];
   const minutes = (seconds: number) => Math.round(seconds / 60);
 

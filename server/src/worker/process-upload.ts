@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
-import { isEmptyExtraction, type UploadErrorCode } from '@label-extractor/shared';
-import { classifyOpenAIError, ExtractionError } from '../extraction/errors.ts';
+import { isEmptyExtraction, type LabelExtraction, type UploadErrorCode } from '@label-extractor/shared';
+import { ExtractionError } from '../extraction/errors.ts';
 import type { LabelExtractor } from '../extraction/extractor.ts';
-import { RateLimitWaitTooLong, type RateLimiter } from '../extraction/rate-limiter.ts';
+import type { RateLimiter } from '../extraction/rate-limiter.ts';
 import type { Logger } from '../infra/logger.ts';
 import { StorageUnavailableError, type FileStorage } from '../infra/storage.ts';
-import type { UploadStore } from '../uploads/store.ts';
+import type { UploadAttempts, UploadRecord } from '../uploads/store.ts';
 
 /**
  * Processes one extraction job: download the file, ask the LLM, validate, store the result.
@@ -16,16 +16,13 @@ import type { UploadStore } from '../uploads/store.ts';
  */
 
 export interface ProcessUploadDeps {
-  uploads: Pick<UploadStore, 'startAttempt' | 'complete' | 'scheduleRetry' | 'fail' | 'recordContentHash' | 'findCompletedTwin'>;
+  uploads: Omit<UploadAttempts, 'failAbandoned'>;
   storage: Pick<FileStorage, 'download'>;
   extractor: LabelExtractor;
   /** Shared across all workers, so together they stay under the provider's request rate. */
   rateLimiter: RateLimiter;
   logger: Logger;
 }
-
-/** How long every worker holds off after a rate limit that didn't say how long to wait. */
-const DEFAULT_RATE_LIMIT_PAUSE_MS = 10_000;
 
 export interface ExtractionJob {
   uploadId: string;
@@ -62,80 +59,93 @@ export async function processUpload(deps: ProcessUploadDeps, job: ExtractionJob)
   }
   // Every write below presents this token. If another attempt takes the upload over meanwhile (our
   // job was handed to another worker), our writes are refused and this attempt simply stands down.
-  const claim = upload.claimToken!;
-  const lostClaim = (): JobOutcome => {
-    log.warn('Another attempt took over this upload; discarding this attempt');
-    return { status: 'skipped', reason: 'Another attempt took over this upload' };
-  };
+  const attempt: Attempt = { upload, claim: upload.claimToken!, log };
 
   try {
-    const bytes = await deps.storage.download(upload.storagePath);
-    if (!bytes) {
-      throw new ExtractionError('FILE_MISSING', false, `No object at ${upload.storagePath}`);
-    }
-
-    // The browser's hash is only a claim; record the real one, then reuse the result of an
-    // identical file if we already have one — no need to ask the LLM the same question twice.
-    const contentSha256 = sha256Hex(bytes);
-    if (contentSha256 !== upload.contentSha256) await deps.uploads.recordContentHash(upload.id, contentSha256);
-    const twin = await deps.uploads.findCompletedTwin(contentSha256, upload.id);
-    if (twin?.result) {
-      if (!(await deps.uploads.complete(upload.id, claim, twin.result))) return lostClaim();
-      log.info({ reusedFrom: twin.id }, 'Reused the result of an identical upload');
-      return { status: 'completed' };
-    }
-
-    await deps.rateLimiter.acquire(job.signal);
-    const started = performance.now();
-    const result = await deps.extractor.extract(
-      { bytes, mimeType: upload.mimeType, fileName: upload.fileName },
-      { signal: job.signal },
-    );
-    const durationMs = Math.round(performance.now() - started);
-
-    // A well-formed answer that contains nothing means this isn't a readable label (a photo of a
-    // cat, a blank page). Asking again won't change that, so it's a permanent failure.
-    if (isEmptyExtraction(result)) {
-      throw new ExtractionError('NO_LABEL_DATA', false, 'Every extracted field was empty');
-    }
-
-    // Refused if another attempt took over; whatever that attempt stores stands.
-    if (!(await deps.uploads.complete(upload.id, claim, result))) return lostClaim();
-    log.info({ durationMs }, 'Extraction completed');
+    const { result, ...details } = await extractOrReuse(deps, upload, job.signal);
+    if (!(await deps.uploads.complete(upload.id, attempt.claim, result))) return lostClaim(log);
+    log.info(details, 'Extraction completed');
     return { status: 'completed' };
   } catch (thrown) {
-    const error = toExtractionError(thrown);
-    const logContext = { code: error.code, detail: error.detail, err: error.cause ?? error };
-
-    // The provider asked us to slow down: pause every worker, for as long as it asked, not just this job.
-    const providerSaidWait = error.retryAfterMs !== undefined || error.code === 'LLM_RATE_LIMITED';
-    if (providerSaidWait && !(error instanceof RateLimitWaitTooLong)) {
-      const pauseMs = error.retryAfterMs ?? DEFAULT_RATE_LIMIT_PAUSE_MS;
-      await deps.rateLimiter.pauseFor(pauseMs);
-      log.warn({ pauseMs }, 'Provider asked us to back off; paused all LLM requests');
-    }
-
-    if (error.retryable && !job.isFinalAttempt) {
-      if (!(await deps.uploads.scheduleRetry(upload.id, claim, error.code))) return lostClaim();
-      log.warn(logContext, 'Attempt failed with a transient error; will retry');
-      return { status: 'retry', code: error.code };
-    }
-
-    // Attempt counts go to the logs, not the user: the reason is what they can act on.
-    if (!(await deps.uploads.fail(upload.id, claim, error.code))) return lostClaim();
-    log.error(logContext, 'Extraction failed permanently');
-    return { status: 'failed', code: error.code };
+    return recordFailure(deps, attempt, toExtractionError(thrown), job.isFinalAttempt);
   }
 }
 
-/** Anything thrown during processing, reduced to an ExtractionError with a retry decision. */
+interface Attempt {
+  upload: UploadRecord;
+  claim: string;
+  log: Logger;
+}
+
+/**
+ * The label data for this upload: an identical file's result if we already have one — no need to
+ * ask the LLM the same question twice — otherwise a fresh, non-empty extraction.
+ */
+async function extractOrReuse(
+  deps: ProcessUploadDeps,
+  upload: UploadRecord,
+  signal: AbortSignal | undefined,
+): Promise<{ result: LabelExtraction; reusedFrom?: string; durationMs?: number }> {
+  const bytes = await deps.storage.download(upload.storagePath);
+  if (!bytes) throw new ExtractionError('FILE_MISSING', `No object at ${upload.storagePath}`);
+
+  // The browser's hash is only a claim; record the real one before looking for a twin.
+  const contentSha256 = sha256Hex(bytes);
+  if (contentSha256 !== upload.contentSha256) await deps.uploads.recordContentHash(upload.id, contentSha256);
+  const twin = await deps.uploads.findCompletedTwin(contentSha256, upload.id);
+  if (twin?.result) return { result: twin.result, reusedFrom: twin.id };
+
+  await deps.rateLimiter.acquire(signal);
+  const started = performance.now();
+  const result = await deps.extractor.extract({ bytes, mimeType: upload.mimeType, fileName: upload.fileName }, { signal });
+
+  // A well-formed answer that contains nothing means this isn't a readable label (a photo of a
+  // cat, a blank page). Asking again won't change that, so it's a permanent failure.
+  if (isEmptyExtraction(result)) throw new ExtractionError('NO_LABEL_DATA', 'Every extracted field was empty');
+  return { result, durationMs: Math.round(performance.now() - started) };
+}
+
+/** Records a failed attempt: retried later if that could help and attempts remain, otherwise final. */
+async function recordFailure(
+  deps: ProcessUploadDeps,
+  { upload, claim, log }: Attempt,
+  error: ExtractionError,
+  isFinalAttempt: boolean,
+): Promise<JobOutcome> {
+  const logContext = { code: error.code, detail: error.detail, err: error.cause ?? error };
+
+  // The provider asked us to slow down: pause every worker, for as long as it asked, not just this job.
+  if (error.providerBackoffMs !== undefined) {
+    await deps.rateLimiter.pauseFor(error.providerBackoffMs);
+    log.warn({ pauseMs: error.providerBackoffMs }, 'Provider asked us to back off; paused all LLM requests');
+  }
+
+  if (error.retryable && !isFinalAttempt) {
+    if (!(await deps.uploads.scheduleRetry(upload.id, claim, error.code))) return lostClaim(log);
+    log.warn(logContext, 'Attempt failed with a transient error; will retry');
+    return { status: 'retry', code: error.code };
+  }
+
+  // Attempt counts go to the logs, not the user: the reason is what they can act on.
+  if (!(await deps.uploads.fail(upload.id, claim, error.code))) return lostClaim(log);
+  log.error(logContext, 'Extraction failed permanently');
+  return { status: 'failed', code: error.code };
+}
+
+/** A claim-guarded write was refused: another attempt took over, and whatever it stores stands. */
+function lostClaim(log: Logger): JobOutcome {
+  log.warn('Another attempt took over this upload; discarding this attempt');
+  return { status: 'skipped', reason: 'Another attempt took over this upload' };
+}
+
+/**
+ * Anything thrown during processing, as an ExtractionError. Extractors already throw these; what's
+ * left is our own infrastructure failing, or a bug — both worth another try.
+ */
 function toExtractionError(error: unknown): ExtractionError {
   if (error instanceof ExtractionError) return error;
-  if (error instanceof StorageUnavailableError) {
-    return new ExtractionError('INTERNAL_ERROR', true, `Storage read failed: ${error.message}`, { cause: error });
-  }
-  // OpenAI SDK errors (and, as a fallback, unexpected bugs → retryable INTERNAL_ERROR).
-  return classifyOpenAIError(error);
+  const detail = error instanceof StorageUnavailableError ? `Storage read failed: ${error.message}` : String(error);
+  return new ExtractionError('INTERNAL_ERROR', detail, { cause: error });
 }
 
 function sha256Hex(bytes: Uint8Array): string {

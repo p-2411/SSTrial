@@ -6,7 +6,7 @@ import type {
   UploadStatus,
 } from '@label-extractor/shared';
 import { labelExtractionSchema, storedErrorCode } from '@label-extractor/shared';
-import type { UploadJobs } from '../infra/queue.ts';
+import type { UploadJobs } from './jobs.ts';
 
 /**
  * All reads and writes of the `uploads` table.
@@ -43,7 +43,7 @@ export interface UploadRecord {
 }
 
 /** Only the code is stored; the shared catalogue turns it into the message users see. */
-export interface UploadFailure {
+interface UploadFailure {
   code: UploadErrorCode;
 }
 
@@ -62,10 +62,8 @@ export interface SettleOptions {
   cancelFinalise?: boolean;
 }
 
-export interface UploadStore {
-  // ---- Used by the API --------------------------------------------------------------------
-  /** Inserts the row and schedules its finalise job, atomically (see FINALISE_QUEUE). */
-  create(upload: NewUpload): Promise<UploadRecord>;
+/** Reading uploads, for the API. */
+export interface UploadQueries {
   findById(id: string): Promise<UploadRecord | null>;
   /** The newest queued, processing or completed upload of a file with this hash, if any. */
   findByContentHash(sha256: string): Promise<UploadRecord | null>;
@@ -78,6 +76,12 @@ export interface UploadStore {
   countByStatus(): Promise<Partial<Record<UploadStatus, number>>>;
   /** Every completed upload, newest first, read in batches so an export of any size can stream. */
   streamCompleted(): AsyncIterable<UploadRecord>;
+}
+
+/** Getting uploads into the queue: creating, confirming or discarding them, and running them again. */
+export interface UploadIntake {
+  /** Inserts the row and schedules its finalise job, atomically (see FINALISE_QUEUE). */
+  create(upload: NewUpload): Promise<UploadRecord>;
   /** `uploading → queued` and enqueue the job, atomically. `mimeType` is the type sniffed from the bytes. */
   markUploaded(id: string, mimeType: SupportedMimeType, options?: SettleOptions): Promise<UploadRecord | null>;
   /**
@@ -90,8 +94,10 @@ export interface UploadStore {
    * atomically. `from` is the status the caller saw, so a concurrent change makes this a no-op.
    */
   requeue(id: string, from: 'failed' | 'completed'): Promise<UploadRecord | null>;
+}
 
-  // ---- Used by the worker -----------------------------------------------------------------
+/** Processing attempts, for the worker. Every write after startAttempt needs its claim token. */
+export interface UploadAttempts {
   /**
    * `queued|processing → processing`, count the attempt and issue a fresh claim token, which the
    * attempt must present to finish. `processing` is allowed as a from-state so a job retried after
@@ -115,9 +121,15 @@ export interface UploadStore {
   failAbandoned(id: string, code: UploadErrorCode): Promise<UploadRecord | null>;
 }
 
+/** The uploads table. Each consumer depends on the role it needs. */
+export type UploadStore = UploadQueries & UploadIntake & UploadAttempts;
+
 export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadStore {
-  /** Runs a guarded UPDATE and returns the updated row, or null if the guard didn't match. */
-  async function transition(query: Promise<postgres.Row[]>): Promise<UploadRecord | null> {
+  /**
+   * The one row a query returns, or null. For guarded writes (`… where status = … returning *`),
+   * null means the guard didn't match: the upload wasn't in the expected state.
+   */
+  async function oneRecord(query: Promise<postgres.Row[]>): Promise<UploadRecord | null> {
     const [row] = await query;
     return row ? toRecord(row) : null;
   }
@@ -137,31 +149,28 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
       });
     },
 
-    async findById(id) {
-      const [row] = await sql`select * from uploads where id = ${id}`;
-      return row ? toRecord(row) : null;
+    findById(id) {
+      return oneRecord(sql`select * from uploads where id = ${id}`);
     },
 
-    async findByContentHash(sha256) {
-      const [row] = await sql`
+    findByContentHash(sha256) {
+      return oneRecord(sql`
         select * from uploads
         where content_sha256 = ${sha256} and status in ('queued', 'processing', 'completed')
         order by created_at desc
-        limit 1`;
-      return row ? toRecord(row) : null;
+        limit 1`);
     },
 
     async recordContentHash(id, sha256) {
       await sql`update uploads set content_sha256 = ${sha256} where id = ${id}`;
     },
 
-    async findCompletedTwin(sha256, excludeId) {
-      const [row] = await sql`
+    findCompletedTwin(sha256, excludeId) {
+      return oneRecord(sql`
         select * from uploads
         where content_sha256 = ${sha256} and status = 'completed' and id <> ${excludeId}
         order by completed_at desc
-        limit 1`;
-      return row ? toRecord(row) : null;
+        limit 1`);
     },
 
     async list({ statuses, limit, after }) {
@@ -196,7 +205,7 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
       // Row update and job changes share one transaction: we can never end up with a `queued`
       // row that has no job (stuck forever) or a job for a row that isn't `queued`.
       return sql.begin(async (tx) => {
-        const record = await transition(tx`
+        const record = await oneRecord(tx`
           update uploads set status = 'queued', mime_type = ${mimeType}
           where id = ${id} and status = 'uploading'
           returning *`);
@@ -210,7 +219,7 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
 
     discardUnfinished(id, options) {
       return sql.begin(async (tx) => {
-        const record = await transition(tx`delete from uploads where id = ${id} and status = 'uploading' returning *`);
+        const record = await oneRecord(tx`delete from uploads where id = ${id} and status = 'uploading' returning *`);
         if (record && options?.cancelFinalise) await jobs.cancelFinalise(id, tx);
         return record;
       });
@@ -218,7 +227,7 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
 
     async requeue(id, from) {
       return sql.begin(async (tx) => {
-        const record = await transition(tx`
+        const record = await oneRecord(tx`
           update uploads
           set status = 'queued', attempts = 0, error_code = null, result = null, completed_at = null, claim_token = null
           where id = ${id} and status = ${from}
@@ -229,7 +238,7 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
     },
 
     startAttempt(id) {
-      return transition(sql`
+      return oneRecord(sql`
         update uploads
         set status = 'processing', attempts = attempts + 1, error_code = null, claim_token = gen_random_uuid()
         where id = ${id} and status in ('queued', 'processing')
@@ -237,7 +246,7 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
     },
 
     complete(id, claimToken, result) {
-      return transition(sql`
+      return oneRecord(sql`
         update uploads
         set status = 'completed', result = ${sql.json(result as postgres.JSONValue)}, completed_at = now(),
             error_code = null, claim_token = null
@@ -246,21 +255,21 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
     },
 
     scheduleRetry(id, claimToken, code) {
-      return transition(sql`
+      return oneRecord(sql`
         update uploads set status = 'queued', error_code = ${code}, claim_token = null
         where id = ${id} and status = 'processing' and claim_token = ${claimToken}
         returning *`);
     },
 
     fail(id, claimToken, code) {
-      return transition(sql`
+      return oneRecord(sql`
         update uploads set status = 'failed', error_code = ${code}, claim_token = null
         where id = ${id} and status = 'processing' and claim_token = ${claimToken}
         returning *`);
     },
 
     failAbandoned(id, code) {
-      return transition(sql`
+      return oneRecord(sql`
         update uploads set status = 'failed', error_code = ${code}, claim_token = null
         where id = ${id} and status in ('queued', 'processing')
         returning *`);

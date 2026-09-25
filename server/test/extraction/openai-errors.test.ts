@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { APIConnectionError, APIConnectionTimeoutError, APIError, APIUserAbortError } from 'openai';
-import { classifyOpenAIError, ExtractionError, parseRetryAfter } from '../../src/extraction/errors.ts';
+import { ExtractionError } from '../../src/extraction/errors.ts';
+import { classifyOpenAIError, DEFAULT_RATE_LIMIT_BACKOFF_MS, parseRetryAfter } from '../../src/extraction/openai-errors.ts';
 
 /** Builds the same error subclass the SDK throws for an HTTP error response with this body. */
 function httpError(status: number, code?: string) {
@@ -32,7 +33,7 @@ describe('classifyOpenAIError', () => {
   });
 
   it('passes ExtractionErrors through unchanged', () => {
-    const original = new ExtractionError('LLM_REFUSED', false);
+    const original = new ExtractionError('LLM_REFUSED');
     expect(classifyOpenAIError(original)).toBe(original);
   });
 
@@ -59,11 +60,35 @@ describe('Retry-After', () => {
     expect(parseRetryAfter(headers({ 'retry-after': 'soon' }))).toBeUndefined();
   });
 
-  it('carries the wait on rate-limit and unavailable errors', () => {
+  it('asks every worker to back off for as long as the provider said', () => {
     const limited = APIError.generate(429, { error: { code: 'rate_limit_exceeded', message: 'x' } }, undefined, new Headers({ 'retry-after-ms': '2500' }));
-    expect(classifyOpenAIError(limited)).toMatchObject({ code: 'LLM_RATE_LIMITED', retryAfterMs: 2500 });
+    expect(classifyOpenAIError(limited)).toMatchObject({ code: 'LLM_RATE_LIMITED', providerBackoffMs: 2500 });
 
     const overloaded = APIError.generate(503, { error: { message: 'x' } }, undefined, new Headers({ 'retry-after': '3' }));
-    expect(classifyOpenAIError(overloaded)).toMatchObject({ code: 'LLM_UNAVAILABLE', retryAfterMs: 3000 });
+    expect(classifyOpenAIError(overloaded)).toMatchObject({ code: 'LLM_UNAVAILABLE', providerBackoffMs: 3000 });
+  });
+
+  it('backs off for a default time on a rate limit that gives no wait, and not at all on other errors', () => {
+    expect(classifyOpenAIError(httpError(429, 'rate_limit_exceeded')).providerBackoffMs).toBe(DEFAULT_RATE_LIMIT_BACKOFF_MS);
+    expect(classifyOpenAIError(httpError(500)).providerBackoffMs).toBeUndefined();
+    expect(classifyOpenAIError(new APIConnectionTimeoutError()).providerBackoffMs).toBeUndefined();
+  });
+});
+
+describe('ExtractionError', () => {
+  it.each([
+    ['LLM_TIMEOUT', true],
+    ['LLM_RATE_LIMITED', true],
+    ['LLM_UNAVAILABLE', true],
+    ['LLM_INVALID_RESPONSE', true],
+    ['INTERNAL_ERROR', true],
+    ['LLM_REFUSED', false],
+    ['LLM_REJECTED_INPUT', false],
+    ['LLM_MISCONFIGURED', false],
+    ['LLM_QUOTA_EXCEEDED', false],
+    ['NO_LABEL_DATA', false],
+    ['FILE_MISSING', false],
+  ] as const)('%s is retryable: %s', (code, retryable) => {
+    expect(new ExtractionError(code).retryable).toBe(retryable);
   });
 });

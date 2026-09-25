@@ -29,14 +29,6 @@ export interface RateLimiterOptions {
   maxWaitMs?: number;
 }
 
-/** Our own limiter had no slot soon enough — not the provider refusing us, so no pause is needed. */
-export class RateLimitWaitTooLong extends ExtractionError {
-  override name = 'RateLimitWaitTooLong';
-  constructor(waitMs: number) {
-    super('LLM_RATE_LIMITED', true, `Shared rate limit: next slot in ${Math.round(waitMs)}ms`);
-  }
-}
-
 export function createPostgresRateLimiter(sql: postgres.Sql, options: RateLimiterOptions): RateLimiter {
   const perSecond = options.requestsPerMinute / 60;
   // Allow a short burst (about 5 seconds' worth), so an idle system can start several jobs at once.
@@ -81,7 +73,8 @@ export function createPostgresRateLimiter(sql: postgres.Sql, options: RateLimite
           from llm_rate_limits where key = ${key}`;
         const waitMs = Math.max(50, Number(state?.wait_ms ?? 1000));
         if (Date.now() - started + waitMs > maxWaitMs) {
-          throw new RateLimitWaitTooLong(waitMs);
+          // Our own limit, not the provider refusing us: no provider back-off, so nothing pauses.
+          throw new ExtractionError('LLM_RATE_LIMITED', `Shared rate limit: next slot in ${Math.round(waitMs)}ms`);
         }
         // A little jitter so waiting workers don't all retry at the same instant.
         await sleep(waitMs + Math.random() * 100, undefined, { signal });

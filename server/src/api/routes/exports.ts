@@ -1,10 +1,10 @@
 import { Readable } from 'node:stream';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { toCsv, toJson } from '../../uploads/export.ts';
-import type { UploadStore } from '../../uploads/store.ts';
+import type { UploadQueries } from '../../uploads/store.ts';
 
 export interface ExportRoutesDeps {
-  uploads: Pick<UploadStore, 'streamCompleted'>;
+  uploads: Pick<UploadQueries, 'streamCompleted'>;
 }
 
 /**

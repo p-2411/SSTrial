@@ -14,7 +14,7 @@ The browser asks the API for a signed URL, uploads the file **straight to storag
 
 ## How LLM failures are handled
 
-The LLM sits behind a `LabelExtractor` interface. Every failure becomes an `ExtractionError` carrying a code and a **retryable** flag (see `server/src/extraction/errors.ts`). Only the code is stored; the message users see comes from one catalogue in `shared`, so rewording never touches data.
+The LLM sits behind a `LabelExtractor` interface. Every failure becomes an `ExtractionError` carrying a code, and the code decides whether it's **retryable** (see `server/src/extraction/errors.ts`). Provider-specific errors are mapped in the OpenAI implementation, so the worker never sees the SDK. Only the code is stored; the message users see comes from one catalogue in `shared`, so rewording never touches data.
 
 | Retried (transient) | Not retried (permanent) |
 |---|---|

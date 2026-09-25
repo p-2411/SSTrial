@@ -1,10 +1,9 @@
 import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { APIConnectionTimeoutError, APIError } from 'openai';
 import { ExtractionError } from '../../src/extraction/errors.ts';
 import type { LabelExtractor } from '../../src/extraction/extractor.ts';
 import { createOpenAIExtractor, type ModelResponse } from '../../src/extraction/openai-extractor.ts';
-import { MAX_EXTRACTION_ATTEMPTS } from '../../src/infra/queue.ts';
+import { MAX_EXTRACTION_ATTEMPTS } from '../../src/uploads/jobs.ts';
 import { processUpload, type ExtractionJob, type JobOutcome } from '../../src/worker/process-upload.ts';
 import { FakeRateLimiter, FILE_BYTES, InMemoryStorage, InMemoryUploadStore, SAMPLE_EXTRACTION, silentLogger } from '../fakes.ts';
 
@@ -21,6 +20,11 @@ beforeEach(() => {
   const upload = uploads.seed({ id: UPLOAD_ID, status: 'queued' });
   storage.put(upload.storagePath, FILE_BYTES.png);
 });
+
+// Extractors reject with ExtractionErrors (see LabelExtractor); these are what the OpenAI one throws.
+const timeout = () => new ExtractionError('LLM_TIMEOUT');
+const badKey = () => new ExtractionError('LLM_MISCONFIGURED', 'HTTP 401 invalid_api_key');
+const rateLimited = (providerBackoffMs: number) => new ExtractionError('LLM_RATE_LIMITED', 'HTTP 429', { providerBackoffMs });
 
 /** An extractor that plays back a script: each call returns the next result or throws the next error. */
 function scriptedExtractor(...script: Array<typeof SAMPLE_EXTRACTION | Error>): LabelExtractor & { calls: number } {
@@ -79,7 +83,7 @@ describe('processUpload — success', () => {
 
 describe('processUpload — retry behaviour', () => {
   it('schedules a retry for a transient failure, keeping the reason for the UI', async () => {
-    const outcome = await run(scriptedExtractor(new APIConnectionTimeoutError()));
+    const outcome = await run(scriptedExtractor(timeout()));
 
     expect(outcome).toMatchObject({ status: 'retry', code: 'LLM_TIMEOUT' });
     expect(uploads.get(UPLOAD_ID)).toMatchObject({
@@ -90,8 +94,7 @@ describe('processUpload — retry behaviour', () => {
   });
 
   it('recovers when a later attempt succeeds', async () => {
-    const rateLimited = APIError.generate(429, { error: { code: 'rate_limit_exceeded', message: 'slow down' } }, undefined, new Headers());
-    const extractor = scriptedExtractor(rateLimited, new APIConnectionTimeoutError(), SAMPLE_EXTRACTION);
+    const extractor = scriptedExtractor(rateLimited(10_000), timeout(), SAMPLE_EXTRACTION);
 
     const outcomes = await runLikeTheQueue(extractor);
 
@@ -100,7 +103,7 @@ describe('processUpload — retry behaviour', () => {
   });
 
   it('gives up after the final attempt, keeping the last reason', async () => {
-    const extractor = scriptedExtractor(new APIConnectionTimeoutError());
+    const extractor = scriptedExtractor(timeout());
 
     const outcomes = await runLikeTheQueue(extractor);
 
@@ -114,8 +117,7 @@ describe('processUpload — retry behaviour', () => {
   });
 
   it('fails immediately, without retrying, when the error is not transient', async () => {
-    const badKey = APIError.generate(401, { error: { code: 'invalid_api_key', message: 'bad key' } }, undefined, new Headers());
-    const extractor = scriptedExtractor(badKey);
+    const extractor = scriptedExtractor(badKey());
 
     const outcomes = await runLikeTheQueue(extractor);
 
@@ -185,7 +187,7 @@ describe('processUpload — permanent failures', () => {
   });
 
   it('does not retry a refusal', async () => {
-    const refusal = new ExtractionError('LLM_REFUSED', false);
+    const refusal = new ExtractionError('LLM_REFUSED');
     await expect(run(scriptedExtractor(refusal))).resolves.toMatchObject({ status: 'failed', code: 'LLM_REFUSED' });
   });
 });
@@ -216,7 +218,7 @@ describe('processUpload — identical files', () => {
   it('reuses the result of a completed upload of the same bytes instead of calling the LLM', async () => {
     const hash = createHash('sha256').update(FILE_BYTES.png).digest('hex');
     uploads.seed({ id: 'twin', status: 'completed', contentSha256: hash, result: SAMPLE_EXTRACTION });
-    const extractor = scriptedExtractor(new APIConnectionTimeoutError());
+    const extractor = scriptedExtractor(timeout());
 
     await expect(run(extractor)).resolves.toEqual({ status: 'completed' });
     expect(extractor.calls).toBe(0);
@@ -249,17 +251,10 @@ describe('processUpload — shared rate limiting', () => {
   });
 
   it('pauses every worker for as long as the provider asked, and retries the job', async () => {
-    const limited = APIError.generate(429, { error: { code: 'rate_limit_exceeded', message: 'slow down' } }, undefined, new Headers({ 'retry-after': '7' }));
-
-    await expect(run(scriptedExtractor(limited))).resolves.toMatchObject({ status: 'retry', code: 'LLM_RATE_LIMITED' });
+    await expect(run(scriptedExtractor(rateLimited(7000)))).resolves.toMatchObject({ status: 'retry', code: 'LLM_RATE_LIMITED' });
     expect(rateLimiter.pauses).toEqual([7000]);
   });
 
-  it('pauses for a default time when a rate limit gives no Retry-After', async () => {
-    const limited = APIError.generate(429, { error: { code: 'rate_limit_exceeded', message: 'slow down' } }, undefined, new Headers());
-    await run(scriptedExtractor(limited));
-    expect(rateLimiter.pauses).toEqual([10_000]);
-  });
 
   it('gives the job back to the queue, without calling the LLM or pausing, when our own limiter is full', async () => {
     rateLimiter.refuse = true;
@@ -301,11 +296,10 @@ describe('processUpload — an attempt taken over by another worker', () => {
   });
 
   it("can't schedule a retry or fail the upload either", async () => {
-    await expect(run(takenOverWhile(new APIConnectionTimeoutError()))).resolves.toMatchObject({ status: 'skipped' });
+    await expect(run(takenOverWhile(timeout()))).resolves.toMatchObject({ status: 'skipped' });
     expect(uploads.get(UPLOAD_ID)).toMatchObject({ status: 'processing', error: null });
 
-    const badKey = APIError.generate(401, { error: { code: 'invalid_api_key', message: 'bad key' } }, undefined, new Headers());
-    await expect(run(takenOverWhile(badKey), { attempt: 2 })).resolves.toMatchObject({ status: 'skipped' });
+    await expect(run(takenOverWhile(badKey()), { attempt: 2 })).resolves.toMatchObject({ status: 'skipped' });
     expect(uploads.get(UPLOAD_ID).status).toBe('processing');
   });
 

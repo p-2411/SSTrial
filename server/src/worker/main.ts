@@ -11,36 +11,42 @@ import { createPostgresRateLimiter } from '../extraction/rate-limiter.ts';
 import { loadWorkerConfig } from '../infra/config.ts';
 import { createDb } from '../infra/db.ts';
 import { createLogger } from '../infra/logger.ts';
-import { createUploadJobs, startQueue } from '../infra/queue.ts';
+import { startQueue } from '../infra/queue.ts';
 import { createSupabaseStorage } from '../infra/storage.ts';
-import { databaseCheck, queueCheck, runHealthChecks, workerLoopCheck } from '../ops/health.ts';
+import { databaseCheck, healthStatusCode, queueCheck, runHealthChecks, workerLoopCheck } from '../ops/health.ts';
 import { createOpsStore } from '../ops/store.ts';
+import { createUploadJobs, createUploadQueues } from '../uploads/jobs.ts';
 import { createUploadStore } from '../uploads/store.ts';
-import { startExtractionWorker } from './worker.ts';
+import { startExtractionWorker, startFinaliseWorker, startMonitor } from './worker.ts';
 
 const config = loadWorkerConfig();
 const logger = createLogger({ name: 'worker', level: config.LOG_LEVEL, pretty: config.NODE_ENV === 'development' });
 
 const sql = createDb(config.DATABASE_URL, { max: config.DATABASE_POOL_MAX });
 const boss = await startQueue({ connectionString: config.DATABASE_URL, role: 'worker', logger });
+await createUploadQueues(boss);
+
+const uploads = createUploadStore(sql, createUploadJobs(boss));
+const storage = createSupabaseStorage({
+  url: config.SUPABASE_URL,
+  secretKey: config.SUPABASE_SECRET_KEY,
+  bucket: config.STORAGE_BUCKET,
+});
 
 await startExtractionWorker({
   boss,
   logger,
-  ops: createOpsStore(sql),
+  uploads,
+  storage,
   concurrency: config.WORKER_CONCURRENCY,
-  uploads: createUploadStore(sql, createUploadJobs(boss)),
-  storage: createSupabaseStorage({
-    url: config.SUPABASE_URL,
-    secretKey: config.SUPABASE_SECRET_KEY,
-    bucket: config.STORAGE_BUCKET,
-  }),
   rateLimiter: createPostgresRateLimiter(sql, { key: 'openai', requestsPerMinute: config.OPENAI_REQUESTS_PER_MINUTE }),
   extractor: createOpenAIExtractor({
     model: config.OPENAI_MODEL,
     createResponse: createOpenAIResponses({ apiKey: config.OPENAI_API_KEY, timeoutMs: config.OPENAI_TIMEOUT_MS }),
   }),
 });
+await startFinaliseWorker({ boss, logger, uploads, storage });
+await startMonitor({ boss, logger, ops: createOpsStore(sql) });
 
 // The worker's only HTTP endpoint: GET /api/health, so the host can tell whether it's working.
 const health = createServer(async (request, response) => {
@@ -49,7 +55,7 @@ const health = createServer(async (request, response) => {
     return;
   }
   const report = await runHealthChecks([databaseCheck(sql), queueCheck(boss), workerLoopCheck(boss)]);
-  response.writeHead(report.status === 'ok' ? 200 : 503, { 'content-type': 'application/json' });
+  response.writeHead(healthStatusCode(report), { 'content-type': 'application/json' });
   response.end(JSON.stringify(report));
 });
 health.listen(config.PORT, config.HOST, () => logger.info({ port: config.PORT }, 'Worker health check listening'));

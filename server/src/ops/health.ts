@@ -1,7 +1,7 @@
 import type postgres from 'postgres';
 import type { PgBoss } from 'pg-boss';
 import type { HealthCheckResult, HealthReport } from '@label-extractor/shared';
-import { EXTRACTION_QUEUE } from '../infra/queue.ts';
+import { EXTRACTION_QUEUE } from '../uploads/jobs.ts';
 
 /**
  * Readiness checks behind GET /api/health on the API and the worker. Railway runs them before
@@ -33,6 +33,14 @@ export async function runHealthChecks(checks: HealthCheck[]): Promise<HealthRepo
     status: results.every(([, result]) => result.status === 'ok') ? 'ok' : 'unhealthy',
     checks: Object.fromEntries(results),
   };
+}
+
+/**
+ * 200 when every check passes, 503 otherwise — the status code is what load balancers and Railway's
+ * deploy checks look at; the body says which dependency failed.
+ */
+export function healthStatusCode(report: HealthReport): 200 | 503 {
+  return report.status === 'ok' ? 200 : 503;
 }
 
 /** Postgres answers a query. */

@@ -106,15 +106,17 @@ The LLM is never called from tests. The worker depends on a `LabelExtractor` int
 ## Project structure
 
 ```
-shared/          Zod schemas and types used by all three: file rules, extraction schema, API contracts
+shared/          Types, Zod schemas and rules used by all three: file rules, extraction schema, HTTP contract
 server/
-  src/api/       HTTP API process (Fastify): routes, error handling, entry point
-  src/worker/    Worker process: job handler (retry decisions) and pg-boss wiring
-  src/extraction/ LLM integration: interface, OpenAI implementation, prompt, error classification
-  src/uploads/   The uploads table: guarded status transitions, finalising, exports, response mapping
-  src/ops/       Health checks, the alert monitor and its data
+  src/api/       HTTP API process (Fastify): routes that turn use-case outcomes into responses, errors
+  src/worker/    Worker process: the extraction job (retry decisions) and a handler per queue
+  src/extraction/ LLM integration: interface, errors, OpenAI implementation and its error mapping,
+                 prompt, shared rate limiter
+  src/uploads/   The uploads domain: the table's guarded transitions, the use cases (intake, finalise,
+                 retry), its queues, the live change feed, exports and response mapping
+  src/ops/       Health checks, the alert monitor, its data and the status page's response
+  src/infra/     Config, database, queue connection, storage, logging, file-type sniffing
   scripts/       One-off data changes, committed so they're reviewable and re-runnable
-  src/infra/     Config, database, queue, storage, logging, file-type sniffing
   test/          Unit tests (with in-memory fakes) and the integration test
 web/src/
   api/           API client and React Query hooks (polling lives here)

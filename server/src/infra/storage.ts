@@ -1,13 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 import { MAX_FILE_SIZE_BYTES, SUPPORTED_MIME_TYPES } from '@label-extractor/shared';
 
+/** How long a Supabase signed upload URL accepts an upload. Fixed by Supabase, not configurable. */
+export const SIGNED_UPLOAD_URL_TTL_SECONDS = 2 * 60 * 60;
+
 /**
  * Where uploaded files live. The rest of the server only sees this interface, so tests use an
  * in-memory fake and swapping Supabase Storage for S3/R2 later means one new implementation.
  */
-/** How long a Supabase signed upload URL accepts an upload. Fixed by Supabase, not configurable. */
-export const SIGNED_UPLOAD_URL_TTL_SECONDS = 2 * 60 * 60;
-
 export interface FileStorage {
   /** A URL the browser can `PUT` the file's bytes to, valid for this one object path only. */
   createUploadUrl(path: string): Promise<string>;
@@ -38,9 +38,7 @@ export interface SupabaseStorageOptions {
 }
 
 export function createSupabaseStorage(options: SupabaseStorageOptions): FileStorage {
-  const client = createClient(options.url, options.secretKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  const client = createServerClient(options);
   const bucket = () => client.storage.from(options.bucket);
 
   /** Rewrites a signed URL for the browser. The signature covers the path, not the host. */
@@ -105,9 +103,7 @@ export function createSupabaseStorage(options: SupabaseStorageOptions): FileStor
  * place — Supabase enforces them on signed uploads, but no longer keeps its own copy to drift.
  */
 export async function syncBucketSettings(options: { url: string; secretKey: string; bucket: string }): Promise<void> {
-  const storage = createClient(options.url, options.secretKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  }).storage;
+  const { storage } = createServerClient(options);
   const settings = { public: false, fileSizeLimit: MAX_FILE_SIZE_BYTES, allowedMimeTypes: [...SUPPORTED_MIME_TYPES] };
 
   const existing = await storage.getBucket(options.bucket);
@@ -115,6 +111,11 @@ export async function syncBucketSettings(options: { url: string; secretKey: stri
     ? await storage.updateBucket(options.bucket, settings)
     : await storage.createBucket(options.bucket, settings);
   if (error) throw new StorageUnavailableError(`Could not apply bucket settings: ${error.message}`, { cause: error });
+}
+
+/** A Supabase client for the server: the secret key, and no user session to keep or refresh. */
+function createServerClient(options: { url: string; secretKey: string }) {
+  return createClient(options.url, options.secretKey, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
 /** Supabase reports a missing object as 400 or 404 depending on the endpoint. */

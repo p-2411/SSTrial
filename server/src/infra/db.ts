@@ -16,15 +16,3 @@ export function createDb(url: string, options: { max: number }): postgres.Sql {
   });
 }
 
-/**
- * Adapts a postgres.js transaction to the minimal interface pg-boss uses to run SQL, so a job can
- * be enqueued *inside* the same transaction as our own writes (see uploads/store.ts).
- */
-export function asPgBossDb(tx: Db) {
-  return {
-    async executeSql(text: string, values: unknown[] = []) {
-      const rows = await tx.unsafe(text, values as postgres.ParameterOrJSON<never>[]);
-      return { rows: [...rows] };
-    },
-  };
-}

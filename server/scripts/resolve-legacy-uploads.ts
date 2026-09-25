@@ -12,15 +12,17 @@
 import { loadApiConfig } from '../src/infra/config.ts';
 import { createDb } from '../src/infra/db.ts';
 import { createLogger } from '../src/infra/logger.ts';
-import { createUploadJobs, startQueue } from '../src/infra/queue.ts';
+import { startQueue } from '../src/infra/queue.ts';
 import { createSupabaseStorage, SIGNED_UPLOAD_URL_TTL_SECONDS } from '../src/infra/storage.ts';
 import { finaliseUpload } from '../src/uploads/finalise.ts';
+import { createUploadJobs, createUploadQueues } from '../src/uploads/jobs.ts';
 import { createUploadStore } from '../src/uploads/store.ts';
 
 const config = loadApiConfig();
 const logger = createLogger({ name: 'resolve-legacy-uploads', level: 'info', pretty: false });
 const sql = createDb(config.DATABASE_URL, { max: 2 });
 const boss = await startQueue({ connectionString: config.DATABASE_URL, role: 'api', logger });
+await createUploadQueues(boss);
 const jobs = createUploadJobs(boss);
 const uploads = createUploadStore(sql, jobs);
 const storage = createSupabaseStorage({
@@ -48,7 +50,6 @@ try {
       continue;
     }
     const result = await finaliseUpload({ uploads, storage }, row.id, { caller: 'finalise-job' });
-    if (result.outcome === 'not-uploaded') await uploads.discardUnfinished(row.id);
     logger.info({ uploadId: row.id, outcome: result.outcome }, 'Finalised an unconfirmed upload');
   }
   logger.info({ count: unfinished.length }, 'Settled uploads left in "uploading"');

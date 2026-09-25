@@ -49,11 +49,19 @@ describe('finaliseUpload', () => {
     expect(uploads.rows.has(ID)).toBe(true);
   });
 
-  it('reports a file that has not arrived without changing anything', async () => {
+  it('leaves the upload for the browser when its file has not arrived yet', async () => {
     uploads.seed({ id: ID });
 
-    await expect(finalise()).resolves.toEqual({ outcome: 'not-uploaded' });
+    await expect(finalise('browser')).resolves.toEqual({ outcome: 'not-uploaded' });
     expect(uploads.get(ID).status).toBe('uploading');
+  });
+
+  it('discards the upload when the finalise job finds no file (none can arrive any more)', async () => {
+    uploads.seed({ id: ID });
+
+    await expect(finalise('finalise-job')).resolves.toEqual({ outcome: 'discarded' });
+    expect(uploads.rows.has(ID)).toBe(false);
+    expect(uploads.finaliseCancelled).toEqual([]);
   });
 
   it('is a no-op for an upload that was already finalised (the other caller won)', async () => {

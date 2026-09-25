@@ -20,8 +20,10 @@ export type FinaliseResult =
   | { outcome: 'queued'; upload: UploadRecord }
   /** Already finalised by the other caller (or a duplicate request). */
   | { outcome: 'already-finalised'; upload: UploadRecord }
-  /** No file in storage (yet). */
+  /** No file in storage yet. The browser may still send it, so the upload is left as it is. */
   | { outcome: 'not-uploaded' }
+  /** No file, and the upload URL has expired so none can arrive: the upload has been deleted. */
+  | { outcome: 'discarded' }
   /** The bytes aren't a supported type. The file and the upload have been deleted — nothing is kept. */
   | { outcome: 'rejected' }
   | { outcome: 'not-found' };
@@ -32,7 +34,10 @@ export interface FinaliseDeps {
 }
 
 export interface FinaliseOptions {
-  /** Only the browser cancels the finalise job; the job itself can't cancel its own run. */
+  /**
+   * The browser's confirmation cancels the finalise job (the job can't cancel its own run). The
+   * finalise job runs after the upload URL has expired, so for it, no file means none will come.
+   */
   caller: 'browser' | 'finalise-job';
 }
 
@@ -43,7 +48,11 @@ export async function finaliseUpload(deps: FinaliseDeps, id: string, { caller }:
   if (upload.status !== 'uploading') return { outcome: 'already-finalised', upload };
 
   const head = await deps.storage.readHead(upload.storagePath, SIGNATURE_BYTES);
-  if (!head || head.length === 0) return { outcome: 'not-uploaded' };
+  if (!head || head.length === 0) {
+    if (caller === 'browser') return { outcome: 'not-uploaded' };
+    await deps.uploads.discardUnfinished(upload.id);
+    return { outcome: 'discarded' };
+  }
 
   // The name and MIME type were claims; the bytes are the truth.
   const detected = detectFileType(head);
