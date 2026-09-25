@@ -3,6 +3,9 @@
  * in app/router.tsx.
  */
 
+/** Where signed-out visitors are sent. Outside the app shell. */
+export const SIGN_IN_PATH = '/sign-in';
+
 /** The upload list (the home page). */
 export const HOME_PATH = '/';
 

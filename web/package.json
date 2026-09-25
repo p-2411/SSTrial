@@ -29,6 +29,7 @@
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
     "@label-extractor/shared": "^0.0.0",
+    "@supabase/auth-js": "^2.117.2",
     "@tanstack/react-query": "^5.103.2",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.4.0",
