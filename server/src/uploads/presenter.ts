@@ -1,4 +1,5 @@
 import {
+  overallConfidence,
   UPLOAD_FILTER_IDS,
   UPLOAD_FILTERS,
   uploadErrorMessage,
@@ -28,6 +29,7 @@ export function toUploadSummary(record: UploadRecord): UploadSummary {
     error: record.error && { code: record.error.code, message: uploadErrorMessage(record.error.code) },
     productName: record.result?.productName ?? null,
     resultUnreadable: record.resultUnreadable,
+    confidence: record.status === 'completed' ? overallConfidence(record.confidence) : null,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
     completedAt: record.completedAt?.toISOString() ?? null,
@@ -38,6 +40,7 @@ export function toUploadDetail(record: UploadRecord, fileUrl: string | null, upl
   return {
     ...toUploadSummary(record),
     result: record.status === 'completed' ? record.result : null,
+    fieldConfidence: record.status === 'completed' ? record.confidence : null,
     fileUrl,
     uploadedBy,
   };

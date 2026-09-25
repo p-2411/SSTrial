@@ -12,6 +12,7 @@ export function summary(overrides: Partial<UploadSummary> = {}): UploadSummary {
     error: null,
     productName: 'Maple Pecan Crunch',
     resultUnreadable: false,
+    confidence: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     completedAt: new Date().toISOString(),

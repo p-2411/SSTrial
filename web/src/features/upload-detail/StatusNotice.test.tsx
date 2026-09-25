@@ -5,7 +5,7 @@ import { renderWithProviders } from '@/test/render';
 import { summary } from '@/test/fixtures';
 import { StatusNotice } from './StatusNotice.tsx';
 
-const detail = (overrides: Partial<UploadDetail>): UploadDetail => ({ ...summary(), result: null, fileUrl: null, uploadedBy: null, ...overrides });
+const detail = (overrides: Partial<UploadDetail>): UploadDetail => ({ ...summary(), result: null, fieldConfidence: null, fileUrl: null, uploadedBy: null, ...overrides });
 
 describe('StatusNotice', () => {
   it('explains a result that can no longer be read and offers to run it again', () => {

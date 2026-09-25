@@ -1,3 +1,4 @@
+import type { ExtractionConfidence } from './confidence.ts';
 import type { LabelExtraction } from './extraction.ts';
 import type { SupportedMimeType } from './files.ts';
 
@@ -116,6 +117,11 @@ export interface UploadSummary {
    * shape this version doesn't understand). It can be run again to replace it.
    */
   resultUnreadable: boolean;
+  /**
+   * How sure the extraction is, out of 100: its least certain field (see confidence.ts). Null when
+   * it wasn't scored, or the upload isn't completed.
+   */
+  confidence: number | null;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -127,6 +133,8 @@ export interface UploadDetail extends UploadSummary {
   result: LabelExtraction | null;
   /** Short-lived signed URL for previewing the original file, or `null` if unavailable. */
   fileUrl: string | null;
+  /** How sure the extraction is of each field, when it was scored. */
+  fieldConfidence: ExtractionConfidence | null;
   /** Email of whoever uploaded it; null for uploads from before sign-in existed. */
   uploadedBy: string | null;
 }

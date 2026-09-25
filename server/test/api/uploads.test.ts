@@ -282,6 +282,28 @@ function seedMany(statuses: Array<'completed' | 'failed' | 'queued' | 'processin
 }
 
 describe('GET /api/uploads/:id — detail', () => {
+  it('reports how sure the extraction is: every field in the detail, the least certain in the list', async () => {
+    const confidence = {
+      productName: { score: 97, reasons: [] },
+      brand: { score: 95, reasons: [] },
+      netWeight: { score: 58, reasons: ['Partly hidden by a fold.'] },
+      allergens: { score: 90, reasons: [] },
+      ingredients: { score: 88, reasons: [] },
+    };
+    uploads.seed({ id: ID, status: 'completed', result: SAMPLE_EXTRACTION, confidence });
+
+    const detail = (await app.inject({ method: 'GET', url: `/api/uploads/${ID}` })).json().upload;
+    expect(detail.fieldConfidence).toEqual(confidence);
+    const [summary] = (await app.inject({ method: 'GET', url: '/api/uploads' })).json().uploads;
+    expect(summary.confidence).toBe(58);
+  });
+
+  it('has no scores for uploads extracted before scoring existed', async () => {
+    uploads.seed({ id: ID, status: 'completed', result: SAMPLE_EXTRACTION });
+    const detail = (await app.inject({ method: 'GET', url: `/api/uploads/${ID}` })).json().upload;
+    expect(detail).toMatchObject({ confidence: null, fieldConfidence: null });
+  });
+
   it('returns the extracted data and a preview link for a completed upload', async () => {
     seedUploaded(FILE_BYTES.png, { id: ID, status: 'completed', attempts: 1, result: SAMPLE_EXTRACTION, completedAt: new Date() });
 
