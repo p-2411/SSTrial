@@ -22,18 +22,18 @@ export function ExportMenu() {
           <ChevronDown data-icon="inline-end" aria-hidden />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-60">
+      <DropdownMenuContent align="end" className="w-48">
         <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">All completed uploads</DropdownMenuLabel>
         <DropdownMenuItem asChild>
           <a href="/api/exports/uploads.csv" download>
             <FileSpreadsheet aria-hidden />
-            CSV for spreadsheets
+            CSV
           </a>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <a href="/api/exports/uploads.json" download>
             <FileJson aria-hidden />
-            JSON with full detail
+            JSON
           </a>
         </DropdownMenuItem>
       </DropdownMenuContent>
