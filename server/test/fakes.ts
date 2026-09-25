@@ -37,6 +37,7 @@ export class InMemoryUploadStore implements UploadStore {
       mimeType: 'image/png',
       sizeBytes: 1234,
       storagePath: `uploads/${overrides.id}.png`,
+      contentSha256: null,
       status: 'uploading',
       attempts: 0,
       error: null,
@@ -62,6 +63,19 @@ export class InMemoryUploadStore implements UploadStore {
   }
   async findById(id: string) {
     return this.rows.get(id) ?? null;
+  }
+  async findByContentHash(sha256: string) {
+    return this.newest((row) => row.contentSha256 === sha256 && ['queued', 'processing', 'completed'].includes(row.status));
+  }
+  async recordContentHash(id: string, sha256: string) {
+    const row = this.rows.get(id);
+    if (row) this.rows.set(id, { ...row, contentSha256: sha256 });
+  }
+  async findCompletedTwin(sha256: string, excludeId: string) {
+    return this.newest((row) => row.contentSha256 === sha256 && row.status === 'completed' && row.id !== excludeId);
+  }
+  private newest(predicate: (row: UploadRecord) => boolean) {
+    return [...this.rows.values()].filter(predicate).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
   }
   async listRecent(limit: number) {
     return [...this.rows.values()]

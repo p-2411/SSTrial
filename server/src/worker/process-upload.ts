@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { isEmptyExtraction, type UploadErrorCode } from '@label-extractor/shared';
 import { classifyOpenAIError, ExtractionError } from '../extraction/errors.ts';
 import type { LabelExtractor } from '../extraction/extractor.ts';
@@ -14,7 +15,7 @@ import type { UploadStore } from '../uploads/store.ts';
  */
 
 export interface ProcessUploadDeps {
-  uploads: Pick<UploadStore, 'startAttempt' | 'complete' | 'scheduleRetry' | 'fail'>;
+  uploads: Pick<UploadStore, 'startAttempt' | 'complete' | 'scheduleRetry' | 'fail' | 'recordContentHash' | 'findCompletedTwin'>;
   storage: Pick<FileStorage, 'download'>;
   extractor: LabelExtractor;
   logger: Logger;
@@ -55,6 +56,19 @@ export async function processUpload(deps: ProcessUploadDeps, job: ExtractionJob)
     const bytes = await deps.storage.download(upload.storagePath);
     if (!bytes) {
       throw new ExtractionError('FILE_MISSING', false, `No object at ${upload.storagePath}`);
+    }
+
+    // The browser's hash is only a claim; record the real one, then reuse the result of an
+    // identical file if we already have one — no need to ask the LLM the same question twice.
+    const contentSha256 = sha256Hex(bytes);
+    if (contentSha256 !== upload.contentSha256) await deps.uploads.recordContentHash(upload.id, contentSha256);
+    const twin = await deps.uploads.findCompletedTwin(contentSha256, upload.id);
+    if (twin?.result) {
+      if (!(await deps.uploads.complete(upload.id, twin.result))) {
+        return { status: 'skipped', reason: 'Upload was completed by another attempt' };
+      }
+      log.info({ reusedFrom: twin.id }, 'Reused the result of an identical upload');
+      return { status: 'completed' };
     }
 
     const started = performance.now();
@@ -101,4 +115,8 @@ function toExtractionError(error: unknown): ExtractionError {
   }
   // OpenAI SDK errors (and, as a fallback, unexpected bugs → retryable INTERNAL_ERROR).
   return classifyOpenAIError(error);
+}
+
+function sha256Hex(bytes: Uint8Array): string {
+  return createHash('sha256').update(bytes).digest('hex');
 }

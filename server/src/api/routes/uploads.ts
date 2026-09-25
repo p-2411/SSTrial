@@ -70,6 +70,13 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage }: U
     });
     if (!validation.ok) throw new ApiError(422, validation.code, validation.message);
 
+    // Already have this exact file (queued, processing or done)? Point at it instead of uploading
+    // and extracting it again. The hash is the browser's claim; the worker checks the real bytes.
+    if (body.data.sha256) {
+      const existing = await uploads.findByContentHash(body.data.sha256);
+      if (existing) return { kind: 'duplicate', upload: toUploadSummary(existing) };
+    }
+
     // The object key is ours, never the user's file name: no path tricks, no unicode surprises.
     const id = crypto.randomUUID();
     const storagePath = `${new Date().toISOString().slice(0, 10)}/${id}${SUPPORTED_FILE_TYPES[validation.mimeType].extensions[0]}`;
@@ -82,10 +89,11 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage }: U
       mimeType: validation.mimeType,
       sizeBytes: body.data.sizeBytes,
       storagePath,
+      contentSha256: body.data.sha256 ?? null,
     });
 
     reply.status(201);
-    return { upload: toUploadSummary(upload), uploadUrl };
+    return { kind: 'created', upload: toUploadSummary(upload), uploadUrl };
   });
 
   // 3. Confirm the upload finished ---------------------------------------------------------------

@@ -86,6 +86,40 @@ describe('POST /api/uploads — request a signed upload URL', () => {
   });
 });
 
+describe('POST /api/uploads — duplicate files', () => {
+  const HASH = 'a'.repeat(64);
+  const request = { fileName: 'label.png', mimeType: 'image/png', sizeBytes: 5000, sha256: HASH };
+
+  it('returns the existing upload instead of creating another when the same file was already processed', async () => {
+    uploads.seed({ id: ID, status: 'completed', contentSha256: HASH, result: SAMPLE_EXTRACTION });
+
+    const response = await createUpload(request);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ kind: 'duplicate', upload: { id: ID, status: 'completed' } });
+    expect(uploads.rows.size).toBe(1);
+    expect(uploads.finaliseScheduled).toEqual([]);
+  });
+
+  it.each(['failed', 'uploading'] as const)('does not treat a %s upload of the same file as a duplicate', async (status) => {
+    uploads.seed({ id: ID, status, contentSha256: HASH, error: status === 'failed' ? { code: 'LLM_TIMEOUT' } : null });
+
+    const response = await createUpload(request);
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().kind).toBe('created');
+  });
+
+  it("records the browser's hash on the new upload", async () => {
+    const response = await createUpload(request);
+    expect(uploads.get(response.json().upload.id).contentSha256).toBe(HASH);
+  });
+
+  it('rejects a malformed hash', async () => {
+    expect((await createUpload({ ...request, sha256: 'not-a-hash' })).statusCode).toBe(400);
+  });
+});
+
 describe('POST /api/uploads/:id/complete — confirm the upload and queue it', () => {
   const complete = (id = ID) => app.inject({ method: 'POST', url: `/api/uploads/${id}/complete` });
 

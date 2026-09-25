@@ -23,6 +23,8 @@ export interface UploadRecord {
   mimeType: SupportedMimeType;
   sizeBytes: number;
   storagePath: string;
+  /** SHA-256 of the file (hex). Claimed by the browser at first, replaced by the worker's own hash. */
+  contentSha256: string | null;
   status: UploadStatus;
   attempts: number;
   error: UploadFailure | null;
@@ -43,6 +45,7 @@ export interface NewUpload {
   mimeType: SupportedMimeType;
   sizeBytes: number;
   storagePath: string;
+  contentSha256: string | null;
 }
 
 export interface UploadStore {
@@ -50,6 +53,8 @@ export interface UploadStore {
   /** Inserts the row and schedules its finalise job, atomically (see FINALISE_QUEUE). */
   create(upload: NewUpload): Promise<UploadRecord>;
   findById(id: string): Promise<UploadRecord | null>;
+  /** The newest queued, processing or completed upload of a file with this hash, if any. */
+  findByContentHash(sha256: string): Promise<UploadRecord | null>;
   /** Newest first, excluding rows the browser hasn't finished uploading. */
   listRecent(limit: number): Promise<UploadRecord[]>;
   /** Every completed upload, newest first, read in batches so an export of any size can stream. */
@@ -70,6 +75,10 @@ export interface UploadStore {
    * from-state so a job retried after a worker crash can pick the upload back up.
    */
   startAttempt(id: string): Promise<UploadRecord | null>;
+  /** Records the hash the worker computed from the actual bytes (the browser's is only a claim). */
+  recordContentHash(id: string, sha256: string): Promise<void>;
+  /** The newest *completed* upload of an identical file other than `excludeId`, to reuse its result. */
+  findCompletedTwin(sha256: string, excludeId: string): Promise<UploadRecord | null>;
   /** `processing → completed` with the validated result. */
   complete(id: string, result: LabelExtraction): Promise<UploadRecord | null>;
   /** `processing → queued`, recording why this attempt failed; the queue will retry it. */
@@ -91,8 +100,9 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
       // guarantees it's eventually confirmed or discarded.
       return sql.begin(async (tx) => {
         const [row] = await tx`
-          insert into uploads (id, file_name, mime_type, size_bytes, storage_path)
-          values (${upload.id}, ${upload.fileName}, ${upload.mimeType}, ${upload.sizeBytes}, ${upload.storagePath})
+          insert into uploads (id, file_name, mime_type, size_bytes, storage_path, content_sha256)
+          values (${upload.id}, ${upload.fileName}, ${upload.mimeType}, ${upload.sizeBytes}, ${upload.storagePath},
+                  ${upload.contentSha256})
           returning *`;
         await jobs.scheduleFinalise(upload.id, tx);
         return toRecord(row!);
@@ -101,6 +111,28 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
 
     async findById(id) {
       const [row] = await sql`select * from uploads where id = ${id}`;
+      return row ? toRecord(row) : null;
+    },
+
+    async findByContentHash(sha256) {
+      const [row] = await sql`
+        select * from uploads
+        where content_sha256 = ${sha256} and status in ('queued', 'processing', 'completed')
+        order by created_at desc
+        limit 1`;
+      return row ? toRecord(row) : null;
+    },
+
+    async recordContentHash(id, sha256) {
+      await sql`update uploads set content_sha256 = ${sha256} where id = ${id}`;
+    },
+
+    async findCompletedTwin(sha256, excludeId) {
+      const [row] = await sql`
+        select * from uploads
+        where content_sha256 = ${sha256} and status = 'completed' and id <> ${excludeId}
+        order by completed_at desc
+        limit 1`;
       return row ? toRecord(row) : null;
     },
 
@@ -193,6 +225,7 @@ function toRecord(row: postgres.Row): UploadRecord {
     mimeType: row.mime_type,
     sizeBytes: row.size_bytes,
     storagePath: row.storage_path,
+    contentSha256: row.content_sha256 ?? null,
     status: row.status,
     attempts: row.attempts,
     error: row.error_code ? { code: row.error_code } : null,

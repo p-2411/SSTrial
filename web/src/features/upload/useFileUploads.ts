@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router';
+import { toast } from 'sonner';
 import { validateFileMetadata } from '@label-extractor/shared';
 import { errorMessage } from '../../api/client.ts';
 import { uploadKeys } from '../../api/queries.ts';
 import { completeUpload, createUpload, putFileToStorage } from '../../api/uploads.ts';
+import { sha256Hex } from '../../lib/hashFile.ts';
 
 /**
  * Tracks files the user has picked until the server has accepted them.
@@ -52,6 +55,7 @@ function reducer(state: PendingUpload[], action: Action): PendingUpload[] {
 export function useFileUploads() {
   const [uploads, dispatch] = useReducer(reducer, []);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   // The work queue lives in refs, not state: it's bookkeeping, not something to render.
   const waiting = useRef<PendingUpload[]>([]);
@@ -66,11 +70,24 @@ export function useFileUploads() {
     async ({ localId, file }: PendingUpload) => {
       try {
         update(localId, { phase: 'uploading', progress: 0, error: null });
-        const { upload, uploadUrl } = await createUpload({
+        const created = await createUpload({
           fileName: file.name,
           mimeType: file.type,
           sizeBytes: file.size,
+          // Lets the API recognise a file it already has, so it isn't uploaded or extracted twice.
+          sha256: await sha256Hex(file),
         });
+
+        if (created.kind === 'duplicate') {
+          dispatch({ type: 'removed', localId });
+          const existingId = created.upload.id;
+          toast(`${file.name} was already uploaded`, {
+            description: 'Showing the existing upload instead of processing it again.',
+            action: { label: 'View', onClick: () => void navigate(`/uploads/${existingId}`) },
+          });
+          return;
+        }
+        const { upload, uploadUrl } = created;
 
         // Use the API's normalised type: the browser's `file.type` can be empty or "image/jpg".
         await putFileToStorage(uploadUrl, file, upload.mimeType, (progress) => update(localId, { progress }));
@@ -87,7 +104,7 @@ export function useFileUploads() {
         update(localId, { phase: 'failed', error: errorMessage(error) });
       }
     },
-    [queryClient, update],
+    [navigate, queryClient, update],
   );
 
   /** Starts waiting uploads until MAX_PARALLEL_UPLOADS are in flight. */

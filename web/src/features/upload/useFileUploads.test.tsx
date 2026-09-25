@@ -3,10 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { createTestQueryClient, Providers } from '../../test/render.tsx';
 import { summary } from '../../test/fixtures.ts';
+import { toast } from 'sonner';
 import * as api from '../../api/uploads.ts';
 import { useFileUploads } from './useFileUploads.ts';
 
 vi.mock('../../api/uploads.ts');
+vi.mock('sonner', () => ({ toast: vi.fn() }));
 const mocked = vi.mocked(api);
 
 function renderUploads() {
@@ -19,7 +21,7 @@ const png = () => new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'label.pn
 
 beforeEach(() => {
   vi.resetAllMocks();
-  mocked.createUpload.mockResolvedValue({ upload: summary({ status: 'uploading' }), uploadUrl: 'https://storage/signed' });
+  mocked.createUpload.mockResolvedValue({ kind: 'created', upload: summary({ status: 'uploading' }), uploadUrl: 'https://storage/signed' });
   mocked.putFileToStorage.mockResolvedValue();
   mocked.completeUpload.mockResolvedValue({ ...summary({ status: 'queued' }), result: null, fileUrl: null });
   mocked.listUploads.mockResolvedValue([]);
@@ -43,7 +45,12 @@ describe('useFileUploads', () => {
     act(() => result.current.addFiles([png()]));
 
     await waitFor(() => expect(result.current.uploads).toEqual([]));
-    expect(mocked.createUpload).toHaveBeenCalledWith({ fileName: 'label.png', mimeType: 'image/png', sizeBytes: 4 });
+    expect(mocked.createUpload).toHaveBeenCalledWith({
+      fileName: 'label.png',
+      mimeType: 'image/png',
+      sizeBytes: 4,
+      sha256: '0f4636c78f65d3639ece5a064b5ae753e3408614a14fb18ab4d7540d2c248543', // SHA-256 of the 4 bytes
+    });
     expect(mocked.putFileToStorage).toHaveBeenCalledWith('https://storage/signed', expect.any(File), 'image/png', expect.any(Function));
     expect(mocked.completeUpload).toHaveBeenCalledWith(summary().id);
   });
@@ -74,5 +81,16 @@ describe('useFileUploads', () => {
     await act(async () => release());
     await waitFor(() => expect(result.current.uploads).toEqual([]));
     expect(mocked.putFileToStorage).toHaveBeenCalledTimes(5);
+  });
+
+  it('skips a file the server already has, and points to the existing upload', async () => {
+    mocked.createUpload.mockResolvedValueOnce({ kind: 'duplicate', upload: summary({ id: 'existing', status: 'completed' }) });
+    const { result } = renderUploads();
+
+    act(() => result.current.addFiles([png()]));
+
+    await waitFor(() => expect(result.current.uploads).toEqual([]));
+    expect(mocked.putFileToStorage).not.toHaveBeenCalled();
+    expect(vi.mocked(toast)).toHaveBeenCalledWith('label.png was already uploaded', expect.objectContaining({ action: expect.anything() }));
   });
 });

@@ -104,14 +104,20 @@ export const createUploadRequestSchema = z.object({
   fileName: z.string(),
   mimeType: z.string(),
   sizeBytes: z.number(),
+  /** SHA-256 of the file's bytes, as lowercase hex. Lets the API spot a file it already has. */
+  sha256: z.string().regex(/^[0-9a-f]{64}$/).optional(),
 });
 export type CreateUploadRequest = z.infer<typeof createUploadRequestSchema>;
 
-export interface CreateUploadResponse {
-  upload: UploadSummary;
-  /** Upload the file with `PUT uploadUrl` (body = raw file bytes, `Content-Type` = file type). */
-  uploadUrl: string;
-}
+export type CreateUploadResponse =
+  | {
+      kind: 'created';
+      upload: UploadSummary;
+      /** Upload the file with `PUT uploadUrl` (body = raw file bytes, `Content-Type` = file type). */
+      uploadUrl: string;
+    }
+  /** An identical file is already queued, processing or done: nothing to upload. */
+  | { kind: 'duplicate'; upload: UploadSummary };
 
 /** GET /api/uploads */
 export interface ListUploadsResponse {

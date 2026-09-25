@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { APIConnectionTimeoutError, APIError } from 'openai';
 import { ExtractionError } from '../../src/extraction/errors.ts';
@@ -206,5 +207,35 @@ describe('processUpload — duplicate and stale jobs', () => {
     uploads.seed({ id: UPLOAD_ID, status: 'processing', attempts: 1 });
     await expect(run(scriptedExtractor(SAMPLE_EXTRACTION), { attempt: 2 })).resolves.toEqual({ status: 'completed' });
     expect(uploads.get(UPLOAD_ID)).toMatchObject({ status: 'completed', attempts: 2 });
+  });
+});
+
+describe('processUpload — identical files', () => {
+  it('reuses the result of a completed upload of the same bytes instead of calling the LLM', async () => {
+    const hash = createHash('sha256').update(FILE_BYTES.png).digest('hex');
+    uploads.seed({ id: 'twin', status: 'completed', contentSha256: hash, result: SAMPLE_EXTRACTION });
+    const extractor = scriptedExtractor(new APIConnectionTimeoutError());
+
+    await expect(run(extractor)).resolves.toEqual({ status: 'completed' });
+    expect(extractor.calls).toBe(0);
+    expect(uploads.get(UPLOAD_ID)).toMatchObject({ status: 'completed', result: SAMPLE_EXTRACTION, contentSha256: hash });
+  });
+
+  it("records the real hash even when the browser's claim was wrong", async () => {
+    uploads.seed({ id: UPLOAD_ID, status: 'queued', contentSha256: 'f'.repeat(64) });
+
+    await run(scriptedExtractor(SAMPLE_EXTRACTION));
+
+    expect(uploads.get(UPLOAD_ID).contentSha256).toBe(createHash('sha256').update(FILE_BYTES.png).digest('hex'));
+  });
+
+  it('does not reuse a failed upload of the same file', async () => {
+    const hash = createHash('sha256').update(FILE_BYTES.png).digest('hex');
+    uploads.seed({ id: 'twin', status: 'failed', contentSha256: hash, error: { code: 'LLM_TIMEOUT' } });
+    const extractor = scriptedExtractor(SAMPLE_EXTRACTION);
+
+    await run(extractor);
+
+    expect(extractor.calls).toBe(1);
   });
 });

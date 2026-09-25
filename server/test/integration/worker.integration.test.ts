@@ -26,6 +26,12 @@ import { FILE_BYTES, InMemoryStorage, SAMPLE_EXTRACTION, silentLogger } from '..
  */
 const DATABASE_URL = process.env.TEST_DATABASE_URL;
 
+/**
+ * A valid PNG header plus random bytes. Each test needs its own content: identical files reuse
+ * each other's results, which would skip the retry behaviour these tests are about.
+ */
+const uniquePng = () => new Uint8Array([...FILE_BYTES.png, ...crypto.getRandomValues(new Uint8Array(16))]);
+
 // Fast policy so the whole retry cycle takes seconds: 3 attempts, 1s apart, 2s expiry.
 const RETRY_LIMIT = 2;
 const TEST_SCHEMA = 'pgboss_test'; // isolated from a dev worker that may be running on `pgboss`
@@ -94,8 +100,8 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
     const fileName = `${id}.png`;
     createdIds.push(id);
     scripts.set(fileName, { steps, calls: 0 });
-    const upload = await uploads.create({ id, fileName, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${fileName}` });
-    storage.put(upload.storagePath, FILE_BYTES.png);
+    const upload = await uploads.create({ id, fileName, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${fileName}`, contentSha256: null });
+    storage.put(upload.storagePath, uniquePng());
     expect(await uploads.markUploaded(id, 'image/png')).toMatchObject({ status: 'queued' });
     return id;
   }
@@ -172,7 +178,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
   it('reads results stored before ingredients were structured', async () => {
     const id = crypto.randomUUID();
     createdIds.push(id);
-    await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png` });
+    await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png`, contentSha256: null });
     const legacy = { ...SAMPLE_EXTRACTION, ingredients: ['Rolled OATS (48%)', 'Salt'] };
     await sql`update uploads set status = 'completed', result = ${sql.json(legacy as postgres.JSONValue)} where id = ${id}`;
 
@@ -200,7 +206,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       createdIds.push(id);
       const fileName = `${id}.png`;
       scripts.set(fileName, { steps: [SAMPLE_EXTRACTION], calls: 0 });
-      const upload = await uploads.create({ id, fileName, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${fileName}` });
+      const upload = await uploads.create({ id, fileName, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${fileName}`, contentSha256: null });
       if (file) storage.put(upload.storagePath, file);
       return upload;
     }
@@ -222,7 +228,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
     });
 
     it('confirms and processes the upload when the file did arrive', async () => {
-      const upload = await createUnconfirmed(FILE_BYTES.png);
+      const upload = await createUnconfirmed(uniquePng());
       await boss.send(FINALISE_QUEUE, { uploadId: upload.id });
 
       await expect(waitForStatus(upload.id, 'completed')).resolves.toMatchObject({ result: SAMPLE_EXTRACTION });
