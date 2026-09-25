@@ -2,8 +2,8 @@
  * The activity log's contract: event types, levels and the GET /api/logs response. Zod-free, so
  * the web app can import it (its query schema lives in requests.ts).
  *
- * An event is one thing that happened — an upload arriving, an extraction attempt finishing, an
- * alert opening — written by the API or the worker to the `events` table.
+ * An event is one thing that happened — an upload arriving, an extraction attempt finishing, a
+ * worker starting — written by the API or the worker to the `events` table.
  */
 
 /** GET /api/logs?level=…&type=…&upload=…&cursor=…&limit=… — newest first, one page at a time. */
@@ -37,9 +37,6 @@ export const LOG_EVENT_TYPES = {
   'extraction.failed': 'Extraction failed',
   'extraction.abandoned': 'Extraction abandoned',
   'ratelimit.paused': 'AI requests paused',
-  // The worker's once-a-minute monitor
-  'alert.opened': 'Alert opened',
-  'alert.resolved': 'Alert resolved',
   // Either process
   'process.started': 'Process started',
 } as const satisfies Record<string, string>;

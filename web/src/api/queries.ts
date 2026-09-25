@@ -42,7 +42,7 @@ export const logKeys = {
 /** How often the activity log polls when the live update stream is down (it's live otherwise). */
 const LOG_POLL_INTERVAL_MS = 10_000;
 
-/** How often the System status page (and the sidebar's alert dot) refresh. */
+/** How often the System status page refreshes. */
 export const OPS_REFRESH_MS = 15_000;
 
 /** Refetches every upload query: lists, counts and details. For when changes may have been missed. */
@@ -141,7 +141,7 @@ export function useLogs(filters: LogFilters) {
   });
 }
 
-/** Health, queue, throughput and alerts. Refreshes on a timer: monitoring data changes by the minute. */
+/** Everything on the System status page. Refreshes on a timer: monitoring data changes by the minute. */
 export function useOpsStatus() {
   return useQuery({
     queryKey: opsKeys.all,

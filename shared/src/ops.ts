@@ -15,37 +15,17 @@ export interface HealthReport {
   checks: Record<string, HealthCheckResult>;
 }
 
-export type AlertSeverity = 'warning' | 'critical';
-
-export interface OpsAlert {
-  id: number;
-  /** Which rule raised it, e.g. 'queue-stalled'. */
-  key: string;
-  severity: AlertSeverity;
-  title: string;
-  message: string;
-  /** How many monitor runs it has been seen in. */
-  occurrences: number;
-  firstSeenAt: string;
-  lastSeenAt: string;
-  /** `null` while the alert is still open. */
-  resolvedAt: string | null;
-}
-
 export interface OpsStatusResponse {
-  generatedAt: string;
   /** The API's own checks (database, queue). */
   health: HealthReport;
   /** Workers can't report being down, so this comes from their last heartbeat. */
   worker: { lastSeenAt: string | null; healthy: boolean };
   queue: {
-    /** Uploads waiting for a worker, including ones waiting to retry. */
+    /** Uploads waiting for their first attempt. */
     waiting: number;
-    /** Of those, how many are waiting to retry after a failed attempt. */
+    /** Uploads waiting to try again after a failed attempt. */
     retrying: number;
     processing: number;
-    /** How long the longest-waiting upload has been waiting. */
-    oldestWaitingSeconds: number | null;
   };
   last24h: {
     completed: number;
@@ -56,5 +36,4 @@ export interface OpsStatusResponse {
     medianSecondsToResult: number | null;
   };
   failuresByReason: Array<{ code: UploadErrorCode; message: string; count: number }>;
-  alerts: { open: OpsAlert[]; recent: OpsAlert[] };
 }

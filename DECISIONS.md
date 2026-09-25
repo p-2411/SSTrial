@@ -38,7 +38,7 @@ The LLM sits behind a `LabelExtractor` interface. Every failure becomes an `Extr
 2. **Queueing.** 50k rows is a small table for Postgres. Jobs wait durably, and nothing is lost if workers are busy or down.
 3. **Processing is bounded by the LLM's rate limit, not by us.** At 500 requests/minute, 50k files take about 100 minutes however many workers we run. The shared token bucket paces all workers to that rate, so adding workers beyond it gains nothing but doesn't cause 429 storms either. Identical files are recognised by their SHA-256 and processed once.
 4. **For bulk imports,** I'd route through OpenAI's Batch API (about half the cost, a separate higher quota, results within 24 h) and keep the realtime path for interactive uploads, using pg-boss priorities so interactive uploads jump the backlog.
-5. **Supporting pieces:** per-process DB pools stay small behind Supabase's pooler. The list is filtered, counted and paginated by the server (keyset cursor), and status changes are pushed to browsers rather than polled. The System status page and its alerts show a backlog building before users notice.
+5. **Supporting pieces:** per-process DB pools stay small behind Supabase's pooler. The list is filtered, counted and paginated by the server (keyset cursor), and status changes are pushed to browsers rather than polled. The System status page shows a backlog building before users notice.
 
 ## Every upload reaches a final state
 
@@ -49,12 +49,13 @@ The LLM sits behind a `LabelExtractor` interface. Every failure becomes an `Extr
 ## Monitoring
 
 - **Health checks:** `GET /api/health` on the API and on the worker checks the database, the queue and (on the worker) its job loop. It answers 503 naming what failed, and Railway uses it on deploy.
-- **Alerts:** a once-a-minute monitor in the worker records a heartbeat and opens or resolves alerts in `ops_alerts`: the AI service refusing every request, a stalled queue, a backlog, stuck processing, a high failure rate, and crashed attempts. Only opening and resolving are logged.
-- **Where to look:** the System status page (`/status`) and `GET /api/ops` for the state of things now; the activity log (`/logs`) for what happened, and when. The workers' heartbeat covers the one failure a worker can't report itself: no worker running.
+- **Worker heartbeat:** a once-a-minute job in the worker records that it's running. That covers the one failure a worker can't report itself: no worker running. The same job prunes the activity log.
+- **Where to look:** the System status page (`/status`) and `GET /api/ops` for the state of things now: the queue, the worker, health checks, the last 24 hours and failures by reason. The activity log (`/logs`) shows what happened, and when.
+- **No alerts, deliberately.** An earlier version opened and resolved alerts (AI service refusing requests, stalled queue, backlog, high failure rate, crashed attempts). They only ever showed inside the app, where the same facts are already on the status page and in the activity log, so they were removed. Alerting worth having would notify someone (email, Slack, a pager) from an uptime check on `/api/health` and the host's log search. That's the step to add before real use.
 
 ## Activity log
 
-An `events` table records what happened to each upload (created, identical to an earlier file, queued, rejected, discarded, retried by hand, each extraction attempt started, completed, scheduled for retry, failed or abandoned) and to the system (rate-limit pauses, alerts opening and resolving, process starts). The Logs page (`/logs`) shows it newest first, grouped by day, filtered by minimum level, event type and upload, all kept in the URL.
+An `events` table records what happened to each upload (created, identical to an earlier file, queued, rejected, discarded, retried by hand, each extraction attempt started, completed, scheduled for retry, failed or abandoned) and to the system (rate-limit pauses, process starts). The Logs page (`/logs`) shows it newest first, grouped by day, filtered by minimum level, event type and upload, all kept in the URL.
 
 - **A table, not the stdout logs.** The processes still log to stdout (pino) for debugging: stack traces, raw provider errors. But those can't be queried per upload from the app, and they're only as good as the host's log search. Events are one readable sentence each, plus structured `data` (error code, attempt, duration, file name), so they work for the person running the system, not only for a developer.
 - **Written by the application, not by triggers.** A trigger on `uploads` would catch every status change atomically, but it can't know *why*: which attempt, whether the error is worth retrying, how long the AI took, that a result was reused, that every worker paused. The use cases and the worker know, so they record events through a small `EventLog` interface, and every message is worded in one file (`server/src/logs/events.ts`).

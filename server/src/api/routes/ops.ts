@@ -20,6 +20,6 @@ export async function opsRoutes(app: FastifyInstance, { health, ops }: OpsRoutes
 
   app.get('/api/ops', async (): Promise<OpsStatusResponse> => {
     const [report, snapshot] = await Promise.all([health(), ops.snapshot()]);
-    return toOpsStatus(snapshot, report, new Date());
+    return toOpsStatus(snapshot, report);
   });
 }

@@ -6,7 +6,7 @@
 /** The upload list (the home page). */
 export const HOME_PATH = '/';
 
-/** System status: health, queue, throughput and the alert log. */
+/** System status: the queue, the worker, health checks, throughput and failures. */
 export const STATUS_PATH = '/status';
 
 /** The activity log: what happened to each upload and to the system. */

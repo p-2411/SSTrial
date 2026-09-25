@@ -309,10 +309,9 @@ export const HEALTHY: HealthReport = { status: 'ok', checks: { database: { statu
 /** Canned monitoring data for the /api/ops route: a fresh install with nothing processed yet. */
 export const EMPTY_OPS_SNAPSHOT: OpsSnapshot = {
   worker: { lastSeenAt: null, healthy: false },
-  queue: { waiting: 0, retrying: 0, processing: 0, oldestWaitingSeconds: null },
+  queue: { waiting: 0, retrying: 0, processing: 0 },
   recent: { completed: 0, failed: 0, medianSecondsToResult: null },
   failures: [],
-  alerts: { open: [], recent: [] },
 };
 
 /** Everything buildApp needs, faked; tests override the parts they care about. */

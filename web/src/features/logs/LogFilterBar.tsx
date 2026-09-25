@@ -65,8 +65,6 @@ const TYPE_GROUP = {
   'extraction.failed': 'Extraction',
   'extraction.abandoned': 'Extraction',
   'ratelimit.paused': 'Extraction',
-  'alert.opened': 'System',
-  'alert.resolved': 'System',
   'process.started': 'System',
 } satisfies Record<LogEventType, string>;
 

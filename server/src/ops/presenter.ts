@@ -1,21 +1,14 @@
-import {
-  uploadErrorMessage,
-  type HealthReport,
-  type OpsAlert,
-  type OpsStatusResponse,
-  type UploadErrorCode,
-} from '@label-extractor/shared';
-import type { AlertRecord, OpsSnapshot } from './store.ts';
+import { uploadErrorMessage, type HealthReport, type OpsStatusResponse, type UploadErrorCode } from '@label-extractor/shared';
+import type { OpsSnapshot } from './store.ts';
 
 /** Shapes the monitoring snapshot for GET /api/ops: messages for codes, ISO dates, derived rates. */
-export function toOpsStatus(snapshot: OpsSnapshot, health: HealthReport, now: Date): OpsStatusResponse {
+export function toOpsStatus(snapshot: OpsSnapshot, health: HealthReport): OpsStatusResponse {
   const { worker, queue, recent } = snapshot;
   const finished = recent.completed + recent.failed;
   return {
-    generatedAt: now.toISOString(),
     health,
     worker: { lastSeenAt: worker.lastSeenAt?.toISOString() ?? null, healthy: worker.healthy },
-    queue: { ...queue, oldestWaitingSeconds: roundOrNull(queue.oldestWaitingSeconds) },
+    queue,
     last24h: {
       completed: recent.completed,
       failed: recent.failed,
@@ -27,16 +20,6 @@ export function toOpsStatus(snapshot: OpsSnapshot, health: HealthReport, now: Da
       message: uploadErrorMessage(code),
       count,
     })),
-    alerts: { open: snapshot.alerts.open.map(toOpsAlert), recent: snapshot.alerts.recent.map(toOpsAlert) },
-  };
-}
-
-function toOpsAlert(alert: AlertRecord): OpsAlert {
-  return {
-    ...alert,
-    firstSeenAt: alert.firstSeenAt.toISOString(),
-    lastSeenAt: alert.lastSeenAt.toISOString(),
-    resolvedAt: alert.resolvedAt?.toISOString() ?? null,
   };
 }
 

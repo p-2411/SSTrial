@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { OpsStatusResponse } from '@label-extractor/shared';
 import { Card } from '@/components/ui/card';
-import { formatDuration, formatOptional, formatRelativeTime } from '@/lib/format';
+import { formatRelativeTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 interface QueueStatsProps {
@@ -10,13 +10,13 @@ interface QueueStatsProps {
   now: number;
 }
 
-/** Is work flowing? A row of big numbers: what's waiting, what's running, and whether the worker is. */
+/** Is work flowing? A row of big numbers: what's queued, what's running, and whether the worker is. */
 export function QueueStats({ queue, worker, now }: QueueStatsProps) {
   return (
     <section aria-label="Queue" className="grid grid-cols-4 gap-4">
-      <Stat label="Waiting" value={queue.waiting} note={queue.retrying > 0 ? `${queue.retrying} waiting to retry` : undefined} />
+      <Stat label="Waiting" value={queue.waiting} />
+      <Stat label="Retrying" value={queue.retrying} />
       <Stat label="Processing" value={queue.processing} />
-      <Stat label="Longest wait" value={formatOptional(queue.oldestWaitingSeconds, formatDuration)} />
       <Stat
         label="Worker"
         value={worker.healthy ? 'Running' : 'Not reporting'}

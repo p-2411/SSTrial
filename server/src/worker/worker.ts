@@ -2,8 +2,7 @@ import type { Job, JobResult, JobWithMetadata, PgBoss } from 'pg-boss';
 import { LOG_RETENTION_DAYS } from '@label-extractor/shared';
 import type { Logger } from '../infra/logger.ts';
 import { logEvents } from '../logs/events.ts';
-import type { EventLog, EventRetention } from '../logs/store.ts';
-import { runMonitor } from '../ops/monitor.ts';
+import type { EventRetention } from '../logs/store.ts';
 import type { OpsStore } from '../ops/store.ts';
 import { finaliseUpload, type FinaliseDeps } from '../uploads/finalise.ts';
 import {
@@ -90,13 +89,16 @@ export async function startFinaliseWorker(deps: FinaliseDeps & { boss: PgBoss; l
   });
 }
 
-/** Runs the monitoring rules once a minute (see ops/monitor.ts), and keeps the activity log pruned. */
+/**
+ * Once a minute: records that a worker is running (the System status page's worker card), and
+ * keeps the activity log pruned.
+ */
 const OPS_MONITOR_QUEUE = 'ops-monitor';
 
 export interface MonitorDeps {
   boss: PgBoss;
-  ops: OpsStore;
-  events: EventLog & EventRetention;
+  ops: Pick<OpsStore, 'recordWorkerHeartbeat'>;
+  events: EventRetention;
   logger: Logger;
 }
 
@@ -106,12 +108,12 @@ export async function startMonitor({ boss, ops, events, logger }: MonitorDeps): 
     await boss.createQueue(OPS_MONITOR_QUEUE, { retryLimit: 0, expireInSeconds: 50 });
   }
   await boss.work(OPS_MONITOR_QUEUE, { batchSize: 1 }, async () => {
-    await runMonitor({ ops, events, logger });
+    await ops.recordWorkerHeartbeat();
     await pruneActivityLog({ events, logger });
   });
   // Every minute, cluster-wide: pg-boss creates one job per tick however many workers there are.
   await boss.schedule(OPS_MONITOR_QUEUE, '* * * * *');
-  await runMonitor({ ops, events, logger }); // don't wait a minute for the first heartbeat
+  await ops.recordWorkerHeartbeat(); // don't wait a minute for the first heartbeat
 }
 
 /**

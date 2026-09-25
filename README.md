@@ -63,10 +63,9 @@ uploading ─(browser confirms)─► queued ─(worker claims)─► processing
 
 ### Monitoring
 
-- **System status page** (`/status` in the app, from `GET /api/ops`): health checks, worker heartbeat, queue, last 24 hours, failures by reason, and the alert log.
-- **Activity log** (`/logs` in the app, from `GET /api/logs`): every step of every upload (created, queued, each extraction attempt, retries, failures and why), plus rate-limit pauses, alerts and process starts. Filter by level, event type or upload, and it updates live. Kept for 30 days.
+- **System status page** (`/status` in the app, from `GET /api/ops`): uploads waiting, retrying and processing; whether the worker is running; health checks; the last 24 hours; and failures by reason.
+- **Activity log** (`/logs` in the app, from `GET /api/logs`): every step of every upload (created, queued, each extraction attempt, retries, failures and why), plus rate-limit pauses and process starts. Filter by level, event type or upload, and it updates live. Kept for 30 days.
 - **`GET /api/health`** on the API (database, queue) and on the worker (plus its job loop) answers 200 or 503. Railway uses it on deploy.
-- **Alerts** open and resolve once a minute (see `server/src/ops/monitor.ts`) and are logged once each, with an `alert` field.
 
 ## Running locally
 
@@ -118,7 +117,7 @@ server/
   src/uploads/   The uploads domain: the table's guarded transitions, the use cases (intake, finalise,
                  retry), its queues, exports and response mapping
   src/logs/      The activity log: the events table, the catalogue of events (wording in one place)
-  src/ops/       Health checks, the alert monitor, its data and the status page's response
+  src/ops/       Health checks, the worker heartbeat and the status page's data
   src/infra/     Config, database, queue connection, storage, stdout logging, file-type sniffing, and the
                  live change feed (Postgres NOTIFY → server-sent events)
   scripts/       One-off data changes, committed so they're reviewable and re-runnable

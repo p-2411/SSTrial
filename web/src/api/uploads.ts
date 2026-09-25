@@ -23,7 +23,7 @@ export async function getUploadCounts(): Promise<UploadCountsResponse['counts']>
   return (await apiRequest<UploadCountsResponse>('/api/uploads/counts')).counts;
 }
 
-/** Health, queue, throughput and alerts for the System status page. */
+/** The queue, the worker, health checks, throughput and failures, for the System status page. */
 export function getOpsStatus(): Promise<OpsStatusResponse> {
   return apiRequest<OpsStatusResponse>('/api/ops');
 }

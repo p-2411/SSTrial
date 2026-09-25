@@ -9,24 +9,12 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import type { AlertSeverity } from '@label-extractor/shared';
-import { useOpsStatus } from '@/api/queries';
 import { loadLogsPage } from '@/features/logs/loadLogsPage';
 import { loadSystemStatusPage } from '@/features/system-status/loadSystemStatusPage';
-import { worstOpenSeverity } from '@/features/system-status/systemState';
-import { cn } from '@/lib/utils';
 import { HOME_PATH, LOGS_PATH, STATUS_PATH, UPLOAD_PATH_PATTERN } from '@/routes';
-
-/**
- * The alert dot, in the status page's alert colours. Each tone's most saturated colour, so it
- * stands out on the dark sidebar: red for danger, and for warning the yellow of its border (its
- * text colour is a dark brown that would disappear here).
- */
-const SEVERITY_DOT: Record<AlertSeverity, string> = { critical: 'bg-danger', warning: 'bg-warning-border' };
 
 /**
  * The app shell's dark sidebar, following the SupplyScope product layout. It holds destinations
@@ -35,14 +23,11 @@ const SEVERITY_DOT: Record<AlertSeverity, string> = { critical: 'bg-danger', war
  */
 export function AppSidebar() {
   const { pathname } = useLocation();
-  const { data: ops } = useOpsStatus();
 
   // The list and an open upload are both part of Uploads.
   const onUploadsPage = pathname === HOME_PATH || matchPath(UPLOAD_PATH_PATTERN, pathname) !== null;
   const onStatusPage = pathname === STATUS_PATH;
   const onLogsPage = pathname === LOGS_PATH;
-  const openAlertCount = ops?.alerts.open.length ?? 0;
-  const worstAlert = ops ? worstOpenSeverity(ops.alerts) : null;
 
   return (
     <Sidebar>
@@ -93,14 +78,6 @@ export function AppSidebar() {
                     <span>System status</span>
                   </Link>
                 </SidebarMenuButton>
-                {worstAlert && (
-                  <SidebarMenuBadge>
-                    <span
-                      className={cn('size-2 rounded-full', SEVERITY_DOT[worstAlert])}
-                      aria-label={`${openAlertCount} open alert${openAlertCount === 1 ? '' : 's'}`}
-                    />
-                  </SidebarMenuBadge>
-                )}
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild isActive={onLogsPage}>

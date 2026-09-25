@@ -1,9 +1,9 @@
 import type { OpsStatusResponse } from '@label-extractor/shared';
 import { SectionCard } from './SectionCard';
 
-export function FailuresByReasonCard({ failures }: { failures: OpsStatusResponse['failuresByReason'] }) {
+export function FailuresCard({ failures }: { failures: OpsStatusResponse['failuresByReason'] }) {
   return (
-    <SectionCard title="Failures by reason" description="Uploads that failed in the last 24 hours.">
+    <SectionCard title="Failures" description="Uploads that failed in the last 24 hours, by reason.">
       {failures.length === 0 ? (
         <p className="text-sm text-muted-foreground">No failures in the last 24 hours.</p>
       ) : (

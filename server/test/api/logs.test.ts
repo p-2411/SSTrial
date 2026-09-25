@@ -13,6 +13,7 @@ beforeEach(async () => {
 });
 
 const UPLOAD = '9e1b7c2a-0000-4000-8000-000000000001';
+const OTHER_UPLOAD = '9e1b7c2a-0000-4000-8000-000000000002';
 
 async function getLogs(query = ''): Promise<ListLogsResponse> {
   const response = await app.inject({ method: 'GET', url: `${LOG_EVENTS_PATH}${query}` });
@@ -49,10 +50,10 @@ describe('GET /api/logs', () => {
     events.seed({ level: 'info', type: 'extraction.started', uploadId: UPLOAD, message: 'started' });
     events.seed({ level: 'warn', type: 'extraction.retry_scheduled', uploadId: UPLOAD, message: 'retrying' });
     events.seed({ level: 'error', type: 'extraction.failed', uploadId: UPLOAD, message: 'failed' });
-    events.seed({ level: 'error', type: 'alert.opened', message: 'alert' });
+    events.seed({ level: 'error', type: 'extraction.abandoned', uploadId: OTHER_UPLOAD, message: 'abandoned' });
 
-    expect(messages(await getLogs('?level=warn'))).toEqual(['alert', 'failed', 'retrying']);
-    expect(messages(await getLogs('?level=error'))).toEqual(['alert', 'failed']);
+    expect(messages(await getLogs('?level=warn'))).toEqual(['abandoned', 'failed', 'retrying']);
+    expect(messages(await getLogs('?level=error'))).toEqual(['abandoned', 'failed']);
     expect(messages(await getLogs('?type=extraction.started'))).toEqual(['started']);
     expect(messages(await getLogs(`?upload=${UPLOAD}&level=error`))).toEqual(['failed']);
   });

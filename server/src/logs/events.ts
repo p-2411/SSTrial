@@ -7,7 +7,6 @@ import {
   type UploadErrorCode,
 } from '@label-extractor/shared';
 import { isRetryableCode, RETRY_POLICY } from '../extraction/retry-policy.ts';
-import type { FiringAlert } from '../ops/store.ts';
 import type { UploadRecord } from '../uploads/store.ts';
 import type { NewLogEvent } from './store.ts';
 
@@ -178,26 +177,6 @@ export const logEvents = {
       type: 'ratelimit.paused',
       message: `The AI service asked us to slow down while reading ${upload.fileName}. All AI requests paused for ${seconds(pauseMs)}.`,
       data: { ...base.data, pauseMs },
-    };
-  },
-
-  // ---- The monitor ---------------------------------------------------------------------
-
-  alertOpened(alert: FiringAlert): NewLogEvent {
-    return {
-      level: alert.severity === 'critical' ? 'error' : 'warn',
-      type: 'alert.opened',
-      message: `${alert.title}. ${alert.message}`,
-      data: { key: alert.key, severity: alert.severity },
-    };
-  },
-
-  alertResolved(alert: { key: string; title: string }): NewLogEvent {
-    return {
-      level: 'info',
-      type: 'alert.resolved',
-      message: `Resolved: ${alert.title}.`,
-      data: { key: alert.key },
     };
   },
 
