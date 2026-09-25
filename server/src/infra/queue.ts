@@ -2,6 +2,7 @@ import { PgBoss, type ConstructorOptions, type QueueOptions } from 'pg-boss';
 import type { Db } from './db.ts';
 import { asPgBossDb } from './db.ts';
 import type { Logger } from './logger.ts';
+import { SIGNED_UPLOAD_URL_TTL_SECONDS } from './storage.ts';
 
 /**
  * The job queue: pg-boss on the same Postgres database as our data.
@@ -22,9 +23,22 @@ export const EXTRACTION_QUEUE = 'label-extraction';
  */
 export const EXTRACTION_DEAD_LETTER_QUEUE = 'label-extraction-dead-letter';
 
+/**
+ * One job per upload, scheduled when the upload is created, to run once its signed upload URL has
+ * expired. By then the browser has either confirmed the upload (the job finds nothing to do) or
+ * never will — so the job confirms a file that arrived, or discards an upload that never did.
+ * Every upload therefore reaches a final state without any periodic clean-up.
+ */
+export const FINALISE_QUEUE = 'upload-finalise';
+
+/** Run finalise jobs a little after the signed URL stops accepting uploads. */
+export const FINALISE_DELAY_SECONDS = SIGNED_UPLOAD_URL_TTL_SECONDS + 10 * 60;
+
 export interface ExtractionJobData {
   uploadId: string;
 }
+
+export type FinaliseJobData = ExtractionJobData;
 
 /**
  * Retry policy for extraction jobs. Retryable failures (timeouts, rate limits, 5xx, malformed
@@ -88,24 +102,35 @@ async function ensureQueues(boss: PgBoss, retryPolicy: QueueOptions): Promise<vo
   } else {
     await boss.createQueue(EXTRACTION_QUEUE, { ...retryPolicy, deadLetter: EXTRACTION_DEAD_LETTER_QUEUE });
   }
+  if (!(await boss.getQueue(FINALISE_QUEUE))) {
+    // Finalising only fails if storage or the database is down, so retry patiently.
+    await boss.createQueue(FINALISE_QUEUE, { retryLimit: 10, retryDelay: 60, retryBackoff: true, retryDelayMax: 1800 });
+  }
 }
 
-/** The one operation the API needs from the queue. */
-export interface ExtractionQueue {
-  /**
-   * Enqueues extraction for an upload. Pass `tx` to create the job inside an open transaction, so
-   * it only exists if that transaction commits.
-   */
-  enqueue(uploadId: string, tx?: Db): Promise<void>;
+/**
+ * The jobs the uploads store creates. Pass `tx` to create a job inside an open transaction, so it
+ * only exists if that transaction commits.
+ */
+export interface UploadJobs {
+  /** Extract the label data for an upload that is now `queued`. */
+  enqueueExtraction(uploadId: string, tx?: Db): Promise<void>;
+  /** Make sure a new upload reaches a final state even if the browser never confirms it. */
+  scheduleFinalise(uploadId: string, tx?: Db): Promise<void>;
 }
 
-export function createExtractionQueue(boss: PgBoss): ExtractionQueue {
+export function createUploadJobs(boss: PgBoss): UploadJobs {
+  const inTransaction = (tx?: Db) => (tx ? { db: asPgBossDb(tx) } : {});
   return {
-    async enqueue(uploadId, tx) {
+    async enqueueExtraction(uploadId, tx) {
       // Duplicates are prevented by the caller, not here: jobs are only enqueued alongside a guarded
       // status transition (e.g. `uploading → queued`), which can only succeed once.
       const data: ExtractionJobData = { uploadId };
-      await boss.send(EXTRACTION_QUEUE, data, tx ? { db: asPgBossDb(tx) } : {});
+      await boss.send(EXTRACTION_QUEUE, data, inTransaction(tx));
+    },
+    async scheduleFinalise(uploadId, tx) {
+      const data: FinaliseJobData = { uploadId };
+      await boss.send(FINALISE_QUEUE, data, { ...inTransaction(tx), startAfter: FINALISE_DELAY_SECONDS });
     },
   };
 }

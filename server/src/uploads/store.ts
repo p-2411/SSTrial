@@ -6,7 +6,7 @@ import type {
   UploadStatus,
 } from '@label-extractor/shared';
 import { labelExtractionSchema } from '@label-extractor/shared';
-import type { ExtractionQueue } from '../infra/queue.ts';
+import type { UploadJobs } from '../infra/queue.ts';
 
 /**
  * All reads and writes of the `uploads` table.
@@ -47,6 +47,7 @@ export interface NewUpload {
 
 export interface UploadStore {
   // ---- Used by the API --------------------------------------------------------------------
+  /** Inserts the row and schedules its finalise job, atomically (see FINALISE_QUEUE). */
   create(upload: NewUpload): Promise<UploadRecord>;
   findById(id: string): Promise<UploadRecord | null>;
   /** Newest first, excluding rows the browser hasn't finished uploading. */
@@ -55,8 +56,11 @@ export interface UploadStore {
   streamCompleted(): AsyncIterable<UploadRecord>;
   /** `uploading → queued` and enqueue the job, atomically. `mimeType` is the type sniffed from the bytes. */
   markUploaded(id: string, mimeType: SupportedMimeType): Promise<UploadRecord | null>;
-  /** `uploading → failed`, for files rejected after upload (e.g. content isn't really an image). */
-  rejectUpload(id: string, code: UploadErrorCode): Promise<UploadRecord | null>;
+  /**
+   * Deletes an upload that never finished uploading, or whose file was rejected. Only `uploading`
+   * rows can go, so a confirmed upload is never removed by a late or duplicate call.
+   */
+  discardUnfinished(id: string): Promise<UploadRecord | null>;
   /** `failed → queued` with attempts reset, and enqueue a fresh job, atomically. */
   requeueFailed(id: string): Promise<UploadRecord | null>;
 
@@ -74,7 +78,7 @@ export interface UploadStore {
   fail(id: string, code: UploadErrorCode): Promise<UploadRecord | null>;
 }
 
-export function createUploadStore(sql: postgres.Sql, queue: ExtractionQueue): UploadStore {
+export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadStore {
   /** Runs a guarded UPDATE and returns the updated row, or null if the guard didn't match. */
   async function transition(query: Promise<postgres.Row[]>): Promise<UploadRecord | null> {
     const [row] = await query;
@@ -83,11 +87,16 @@ export function createUploadStore(sql: postgres.Sql, queue: ExtractionQueue): Up
 
   return {
     async create(upload) {
-      const [row] = await sql`
-        insert into uploads (id, file_name, mime_type, size_bytes, storage_path)
-        values (${upload.id}, ${upload.fileName}, ${upload.mimeType}, ${upload.sizeBytes}, ${upload.storagePath})
-        returning *`;
-      return toRecord(row!);
+      // The finalise job is created with the row: an upload can't exist without the job that
+      // guarantees it's eventually confirmed or discarded.
+      return sql.begin(async (tx) => {
+        const [row] = await tx`
+          insert into uploads (id, file_name, mime_type, size_bytes, storage_path)
+          values (${upload.id}, ${upload.fileName}, ${upload.mimeType}, ${upload.sizeBytes}, ${upload.storagePath})
+          returning *`;
+        await jobs.scheduleFinalise(upload.id, tx);
+        return toRecord(row!);
+      });
     },
 
     async findById(id) {
@@ -122,16 +131,13 @@ export function createUploadStore(sql: postgres.Sql, queue: ExtractionQueue): Up
           update uploads set status = 'queued', mime_type = ${mimeType}
           where id = ${id} and status = 'uploading'
           returning *`);
-        if (record) await queue.enqueue(id, tx);
+        if (record) await jobs.enqueueExtraction(id, tx);
         return record;
       });
     },
 
-    rejectUpload(id, code) {
-      return transition(sql`
-        update uploads set status = 'failed', error_code = ${code}
-        where id = ${id} and status = 'uploading'
-        returning *`);
+    discardUnfinished(id) {
+      return transition(sql`delete from uploads where id = ${id} and status = 'uploading' returning *`);
     },
 
     async requeueFailed(id) {
@@ -141,7 +147,7 @@ export function createUploadStore(sql: postgres.Sql, queue: ExtractionQueue): Up
           set status = 'queued', attempts = 0, error_code = null
           where id = ${id} and status = 'failed'
           returning *`);
-        if (record) await queue.enqueue(id, tx);
+        if (record) await jobs.enqueueExtraction(id, tx);
         return record;
       });
     },

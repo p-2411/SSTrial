@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { LabelExtraction } from './extraction.ts';
-import { SUPPORTED_TYPES_LABEL, type SupportedMimeType } from './files.ts';
+import type { SupportedMimeType } from './files.ts';
 
 /**
  * Lifecycle of an upload:
@@ -29,8 +29,6 @@ export function isActiveStatus(status: UploadStatus): boolean {
  * that applies to every upload at once — never a data migration.
  */
 export const UPLOAD_ERROR_MESSAGES = {
-  // The bytes aren't a supported type, whatever the name says (e.g. a renamed .exe)
-  FILE_CONTENT_MISMATCH: `Unsupported file type. Must be ${SUPPORTED_TYPES_LABEL}.`,
   // LLM problems (see server/src/extraction/errors.ts for which are retried)
   LLM_TIMEOUT: 'The AI service took too long to respond.',
   LLM_RATE_LIMITED: 'The AI service is rate-limiting requests.',
@@ -54,7 +52,7 @@ export function uploadErrorMessage(code: UploadErrorCode): string {
 }
 
 /** Failures caused by the file itself: running it through the pipeline again can't help. */
-const FILE_PROBLEMS: readonly UploadErrorCode[] = ['FILE_CONTENT_MISMATCH', 'FILE_MISSING'];
+const FILE_PROBLEMS: readonly UploadErrorCode[] = ['FILE_MISSING'];
 
 /**
  * Whether the user may retry a failed upload. Used by the UI (to show the button) and the API

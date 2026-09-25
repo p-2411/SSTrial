@@ -7,7 +7,7 @@
 import { loadApiConfig } from '../infra/config.ts';
 import { createDb } from '../infra/db.ts';
 import { createLogger } from '../infra/logger.ts';
-import { createExtractionQueue, startQueue } from '../infra/queue.ts';
+import { createUploadJobs, startQueue } from '../infra/queue.ts';
 import { createSupabaseStorage, syncBucketSettings } from '../infra/storage.ts';
 import { createUploadStore } from '../uploads/store.ts';
 import { buildApp } from './app.ts';
@@ -24,7 +24,7 @@ const boss = await startQueue({ connectionString: config.DATABASE_URL, role: 'ap
 const app = await buildApp({
   logger,
   webDistDir: config.WEB_DIST_DIR,
-  uploads: createUploadStore(sql, createExtractionQueue(boss)),
+  uploads: createUploadStore(sql, createUploadJobs(boss)),
   storage: createSupabaseStorage({
     url: config.SUPABASE_URL,
     secretKey: config.SUPABASE_SECRET_KEY,

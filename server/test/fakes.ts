@@ -25,8 +25,10 @@ export const SAMPLE_EXTRACTION: LabelExtraction = {
 /** Mirrors the guarded transitions in src/uploads/store.ts, and records enqueued jobs. */
 export class InMemoryUploadStore implements UploadStore {
   readonly rows = new Map<string, UploadRecord>();
-  /** Upload IDs a job was enqueued for, in order. */
+  /** Upload IDs an extraction job was enqueued for, in order. */
   readonly enqueued: string[] = [];
+  /** Upload IDs a finalise job was scheduled for, in order. */
+  readonly finaliseScheduled: string[] = [];
 
   seed(overrides: Partial<UploadRecord> & { id: string }): UploadRecord {
     const now = new Date();
@@ -55,6 +57,7 @@ export class InMemoryUploadStore implements UploadStore {
   }
 
   async create(upload: NewUpload) {
+    this.finaliseScheduled.push(upload.id);
     return this.seed({ ...upload });
   }
   async findById(id: string) {
@@ -77,8 +80,11 @@ export class InMemoryUploadStore implements UploadStore {
     if (row) this.enqueued.push(id);
     return row;
   }
-  async rejectUpload(id: string, code: UploadErrorCode) {
-    return this.transition(id, ['uploading'], { status: 'failed', error: { code } });
+  async discardUnfinished(id: string) {
+    const row = this.rows.get(id);
+    if (!row || row.status !== 'uploading') return null;
+    this.rows.delete(id);
+    return row;
   }
   async requeueFailed(id: string) {
     const row = this.transition(id, ['failed'], { status: 'queued', attempts: 0, error: null });
@@ -132,6 +138,10 @@ export class InMemoryStorage implements FileStorage {
   async readHead(path: string, byteCount: number) {
     this.assertAvailable();
     return this.files.get(path)?.subarray(0, byteCount) ?? null;
+  }
+  async remove(path: string) {
+    this.assertAvailable();
+    this.files.delete(path);
   }
   async download(path: string) {
     this.assertAvailable();

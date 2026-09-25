@@ -5,9 +5,11 @@ import { APIConnectionTimeoutError, APIError } from 'openai';
 import type { LabelExtractor } from '../../src/extraction/extractor.ts';
 import { createDb } from '../../src/infra/db.ts';
 import {
-  createExtractionQueue,
+  createUploadJobs,
   EXTRACTION_DEAD_LETTER_QUEUE,
   EXTRACTION_QUEUE,
+  FINALISE_DELAY_SECONDS,
+  FINALISE_QUEUE,
   startQueue,
 } from '../../src/infra/queue.ts';
 import { createUploadStore, type UploadRecord, type UploadStore } from '../../src/uploads/store.ts';
@@ -64,7 +66,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       retryPolicy: { retryLimit: RETRY_LIMIT, retryDelay: 1, retryBackoff: false, expireInSeconds: 2 },
       overrides: { schema: TEST_SCHEMA, superviseIntervalSeconds: 1, monitorIntervalSeconds: 1 },
     });
-    uploads = createUploadStore(sql, createExtractionQueue(boss));
+    uploads = createUploadStore(sql, createUploadJobs(boss));
     await startExtractionWorker({
       boss,
       uploads,
@@ -190,4 +192,48 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
     expect(upload.error?.code).toBe('PROCESSING_TIMEOUT');
     expect(scripts.get(`${id}.png`)!.calls).toBe(RETRY_LIMIT + 1);
   }, 45_000);
+
+  describe('uploads the browser never confirms', () => {
+    /** Creates an upload without confirming it — as if the tab closed mid-upload. */
+    async function createUnconfirmed(file?: Uint8Array) {
+      const id = crypto.randomUUID();
+      createdIds.push(id);
+      const fileName = `${id}.png`;
+      scripts.set(fileName, { steps: [SAMPLE_EXTRACTION], calls: 0 });
+      const upload = await uploads.create({ id, fileName, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${fileName}` });
+      if (file) storage.put(upload.storagePath, file);
+      return upload;
+    }
+
+    it('schedules a finalise job for after the signed upload URL expires', async () => {
+      const upload = await createUnconfirmed();
+
+      const [job] = await boss.findJobs<{ uploadId: string }>(FINALISE_QUEUE, { data: { uploadId: upload.id } });
+      const delaySeconds = (job!.startAfter.getTime() - upload.createdAt.getTime()) / 1000;
+      expect(delaySeconds).toBeGreaterThanOrEqual(FINALISE_DELAY_SECONDS - 5);
+    });
+
+    // The scheduled job runs hours later; these send an immediate one to exercise the handler.
+    it('discards the upload when the file never arrived', async () => {
+      const upload = await createUnconfirmed();
+      await boss.send(FINALISE_QUEUE, { uploadId: upload.id });
+
+      await expect.poll(() => uploads.findById(upload.id), { timeout: 10_000 }).toBeNull();
+    });
+
+    it('confirms and processes the upload when the file did arrive', async () => {
+      const upload = await createUnconfirmed(FILE_BYTES.png);
+      await boss.send(FINALISE_QUEUE, { uploadId: upload.id });
+
+      await expect(waitForStatus(upload.id, 'completed')).resolves.toMatchObject({ result: SAMPLE_EXTRACTION });
+    }, 30_000);
+
+    it('deletes the upload and its file when the content is unsupported', async () => {
+      const upload = await createUnconfirmed(FILE_BYTES.text);
+      await boss.send(FINALISE_QUEUE, { uploadId: upload.id });
+
+      await expect.poll(() => uploads.findById(upload.id), { timeout: 10_000 }).toBeNull();
+      expect(storage.files.has(upload.storagePath)).toBe(false);
+    });
+  });
 });

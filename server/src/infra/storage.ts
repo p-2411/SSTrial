@@ -5,6 +5,9 @@ import { MAX_FILE_SIZE_BYTES, SUPPORTED_MIME_TYPES } from '@label-extractor/shar
  * Where uploaded files live. The rest of the server only sees this interface, so tests use an
  * in-memory fake and swapping Supabase Storage for S3/R2 later means one new implementation.
  */
+/** How long a Supabase signed upload URL accepts an upload. Fixed by Supabase, not configurable. */
+export const SIGNED_UPLOAD_URL_TTL_SECONDS = 2 * 60 * 60;
+
 export interface FileStorage {
   /** A URL the browser can `PUT` the file's bytes to, valid for this one object path only. */
   createUploadUrl(path: string): Promise<string>;
@@ -14,6 +17,8 @@ export interface FileStorage {
   readHead(path: string, byteCount: number): Promise<Uint8Array | null>;
   /** The whole file, or `null` if it doesn't exist. */
   download(path: string): Promise<Uint8Array | null>;
+  /** Deletes the file. Succeeds if it's already gone. */
+  remove(path: string): Promise<void>;
 }
 
 /** Thrown when storage itself is unreachable or errors — as opposed to a file simply not existing. */
@@ -74,6 +79,13 @@ export function createSupabaseStorage(options: SupabaseStorageOptions): FileStor
       if (!response.ok) throw new StorageUnavailableError(`Storage responded ${response.status} reading ${path}`);
       // If the server ignored the Range header we'd get the whole file; only keep what we asked for.
       return readAtMost(response, byteCount);
+    },
+
+    async remove(path) {
+      const { error } = await bucket().remove([path]);
+      if (error && !isNotFound(error)) {
+        throw new StorageUnavailableError(`Could not delete ${path}: ${error.message}`, { cause: error });
+      }
     },
 
     async download(path) {

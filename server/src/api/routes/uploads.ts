@@ -4,14 +4,14 @@ import {
   canRetryUpload,
   createUploadRequestSchema,
   SUPPORTED_FILE_TYPES,
+  SUPPORTED_TYPES_LABEL,
   validateFileMetadata,
   type CreateUploadResponse,
   type ListUploadsResponse,
-  type SupportedMimeType,
   type UploadResponse,
 } from '@label-extractor/shared';
-import { detectFileType, SIGNATURE_BYTES } from '../../infra/file-signature.ts';
 import type { FileStorage } from '../../infra/storage.ts';
+import { finaliseUpload } from '../../uploads/finalise.ts';
 import { toUploadDetail, toUploadSummary } from '../../uploads/presenter.ts';
 import type { UploadRecord, UploadStore } from '../../uploads/store.ts';
 import { ApiError, notFound } from '../errors.ts';
@@ -90,30 +90,22 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage }: U
 
   // 3. Confirm the upload finished ---------------------------------------------------------------
   app.post('/api/uploads/:id/complete', async (request): Promise<UploadResponse> => {
-    const upload = await loadUpload(request.params);
+    const { id } = await loadUpload(request.params);
+    const result = await finaliseUpload({ uploads, storage }, id);
 
-    // Idempotent: a repeated confirmation (network retry, double click) just returns the state.
-    if (upload.status !== 'uploading') return detailResponse(upload);
-
-    const head = await storage.readHead(upload.storagePath, SIGNATURE_BYTES);
-    if (!head || head.length === 0) {
-      throw new ApiError(409, 'FILE_NOT_UPLOADED', "We didn't receive the file. Please try uploading it again.");
+    switch (result.outcome) {
+      case 'queued':
+      case 'already-finalised': // idempotent: a repeated confirmation just returns the state
+        return detailResponse(result.upload);
+      case 'not-uploaded':
+        // Left as it is: the browser may retry the upload, and the finalise job settles it if not.
+        throw new ApiError(409, 'FILE_NOT_UPLOADED', "We didn't receive the file. Please try uploading it again.");
+      case 'rejected':
+        // Nothing is kept — the browser shows this on the file's row, with the option to try again.
+        throw new ApiError(422, 'FILE_CONTENT_MISMATCH', `Unsupported file type. Must be ${SUPPORTED_TYPES_LABEL}.`);
+      case 'not-found':
+        throw notFound();
     }
-
-    // The name and MIME type were claims; the bytes are the truth.
-    const detected = detectFileType(head);
-    if (!detected) {
-      const rejected = await uploads.rejectUpload(upload.id, 'FILE_CONTENT_MISMATCH');
-      return detailResponse(rejected ?? (await loadUpload(request.params)));
-    }
-    if (detected !== upload.mimeType) {
-      // e.g. a PNG saved as "label.jpg". The content is fine, so accept it under its real type.
-      request.log.info({ uploadId: upload.id, claimed: upload.mimeType, detected }, 'Correcting mislabelled file type');
-    }
-
-    // Row → queued and job created in one transaction. Null means a concurrent request won.
-    const queued = await uploads.markUploaded(upload.id, detected satisfies SupportedMimeType);
-    return detailResponse(queued ?? (await loadUpload(request.params)));
   });
 
   // List & detail -------------------------------------------------------------------------

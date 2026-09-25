@@ -39,6 +39,8 @@ describe('POST /api/uploads — request a signed upload URL', () => {
     const body = response.json();
     expect(body.uploadUrl).toMatch(/^https:\/\/storage\.test\/upload\//);
     expect(body.upload).toMatchObject({ fileName: 'label.png', mimeType: 'image/png', status: 'uploading', attempts: 0 });
+    // Every upload gets a finalise job, so it can't be left half-done if the browser goes away.
+    expect(uploads.finaliseScheduled).toEqual([body.upload.id]);
 
     const row = uploads.get(body.upload.id);
     // The storage key is generated from the ID, never from the user-supplied file name.
@@ -108,17 +110,20 @@ describe('POST /api/uploads/:id/complete — confirm the upload and queue it', (
     expect(uploads.enqueued).toEqual([ID]);
   });
 
-  it('fails an upload whose content is not really a supported file, without queueing it', async () => {
+  it('rejects content that is not really a supported file, and keeps nothing', async () => {
     // e.g. samples/not-really-an-image.jpg: text renamed to .jpg
-    seedUploaded(FILE_BYTES.text, { id: ID, fileName: 'photo.jpg', mimeType: 'image/jpeg' });
+    const upload = seedUploaded(FILE_BYTES.text, { id: ID, fileName: 'photo.jpg', mimeType: 'image/jpeg' });
 
     const response = await complete();
 
-    expect(response.statusCode).toBe(200);
-    expect(response.json().upload).toMatchObject({
-      status: 'failed',
-      error: { code: 'FILE_CONTENT_MISMATCH', message: 'Unsupported file type. Must be JPEG, PNG, WebP or PDF.' },
+    expect(response.statusCode).toBe(422);
+    expect(response.json().error).toEqual({
+      code: 'FILE_CONTENT_MISMATCH',
+      message: 'Unsupported file type. Must be JPEG, PNG, WebP or PDF.',
     });
+    // Neither the file nor the upload is stored; the browser shows the reason on its own row.
+    expect(storage.files.has(upload.storagePath)).toBe(false);
+    expect(uploads.rows.has(ID)).toBe(false);
     expect(uploads.enqueued).toEqual([]);
   });
 
@@ -220,7 +225,7 @@ describe('POST /api/uploads/:id/retry — manual retry', () => {
   });
 
   it('refuses to retry a file that is itself the problem', async () => {
-    uploads.seed({ id: ID, status: 'failed', error: { code: 'FILE_CONTENT_MISMATCH' } });
+    uploads.seed({ id: ID, status: 'failed', error: { code: 'FILE_MISSING' } });
 
     const response = await retry();
 

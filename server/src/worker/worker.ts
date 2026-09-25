@@ -3,8 +3,12 @@ import type { Logger } from '../infra/logger.ts';
 import {
   EXTRACTION_DEAD_LETTER_QUEUE,
   EXTRACTION_QUEUE,
+  FINALISE_QUEUE,
   type ExtractionJobData,
+  type FinaliseJobData,
 } from '../infra/queue.ts';
+import type { FileStorage } from '../infra/storage.ts';
+import { finaliseUpload } from '../uploads/finalise.ts';
 import type { UploadStore } from '../uploads/store.ts';
 import { processUpload, type JobOutcome, type ProcessUploadDeps } from './process-upload.ts';
 
@@ -15,7 +19,8 @@ import { processUpload, type JobOutcome, type ProcessUploadDeps } from './proces
 
 export interface WorkerDeps extends ProcessUploadDeps {
   boss: PgBoss;
-  uploads: ProcessUploadDeps['uploads'] & Pick<UploadStore, 'fail'>;
+  uploads: ProcessUploadDeps['uploads'] & Pick<UploadStore, 'fail' | 'findById' | 'markUploaded' | 'discardUnfinished'>;
+  storage: ProcessUploadDeps['storage'] & Pick<FileStorage, 'readHead' | 'remove'>;
   /** Jobs this process handles at once. */
   concurrency: number;
   /** How often idle workers check for new jobs. */
@@ -56,6 +61,22 @@ export async function startExtractionWorker(deps: WorkerDeps): Promise<void> {
     if (!job) return;
     const failed = await deps.uploads.fail(job.data.uploadId, 'PROCESSING_TIMEOUT');
     if (failed) logger.error({ uploadId: job.data.uploadId }, 'Marked upload failed from the dead-letter queue');
+  });
+
+  // Settles uploads the browser never confirmed, once their signed URL can no longer be used.
+  await boss.work(FINALISE_QUEUE, { batchSize: 1 }, async ([job]: Job<FinaliseJobData>[]) => {
+    if (!job) return;
+    const { uploadId } = job.data;
+    const result = await finaliseUpload(deps, uploadId);
+    if (result.outcome === 'not-uploaded') {
+      // The URL has expired, so this file can never arrive: the upload is simply dropped.
+      await deps.uploads.discardUnfinished(uploadId);
+      logger.info({ uploadId }, 'Discarded an upload whose file never arrived');
+    } else if (result.outcome === 'queued') {
+      logger.info({ uploadId }, 'Confirmed an upload the browser never confirmed');
+    } else if (result.outcome === 'rejected') {
+      logger.info({ uploadId }, 'Deleted an unconfirmed upload with an unsupported file type');
+    }
   });
 
   logger.info({ concurrency: deps.concurrency }, 'Worker is waiting for jobs');
