@@ -13,6 +13,8 @@ function record(overrides: Partial<UploadRecord> = {}): UploadRecord {
     contentSha256: null,
     uploadedBy: null,
     confidence: null,
+    fieldReviews: {},
+    resultRevision: 0,
     claimToken: null,
     resultUnreadable: false,
     status: 'completed',

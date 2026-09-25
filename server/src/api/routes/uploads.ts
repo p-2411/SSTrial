@@ -2,6 +2,7 @@ import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
   createUploadRequestSchema,
+  editResultRequestSchema,
   listUploadsQuerySchema,
   SUPPORTED_TYPES_LABEL,
   UPLOAD_FILTER_IDS,
@@ -14,19 +15,20 @@ import {
 import type { MemberStore } from '../../auth/members.ts';
 import type { FileStorage } from '../../infra/storage.ts';
 import type { EventLog } from '../../logs/store.ts';
+import { editResult } from '../../uploads/edit.ts';
 import { finaliseUpload } from '../../uploads/finalise.ts';
 import { requestUpload } from '../../uploads/intake.ts';
-import { toUploadCounts, toUploadDetail, toUploadSummary } from '../../uploads/presenter.ts';
+import { peopleIn, toUploadCounts, toUploadDetail, toUploadSummary } from '../../uploads/presenter.ts';
 import { retryUpload } from '../../uploads/retry.ts';
-import type { UploadIntake, UploadQueries, UploadRecord } from '../../uploads/store.ts';
+import type { UploadIntake, UploadQueries, UploadRecord, UploadReviews } from '../../uploads/store.ts';
 import { ApiError, notFound } from '../errors.ts';
 
 export interface UploadRoutesDeps {
-  uploads: UploadQueries & UploadIntake;
+  uploads: UploadQueries & UploadIntake & UploadReviews;
   storage: FileStorage;
   /** The use cases record what they did to the activity log. */
   events: EventLog;
-  /** To name who uploaded each file. */
+  /** To name who uploaded each file, and who reviewed its fields. */
   members: Pick<MemberStore, 'emailOf'>;
 }
 
@@ -64,8 +66,9 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
         return null;
       });
     }
-    const uploadedBy = upload.uploadedBy ? await members.emailOf(upload.uploadedBy) : null;
-    return { upload: toUploadDetail(upload, fileUrl, uploadedBy) };
+    const people = peopleIn(upload);
+    const emails = new Map(await Promise.all(people.map(async (id) => [id, await members.emailOf(id)] as const)));
+    return { upload: toUploadDetail(upload, fileUrl, emails) };
   }
 
   // 1. Ask to upload a file ------------------------------------------------------------------
@@ -131,6 +134,28 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
     const upload = await uploads.findById(uploadId(request.params));
     if (!upload) throw notFound();
     return detailResponse(upload, request.log);
+  });
+
+  // People correcting or confirming the extracted data ----------------------------------------
+  app.patch('/api/uploads/:id/result', async (request): Promise<UploadResponse> => {
+    const body = editResultRequestSchema.safeParse(request.body);
+    if (!body.success) {
+      throw new ApiError(400, 'BAD_REQUEST', 'Expected { revision, changes?, checked? } with known fields.');
+    }
+    const result = await editResult({ uploads, events }, uploadId(request.params), body.data, request.member!);
+
+    switch (result.outcome) {
+      case 'saved':
+        return detailResponse(result.upload, request.log);
+      case 'invalid':
+        throw new ApiError(422, 'INVALID_EDIT', result.message);
+      case 'conflict':
+        throw new ApiError(409, 'EDIT_CONFLICT', 'Someone else just changed this upload. Showing their version; make your change again if it still applies.');
+      case 'not-editable':
+        throw new ApiError(409, 'NOT_EDITABLE', 'Only completed uploads with readable data can be edited.');
+      case 'not-found':
+        throw notFound();
+    }
   });
 
   // Manual retry of a failed upload ------------------------------------------------------------

@@ -1,5 +1,7 @@
 import {
   overallConfidence,
+  type ConfidenceField,
+  type FieldReviews,
   UPLOAD_FILTER_IDS,
   UPLOAD_FILTERS,
   uploadErrorMessage,
@@ -9,7 +11,7 @@ import {
   type UploadSummary,
 } from '@label-extractor/shared';
 import { RETRY_POLICY } from '../extraction/retry-policy.ts';
-import type { UploadRecord } from './store.ts';
+import type { StoredFieldReviews, UploadRecord } from './store.ts';
 
 /**
  * Converts internal records into the API's response shapes. Keeps storage details (like the
@@ -29,21 +31,44 @@ export function toUploadSummary(record: UploadRecord): UploadSummary {
     error: record.error && { code: record.error.code, message: uploadErrorMessage(record.error.code) },
     productName: record.result?.productName ?? null,
     resultUnreadable: record.resultUnreadable,
-    confidence: record.status === 'completed' ? overallConfidence(record.confidence) : null,
+    // Fields a person has already reviewed don't need checking any more.
+    confidence: record.status === 'completed' ? overallConfidence(record.confidence, reviewedFields(record.fieldReviews)) : null,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
     completedAt: record.completedAt?.toISOString() ?? null,
   };
 }
 
-export function toUploadDetail(record: UploadRecord, fileUrl: string | null, uploadedBy: string | null): UploadDetail {
+/**
+ * @param emails The email of each person the record mentions (uploader, reviewers), by user ID;
+ *   see `peopleIn`. Someone whose account is gone reads as null.
+ */
+export function toUploadDetail(record: UploadRecord, fileUrl: string | null, emails: ReadonlyMap<string, string | null>): UploadDetail {
+  const emailOf = (userId: string | null) => (userId ? (emails.get(userId) ?? null) : null);
   return {
     ...toUploadSummary(record),
     result: record.status === 'completed' ? record.result : null,
     fieldConfidence: record.status === 'completed' ? record.confidence : null,
+    fieldReviews: Object.fromEntries(
+      Object.entries(record.fieldReviews).map(([field, review]) => [
+        field,
+        { kind: review.kind, by: emailOf(review.by), at: review.at.toISOString() },
+      ]),
+    ) as FieldReviews,
+    revision: record.resultRevision,
     fileUrl,
-    uploadedBy,
+    uploadedBy: emailOf(record.uploadedBy),
   };
+}
+
+/** The user IDs a record mentions, to look up their emails for `toUploadDetail`. */
+export function peopleIn(record: UploadRecord): string[] {
+  const ids = [record.uploadedBy, ...Object.values(record.fieldReviews).map((review) => review.by)];
+  return [...new Set(ids.filter((id): id is string => id !== null))];
+}
+
+function reviewedFields(reviews: StoredFieldReviews): ConfidenceField[] {
+  return Object.keys(reviews) as ConfidenceField[];
 }
 
 /** How many uploads each list view holds, from the per-status counts. */

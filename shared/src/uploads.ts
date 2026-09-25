@@ -1,4 +1,5 @@
 import type { ExtractionConfidence } from './confidence.ts';
+import type { FieldReviews } from './edits.ts';
 import type { LabelExtraction } from './extraction.ts';
 import type { SupportedMimeType } from './files.ts';
 
@@ -135,6 +136,10 @@ export interface UploadDetail extends UploadSummary {
   fileUrl: string | null;
   /** How sure the extraction is of each field, when it was scored. */
   fieldConfidence: ExtractionConfidence | null;
+  /** Who has edited or checked which fields (see edits.ts). */
+  fieldReviews: FieldReviews;
+  /** Goes up with every saved edit; an edit must name the revision it was made against. */
+  revision: number;
   /** Email of whoever uploaded it; null for uploads from before sign-in existed. */
   uploadedBy: string | null;
 }

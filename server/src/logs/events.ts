@@ -1,8 +1,10 @@
 import {
+  FIELD_LABELS,
   formatBytes,
   SUPPORTED_FILE_TYPES,
   SUPPORTED_TYPES_LABEL,
   uploadErrorMessage,
+  type ConfidenceField,
   type SupportedMimeType,
   type UploadErrorCode,
 } from '@label-extractor/shared';
@@ -26,6 +28,11 @@ function aboutUpload(upload: UploadRef) {
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
 const attemptOf = (attempt: number) => `attempt ${attempt} of ${RETRY_POLICY.maxAttempts}`;
 const fileTypeLabel = (mimeType: SupportedMimeType) => SUPPORTED_FILE_TYPES[mimeType].label;
+/** ['brand', 'netWeight'] → "brand and net weight". */
+const fieldList = (fields: ConfidenceField[]) => {
+  const names = fields.map((field) => FIELD_LABELS[field].toLowerCase());
+  return names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+};
 
 export const logEvents = {
   // ---- The API, as an upload arrives -------------------------------------------------------
@@ -89,6 +96,25 @@ export const logEvents = {
       ...aboutUpload(upload),
       type: 'upload.retry_requested',
       message: `Extraction of ${upload.fileName} was requested again.`,
+    };
+  },
+
+  /** Someone corrected fields (`changes`, with before and after) and/or confirmed others (`checked`). */
+  resultEdited(
+    upload: UploadRef,
+    review: { by: string; changes: Partial<Record<ConfidenceField, { from: unknown; to: unknown }>>; checked: ConfidenceField[] },
+  ): NewLogEvent {
+    const base = aboutUpload(upload);
+    const edited = Object.keys(review.changes) as ConfidenceField[];
+    const phrases = [
+      edited.length > 0 && `changed the ${fieldList(edited)}`,
+      review.checked.length > 0 && `confirmed the ${fieldList(review.checked)}`,
+    ].filter(Boolean);
+    return {
+      ...base,
+      type: 'upload.edited',
+      message: `${review.by} ${phrases.join(' and ')} of ${upload.fileName}.`,
+      data: { ...base.data, by: review.by, changes: review.changes, checked: review.checked },
     };
   },
 

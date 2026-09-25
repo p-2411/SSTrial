@@ -31,6 +31,7 @@ export const LOG_EVENT_TYPES = {
   'upload.rejected': { label: 'File rejected', level: 'warn' },
   'upload.discarded': { label: 'Unfinished upload discarded', level: 'info' },
   'upload.retry_requested': { label: 'Retry requested', level: 'info' },
+  'upload.edited': { label: 'Extracted data reviewed', level: 'info' },
   // The worker, extracting
   'extraction.started': { label: 'Extraction started', level: 'info' },
   'extraction.completed': { label: 'Extraction completed', level: 'info' },

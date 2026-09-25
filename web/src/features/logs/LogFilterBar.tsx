@@ -43,6 +43,7 @@ const TYPE_GROUP = {
   'upload.rejected': 'Uploads',
   'upload.discarded': 'Uploads',
   'upload.retry_requested': 'Uploads',
+  'upload.edited': 'Uploads',
   'extraction.started': 'Extraction',
   'extraction.completed': 'Extraction',
   'extraction.retry_scheduled': 'Extraction',

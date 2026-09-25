@@ -1,5 +1,8 @@
 import { z } from 'zod';
+import { CONFIDENCE_FIELDS } from './confidence.ts';
+import type { EditResultRequest } from './edits.ts';
 import { LOG_EVENT_TYPE_IDS, type LogEventType } from './logs.ts';
+import { NET_QUANTITY_UNITS } from './units.ts';
 import { UPLOAD_FILTER_IDS, type UploadFilter } from './uploads.ts';
 
 /**
@@ -44,3 +47,30 @@ export const listLogsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 export type ListLogsQuery = z.input<typeof listLogsQuerySchema>;
+
+/**
+ * PATCH /api/uploads/:id/result. This checks the request's shape only; the edited result is then
+ * validated as a whole by labelExtractionSchema, the same rules model output passes.
+ */
+export const editResultRequestSchema = z.object({
+  revision: z.number().int().min(0),
+  changes: z
+    .strictObject({
+      productName: z.string().nullable().optional(),
+      brand: z.string().nullable().optional(),
+      netWeight: z.object({ value: z.number(), unit: z.enum(NET_QUANTITY_UNITS) }).nullable().optional(),
+      allergens: z.array(z.string()).optional(),
+      ingredients: z
+        .array(
+          z.object({
+            name: z.string(),
+            percent: z.number().nullable(),
+            subIngredients: z.array(z.string()),
+            allergens: z.array(z.string()),
+          }),
+        )
+        .optional(),
+    })
+    .optional(),
+  checked: z.array(z.enum(CONFIDENCE_FIELDS)).optional(),
+}) satisfies z.ZodType<EditResultRequest>;

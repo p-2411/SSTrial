@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import * as api from '@/api/uploads';
-import { summary } from '@/test/fixtures';
+import { detail, summary } from '@/test/fixtures';
 import { createTestQueryClient, Providers } from '@/test/render';
 import { useFileUploads } from './useFileUploads';
 
@@ -21,7 +21,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   mocked.createUpload.mockResolvedValue({ kind: 'created', upload: summary({ status: 'uploading' }), uploadUrl: 'https://storage/signed' });
   mocked.putFileToStorage.mockResolvedValue();
-  mocked.completeUpload.mockResolvedValue({ ...summary({ status: 'queued' }), result: null, fieldConfidence: null, fileUrl: null, uploadedBy: null });
+  mocked.completeUpload.mockResolvedValue(detail({ status: 'queued' }));
   mocked.listUploads.mockResolvedValue({ uploads: [], nextCursor: null });
 });
 

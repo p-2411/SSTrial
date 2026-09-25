@@ -1,12 +1,15 @@
 import type postgres from 'postgres';
 import type {
+  ConfidenceField,
   ExtractionConfidence,
+  FieldReviewKind,
   LabelExtraction,
   SupportedMimeType,
   UploadErrorCode,
   UploadStatus,
 } from '@label-extractor/shared';
 import {
+  CONFIDENCE_FIELDS,
   extractionConfidenceSchema,
   labelExtractionSchema,
   storedErrorCode,
@@ -47,12 +50,25 @@ export interface UploadRecord {
   resultUnreadable: boolean;
   /** How sure the extraction is of each field; null if it wasn't scored. */
   confidence: ExtractionConfidence | null;
+  /** Who has edited or checked which fields (see uploads/edit.ts). */
+  fieldReviews: StoredFieldReviews;
+  /** Goes up with every saved edit, so an edit made against an older version can be refused. */
+  resultRevision: number;
   /** The processing attempt that currently owns the upload (see `startAttempt`). */
   claimToken: string | null;
   createdAt: Date;
   updatedAt: Date;
   completedAt: Date | null;
 }
+
+/** Who reviewed a field (their user ID) and when. The API names them by email. */
+export interface StoredFieldReview {
+  kind: FieldReviewKind;
+  by: string;
+  at: Date;
+}
+
+export type StoredFieldReviews = Partial<Record<ConfidenceField, StoredFieldReview>>;
 
 /** Only the code is stored; the shared catalogue turns it into the message users see. */
 interface UploadFailure {
@@ -140,7 +156,17 @@ export interface UploadAttempts {
 }
 
 /** The uploads table. Each consumer depends on the role it needs. */
-export type UploadStore = UploadQueries & UploadIntake & UploadAttempts;
+/** People correcting and confirming a completed upload's data. */
+export interface UploadReviews {
+  /**
+   * Saves an edited result and who reviewed which fields, as the next revision. Only a completed
+   * upload still at `revision` is changed, so an edit made against an older version saves nothing
+   * (null). The model's own output is kept, on the first edit, as `original_result`.
+   */
+  saveReview(id: string, revision: number, result: LabelExtraction, fieldReviews: StoredFieldReviews): Promise<UploadRecord | null>;
+}
+
+export type UploadStore = UploadQueries & UploadIntake & UploadAttempts & UploadReviews;
 
 export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadStore {
   /**
@@ -254,6 +280,7 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
         const record = await oneRecord(tx`
           update uploads
           set status = ${statusAfter('rerun')}, attempts = 0, error_code = null, result = null, confidence = null,
+              original_result = null, field_reviews = '{}'::jsonb, result_revision = 0,
               completed_at = null, claim_token = null
           where id = ${id} and status = ${from} and ${allowedFrom('rerun')}
           returning *`);
@@ -267,6 +294,17 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
         update uploads
         set status = ${statusAfter('claim')}, attempts = attempts + 1, error_code = null, claim_token = gen_random_uuid()
         where id = ${id} and ${allowedFrom('claim')}
+        returning *`);
+    },
+
+    saveReview(id, revision, result, fieldReviews) {
+      return oneRecord(sql`
+        update uploads
+        set original_result = coalesce(original_result, result),
+            result = ${sql.json(result as postgres.JSONValue)},
+            field_reviews = ${sql.json(toStoredReviews(fieldReviews))},
+            result_revision = result_revision + 1
+        where id = ${id} and status = ${'completed' satisfies UploadStatus} and result_revision = ${revision}
         returning *`);
     },
 
@@ -319,6 +357,8 @@ function toRecord(row: postgres.Row): UploadRecord {
     error: row.error_code ? { code: storedErrorCode(row.error_code) } : null,
     ...readStoredResult(row.result),
     confidence: readStoredConfidence(row.confidence),
+    fieldReviews: readStoredReviews(row.field_reviews),
+    resultRevision: row.result_revision ?? 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     completedAt: row.completed_at ?? null,
@@ -342,4 +382,24 @@ function readStoredConfidence(value: unknown): ExtractionConfidence | null {
   if (value === null || value === undefined) return null;
   const parsed = extractionConfidenceSchema.safeParse(value);
   return parsed.success ? parsed.data : null;
+}
+
+function toStoredReviews(reviews: StoredFieldReviews): postgres.JSONValue {
+  return Object.fromEntries(
+    Object.entries(reviews).map(([field, review]) => [field, { kind: review.kind, by: review.by, at: review.at.toISOString() }]),
+  );
+}
+
+/** Reviews read back leniently, field by field: one that doesn't fit is dropped, not the upload. */
+function readStoredReviews(value: unknown): StoredFieldReviews {
+  const reviews: StoredFieldReviews = {};
+  if (typeof value !== 'object' || value === null) return reviews;
+  for (const field of CONFIDENCE_FIELDS) {
+    const review = (value as Record<string, unknown>)[field] as { kind?: unknown; by?: unknown; at?: unknown } | undefined;
+    const at = typeof review?.at === 'string' ? new Date(review.at) : null;
+    if ((review?.kind === 'edited' || review?.kind === 'checked') && typeof review.by === 'string' && at && !Number.isNaN(at.getTime())) {
+      reviews[field] = { kind: review.kind, by: review.by, at };
+    }
+  }
+  return reviews;
 }

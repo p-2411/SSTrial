@@ -554,6 +554,27 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
     });
   });
 
+  describe('reviews of extracted data (real SQL)', () => {
+    it('saves edits one revision at a time, keeping what the model read', async () => {
+      const id = crypto.randomUUID();
+      createdIds.push(id);
+      await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png`, contentSha256: null, uploadedBy: null });
+      await sql`update uploads set status = 'completed', result = ${sql.json(SAMPLE_EXTRACTION)}, completed_at = now() where id = ${id}`;
+      const at = new Date();
+      const by = crypto.randomUUID();
+
+      const first = await uploads.saveReview(id, 0, { ...SAMPLE_EXTRACTION, brand: 'First' }, { brand: { kind: 'edited', by, at } });
+      expect(first).toMatchObject({ resultRevision: 1, result: { brand: 'First' }, fieldReviews: { brand: { kind: 'edited', by } } });
+
+      // Made against revision 0 again: someone else saved in between, so nothing is written.
+      expect(await uploads.saveReview(id, 0, { ...SAMPLE_EXTRACTION, brand: 'Stale' }, {})).toBeNull();
+
+      await uploads.saveReview(id, 1, { ...SAMPLE_EXTRACTION, brand: 'Second' }, { brand: { kind: 'edited', by, at } });
+      const [row] = await sql`select result, original_result, result_revision from uploads where id = ${id}`;
+      expect(row).toMatchObject({ result_revision: 2, result: { brand: 'Second' }, original_result: { brand: SAMPLE_EXTRACTION.brand } });
+    });
+  });
+
   describe('claims on uploads being processed (real SQL)', () => {
     async function createProcessable() {
       const id = crypto.randomUUID();

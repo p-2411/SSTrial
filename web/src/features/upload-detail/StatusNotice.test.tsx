@@ -1,11 +1,9 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import type { UploadDetail } from '@label-extractor/shared';
 import { renderWithProviders } from '@/test/render';
-import { summary } from '@/test/fixtures';
+import { detail } from '@/test/fixtures';
 import { StatusNotice } from './StatusNotice.tsx';
 
-const detail = (overrides: Partial<UploadDetail>): UploadDetail => ({ ...summary(), result: null, fieldConfidence: null, fileUrl: null, uploadedBy: null, ...overrides });
 
 describe('StatusNotice', () => {
   it('explains a result that can no longer be read and offers to run it again', () => {

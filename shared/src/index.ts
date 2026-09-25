@@ -2,6 +2,7 @@
 export * from './api.ts';
 export * from './auth.ts';
 export * from './confidence.ts';
+export * from './edits.ts';
 export * from './extraction.ts';
 export * from './files.ts';
 export * from './lifecycle.ts';

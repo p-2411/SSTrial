@@ -22,7 +22,7 @@ import type { ChangeFeed } from '../src/infra/change-feed.ts';
 import { StorageUnavailableError, type FileStorage } from '../src/infra/storage.ts';
 import type { EventStore, LogEventRecord, NewLogEvent } from '../src/logs/store.ts';
 import type { OpsSnapshot } from '../src/ops/store.ts';
-import type { NewUpload, SettleOptions, UploadRecord, UploadStore } from '../src/uploads/store.ts';
+import type { NewUpload, SettleOptions, StoredFieldReviews, UploadRecord, UploadStore } from '../src/uploads/store.ts';
 
 /**
  * In-memory stand-ins for Postgres, the queue and Supabase Storage, so API and worker logic can be
@@ -63,6 +63,8 @@ export class InMemoryUploadStore implements UploadStore {
       contentSha256: null,
       uploadedBy: null,
       confidence: null,
+      fieldReviews: {},
+      resultRevision: 0,
       claimToken: null,
       status: 'uploading',
       attempts: 0,
@@ -143,6 +145,8 @@ export class InMemoryUploadStore implements UploadStore {
       result: null,
       resultUnreadable: false,
       confidence: null,
+      fieldReviews: {},
+      resultRevision: 0,
       completedAt: null,
       claimToken: null,
     });
@@ -156,6 +160,13 @@ export class InMemoryUploadStore implements UploadStore {
       error: null,
       claimToken: crypto.randomUUID(),
     });
+  }
+  async saveReview(id: string, revision: number, result: LabelExtraction, fieldReviews: StoredFieldReviews) {
+    const row = this.rows.get(id);
+    if (!row || row.status !== 'completed' || row.resultRevision !== revision) return null;
+    const saved = { ...row, result, fieldReviews, resultRevision: revision + 1, updatedAt: new Date() };
+    this.rows.set(id, saved);
+    return saved;
   }
   async complete(id: string, claimToken: string, result: LabelExtraction, confidence: ExtractionConfidence | null) {
     return this.transition(id, 'complete', { result, confidence, error: null, completedAt: new Date(), claimToken: null }, claimToken);

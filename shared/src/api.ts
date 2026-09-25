@@ -39,6 +39,9 @@ export type ApiErrorCode =
   | 'FILE_NOT_UPLOADED' // POST …/complete: nothing arrived in storage
   | 'FILE_CONTENT_MISMATCH' // POST …/complete: the bytes aren't a supported type
   | 'NOT_RETRYABLE' // POST …/retry
+  | 'INVALID_EDIT' // PATCH …/result: a value the extraction schema rejects
+  | 'EDIT_CONFLICT' // PATCH …/result: someone else saved a change first
+  | 'NOT_EDITABLE' // PATCH …/result: the upload isn't completed, or its result can't be read
   | 'UNAUTHENTICATED' // no valid sign-in
   | 'FORBIDDEN' // signed in, but not allowed (no access, or not an admin)
   | 'BAD_REQUEST'
