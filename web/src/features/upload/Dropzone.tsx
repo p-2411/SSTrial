@@ -62,7 +62,7 @@ export function Dropzone({ onFiles }: { onFiles: (files: File[]) => void }) {
         <div className="space-y-1">
           <p className="font-semibold tracking-[-0.01em]">{isDragging ? 'Drop to upload' : 'Drop label photos or PDFs here'}</p>
           <p className="text-sm text-muted-foreground">
-            {SUPPORTED_TYPES_LABEL}, up to {formatBytes(MAX_FILE_SIZE_BYTES)} each. You can add several at once.
+            {SUPPORTED_TYPES_LABEL}, up to {formatBytes(MAX_FILE_SIZE_BYTES)} each.
           </p>
         </div>
         <Button size="lg" onClick={() => inputRef.current?.click()}>
