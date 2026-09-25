@@ -1,52 +1,45 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import type { UploadDetail } from '@label-extractor/shared';
 import { FileTypeTag } from '@/components/FileTypeTile';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
+import { PdfFirstPage } from './PdfFirstPage';
 
 /**
- * The original file, filling its card, with the file-type tag and an "open" link laid over it —
- * so the user can check the extraction against the real label.
+ * The original file, so the user can check the extraction against the real label: a white header
+ * bar with the file type and an "open in new tab" button, and the preview filling the card below.
+ * Images show as they are; PDFs show their first page, drawn as an image.
  *
- * The API issues a fresh signed URL on every poll; keeping the first one stops the image
+ * The API issues a fresh signed URL on every poll; keeping the first one stops the preview
  * re-downloading every two seconds while the upload is processing.
  */
 export function SourceDocumentCard({ upload }: { upload: UploadDetail }) {
   const [url, setUrl] = useState(upload.fileUrl);
   const [failed, setFailed] = useState(false);
+  const markFailed = useCallback(() => setFailed(true), []);
   // Adopt a URL if the first response didn't have one (e.g. storage was briefly unavailable).
   if (!url && upload.fileUrl) setUrl(upload.fileUrl);
-  const available = Boolean(url) && !failed;
 
   return (
-    <Card className="relative gap-0 overflow-hidden bg-muted p-0">
-      {!available ? (
-        <div className="grid min-h-48 place-items-center text-sm text-muted-foreground">Preview unavailable</div>
-      ) : upload.mimeType === 'application/pdf' ? (
-        <iframe className="block h-[36rem] w-full" src={url!} title={`Original PDF: ${upload.fileName}`} />
-      ) : (
-        <img className="block h-auto w-full" src={url!} alt={`Original label: ${upload.fileName}`} onError={() => setFailed(true)} />
-      )}
-
-      <div className="absolute top-3 left-3">
+    <Card className="gap-0 overflow-hidden p-0">
+      <div className="flex items-center justify-between gap-2 border-b bg-card px-3 py-2">
         <FileTypeTag mimeType={upload.mimeType} />
+        {url && (
+          <Button asChild variant="ghost" size="icon-sm" className="text-muted-foreground">
+            <a href={url} target="_blank" rel="noreferrer" aria-label="Open original file in a new tab" title="Open original">
+              <ExternalLink aria-hidden />
+            </a>
+          </Button>
+        )}
       </div>
-      {available && (
-        <a
-          href={url!}
-          target="_blank"
-          rel="noreferrer"
-          aria-label="Open original file in a new tab"
-          title="Open original"
-          // Kept clear of the PDF viewer's own toolbar, which sits along the top.
-          className={cn(
-            'absolute right-3 grid size-8 place-items-center rounded-md bg-card/90 text-foreground shadow-sm ring-1 ring-border backdrop-blur hover:bg-card',
-            upload.mimeType === 'application/pdf' ? 'bottom-3' : 'top-3',
-          )}
-        >
-          <ExternalLink className="size-4" aria-hidden />
-        </a>
+
+      {!url || failed ? (
+        <div className="grid min-h-48 place-items-center bg-muted text-sm text-muted-foreground">Preview unavailable</div>
+      ) : upload.mimeType === 'application/pdf' ? (
+        <PdfFirstPage url={url} fileName={upload.fileName} onError={markFailed} />
+      ) : (
+        <img className="block h-auto w-full" src={url} alt={`Original label: ${upload.fileName}`} onError={markFailed} />
       )}
     </Card>
   );
