@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Environment files hold secrets (OpenAI key, Supabase service key) — never commit them.
+.env
+.env.*
+!.env.example
+
+# Supabase local state
+supabase/.branches
+supabase/.temp
+
+# OS / editor
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Logs
+*.log

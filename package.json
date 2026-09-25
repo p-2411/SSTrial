@@ -1,0 +1,23 @@
+{
+  "name": "label-extractor",
+  "private": true,
+  "description": "Upload product label images/PDFs; a queued worker extracts structured product data with an LLM.",
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "server",
+    "web"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n api,worker,web -c blue,magenta,green \"npm run dev:api -w server\" \"npm run dev:worker -w server\" \"npm run dev -w web\"",
+    "build": "npm run build -w web",
+    "test": "npm test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "@label-extractor/shared",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Schemas, types and validation rules shared by the web app, API and worker.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
+  },
+  "dependencies": {
+    "zod": "^4.6.5"
+  }
+}
