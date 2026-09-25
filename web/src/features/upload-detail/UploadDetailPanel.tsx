@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { memo, useEffect, useEffectEvent, useState } from 'react';
 import { useLocation, useMatch, useNavigate } from 'react-router';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -14,8 +14,11 @@ import { DETAIL_TITLE_ID, UploadDetailView } from './UploadDetailView';
  * (the × or Esc) goes back to the list, keeping the status filter.
  *
  * Must sit in a size container (@container): its width is a share of that container's width.
+ *
+ * Memoised: it takes no props, so it re-renders only for its own state and route changes, not each
+ * time the list around it updates (upload progress, the clock).
  */
-export function UploadDetailPanel() {
+export const UploadDetailPanel = memo(function UploadDetailPanel() {
   const navigate = useNavigate();
   const { search } = useLocation();
   const id = useMatch('/uploads/:id')?.params.id;
@@ -26,19 +29,20 @@ export function UploadDetailPanel() {
   const [shownId, setShownId] = useState(id);
   if (id && id !== shownId) setShownId(id);
 
-  const close = useCallback(() => navigate({ pathname: '/', search }), [navigate, search]);
+  const close = () => navigate({ pathname: '/', search });
 
-  // Esc closes the panel, unless an open menu or popover (e.g. Export) is handling it.
+  // Esc closes the panel, unless an open menu or popover (e.g. Export) is handling it. As an effect
+  // event it always sees the latest filter, so the listener isn't re-attached when the filter changes.
+  const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key !== 'Escape' || event.defaultPrevented) return;
+    if (document.querySelector('[data-radix-popper-content-wrapper]')) return;
+    close();
+  });
   useEffect(() => {
     if (!open) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || event.defaultPrevented) return;
-      if (document.querySelector('[data-radix-popper-content-wrapper]')) return;
-      close();
-    };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open, close]);
+  }, [open]);
 
   return (
     <aside
@@ -74,4 +78,4 @@ export function UploadDetailPanel() {
       )}
     </aside>
   );
-}
+});

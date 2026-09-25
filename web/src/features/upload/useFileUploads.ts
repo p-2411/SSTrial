@@ -89,8 +89,17 @@ export function useFileUploads() {
         }
         const { upload, uploadUrl } = created;
 
+        // Progress events can fire dozens of times a second, and each state update re-renders the
+        // app shell, so only report whole-percent changes: at most 100 updates per file.
+        let reportedPercent = -1;
+        const onProgress = (progress: number) => {
+          const percent = Math.floor(progress * 100);
+          if (percent === reportedPercent) return;
+          reportedPercent = percent;
+          update(localId, { progress });
+        };
         // Use the API's normalised type: the browser's `file.type` can be empty or "image/jpg".
-        await putFileToStorage(uploadUrl, file, upload.mimeType, (progress) => update(localId, { progress }));
+        await putFileToStorage(uploadUrl, file, upload.mimeType, onProgress);
 
         update(localId, { phase: 'confirming', progress: 1 });
         const confirmed = await completeUpload(upload.id);

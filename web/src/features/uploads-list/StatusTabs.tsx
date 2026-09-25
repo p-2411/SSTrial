@@ -21,8 +21,12 @@ export function StatusTabs({ counts }: { counts: UploadCountsResponse['counts'] 
         >
           {filter.label}
           {/* The space keeps the accessible name "Failed 1" rather than "Failed1". */}
-          {counts && ' '}
-          {counts && <span className="text-xs font-normal text-muted-foreground tabular-nums">{counts[filter.id]}</span>}
+          {counts ? (
+            <>
+              {' '}
+              <span className="text-xs font-normal text-muted-foreground tabular-nums">{counts[filter.id]}</span>
+            </>
+          ) : null}
         </TabsTrigger>
       ))}
     </TabsList>

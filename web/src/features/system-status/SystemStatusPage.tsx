@@ -19,7 +19,9 @@ export function SystemStatusPage() {
   const { data, isPending, isError, error, refetch, isRefetching } = useOpsStatus();
 
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto p-6">
+    // A <div>, not <main>: the app shell's SidebarInset is already the page's <main>. The
+    // scrollbar's space is reserved so the page doesn't shift as its height changes.
+    <div className="min-h-0 flex-1 overflow-y-auto p-6 [scrollbar-gutter:stable_both-edges]">
       <div className="mx-auto grid max-w-5xl gap-5">
         {isPending && <Skeleton className="h-96 w-full rounded-xl" />}
         {isError && !data && (
@@ -27,7 +29,7 @@ export function SystemStatusPage() {
         )}
         {data && <Status data={data} />}
       </div>
-    </main>
+    </div>
   );
 }
 

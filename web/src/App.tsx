@@ -7,7 +7,7 @@ import { Dropzone } from '@/features/upload/Dropzone';
 import { useFileUploads } from '@/features/upload/useFileUploads';
 import { UploadDetailPanel } from '@/features/upload-detail/UploadDetailPanel';
 import { UploadList } from '@/features/uploads-list/UploadList';
-import { SystemStatusPage } from '@/features/system-status/SystemStatusPage';
+import { loadSystemStatusPage } from '@/features/system-status/loadSystemStatusPage';
 
 /**
  * Routes, all inside the app shell (sidebar + top bar):
@@ -27,7 +27,8 @@ export const router = createBrowserRouter([
         // it can animate open and closed) reads it.
         children: [{ path: 'uploads/:id', element: null }],
       },
-      { path: '/status', element: <SystemStatusPage /> },
+      // Its own chunk, loaded on first visit (see loadSystemStatusPage).
+      { path: '/status', lazy: async () => ({ Component: (await loadSystemStatusPage()).SystemStatusPage }) },
     ],
   },
   { path: '*', element: <NotFoundPage /> },

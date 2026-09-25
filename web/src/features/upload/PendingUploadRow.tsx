@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { formatBytes, mimeTypeFromFileName } from '@label-extractor/shared';
 import { FileTypeTile } from '@/components/FileTypeTile';
 import { StatusPill } from '@/components/StatusPill';
@@ -16,8 +17,11 @@ interface PendingUploadRowProps {
 /**
  * A file still on its way to the server, laid out like UploadRow: name, type and size on the first
  * line; progress (or why it failed) on the second.
+ *
+ * Memoised: when one file's progress moves, the others (same objects, stable callbacks) don't
+ * re-render.
  */
-export function PendingUploadRow({ upload, onRetry, onDismiss }: PendingUploadRowProps) {
+export const PendingUploadRow = memo(function PendingUploadRow({ upload, onRetry, onDismiss }: PendingUploadRowProps) {
   const { file, phase } = upload;
   const hasError = phase === 'rejected' || phase === 'failed';
   const mimeType = mimeTypeFromFileName(file.name);
@@ -61,7 +65,7 @@ export function PendingUploadRow({ upload, onRetry, onDismiss }: PendingUploadRo
       </div>
     </li>
   );
-}
+});
 
 function phaseText({ phase, progress }: PendingUpload): string {
   switch (phase) {

@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { Inbox } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -33,8 +34,10 @@ export function UploadList({ pending, onRetryPending, onDismissPending }: Upload
   const { data: counts } = useUploadCounts();
   const now = useNow();
 
-  // The server filters and pages; this is just every page loaded so far, in order.
-  const uploads = list.data?.pages.flatMap((page) => page.uploads);
+  // The server filters and pages; this is just every page loaded so far, in order. Memoised so it's
+  // only a new array when the data changes: the list also re-renders for upload progress and the
+  // clock, and the announcements effect below depends on this array.
+  const uploads = useMemo(() => list.data?.pages.flatMap((page) => page.uploads), [list.data]);
   const announcement = useStatusAnnouncements(uploads);
   const { isPending, isError, error, refetch, isRefetching } = list;
 

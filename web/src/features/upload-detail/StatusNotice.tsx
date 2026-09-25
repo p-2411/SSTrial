@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 
 /** Explains a not-yet-completed upload: waiting, being read, retrying, or failed (with a retry button). */
 export function StatusNotice({ upload }: { upload: UploadDetail }) {
-
   switch (upload.status) {
     case 'queued':
       if (upload.error) {

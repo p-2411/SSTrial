@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type DragEvent } from 'react';
+import { memo, useEffect, useRef, useState, type DragEvent } from 'react';
 import { UploadCloud } from 'lucide-react';
 import { FILE_INPUT_ACCEPT, formatBytes, MAX_FILE_SIZE_BYTES, SUPPORTED_TYPES_LABEL } from '@label-extractor/shared';
 import { Button } from '@/components/ui/button';
@@ -8,8 +8,10 @@ import { cn } from '@/lib/utils';
 /**
  * Where files come in: drag and drop, or the file picker (which is also the keyboard path).
  * Validation happens in useFileUploads, so rejected files still get a row explaining why.
+ *
+ * Memoised: `onFiles` is stable, so upload progress re-rendering the page doesn't re-render this.
  */
-export function Dropzone({ onFiles }: { onFiles: (files: File[]) => void }) {
+export const Dropzone = memo(function Dropzone({ onFiles }: { onFiles: (files: File[]) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   // dragenter/dragleave fire for every child element crossed, so count depth instead of toggling.
@@ -86,4 +88,4 @@ export function Dropzone({ onFiles }: { onFiles: (files: File[]) => void }) {
       </div>
     </Card>
   );
-}
+});

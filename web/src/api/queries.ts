@@ -84,8 +84,11 @@ export function useRetryUpload() {
     mutationFn: retryUpload,
     onSuccess: async (upload) => {
       queryClient.setQueryData(uploadKeys.detail(upload.id), upload);
-      await queryClient.invalidateQueries({ queryKey: uploadKeys.lists() });
-      await queryClient.invalidateQueries({ queryKey: uploadKeys.counts() });
+      // Independent refetches: run them side by side rather than one after the other.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: uploadKeys.lists() }),
+        queryClient.invalidateQueries({ queryKey: uploadKeys.counts() }),
+      ]);
     },
   });
 }

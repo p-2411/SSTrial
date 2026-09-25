@@ -22,8 +22,11 @@ export function PdfFirstPage({ url, fileName, onError }: { url: string; fileName
 
     (async () => {
       try {
-        const pdfjs = await import('pdfjs-dist');
-        const { default: workerSrc } = await import('pdfjs-dist/build/pdf.worker.min.mjs?url');
+        // The library and its worker's URL don't depend on each other, so fetch both at once.
+        const [pdfjs, { default: workerSrc }] = await Promise.all([
+          import('pdfjs-dist'),
+          import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
+        ]);
         pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
 
         task = pdfjs.getDocument({ url });

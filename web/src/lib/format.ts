@@ -1,7 +1,10 @@
 import { SUPPORTED_FILE_TYPES, type SupportedMimeType } from '@label-extractor/shared';
 
+// Formatters are built once: creating one is far slower than using it, and these run for every row
+// on every render.
 const relative = new Intl.RelativeTimeFormat('en', { numeric: 'auto', style: 'long' });
 const absolute = new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+const full = new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' });
 
 /** "just now", "3 minutes ago", "2 hours ago", then an absolute date for anything older than a day. */
 export function formatRelativeTime(iso: string, now: number = Date.now()): string {
@@ -15,7 +18,7 @@ export function formatRelativeTime(iso: string, now: number = Date.now()): strin
 
 /** Full date and time, for tooltips next to relative times. */
 export function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('en', { dateStyle: 'medium', timeStyle: 'short' });
+  return full.format(new Date(iso));
 }
 
 /** "PNG", "PDF"… */

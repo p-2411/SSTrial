@@ -14,6 +14,7 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { useOpsStatus } from '@/api/queries';
+import { loadSystemStatusPage } from '@/features/system-status/loadSystemStatusPage';
 import { cn } from '@/lib/utils';
 
 /**
@@ -68,7 +69,13 @@ export function AppSidebar() {
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild isActive={onStatusPage}>
-                  <Link to="/status" aria-current={onStatusPage ? 'page' : undefined}>
+                  {/* The page's code is split out; start fetching it as soon as a visit looks likely. */}
+                  <Link
+                    to="/status"
+                    aria-current={onStatusPage ? 'page' : undefined}
+                    onMouseEnter={() => void loadSystemStatusPage()}
+                    onFocus={() => void loadSystemStatusPage()}
+                  >
                     <Activity aria-hidden />
                     <span>System status</span>
                   </Link>
