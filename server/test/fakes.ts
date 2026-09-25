@@ -1,6 +1,8 @@
 import { pino } from 'pino';
-import type { LabelExtraction, SupportedMimeType, UploadErrorCode } from '@label-extractor/shared';
+import type { HealthReport, LabelExtraction, SupportedMimeType, UploadErrorCode } from '@label-extractor/shared';
+import type { AppDeps } from '../src/api/app.ts';
 import type { UploadChange, UploadChangeFeed } from '../src/api/upload-changes.ts';
+import type { OpsStore } from '../src/ops/store.ts';
 import { RateLimitWaitTooLong, type RateLimiter } from '../src/extraction/rate-limiter.ts';
 import { StorageUnavailableError, type FileStorage } from '../src/infra/storage.ts';
 import type { NewUpload, UploadRecord, UploadStore } from '../src/uploads/store.ts';
@@ -220,3 +222,28 @@ export const FILE_BYTES = {
   pdf: new TextEncoder().encode('%PDF-1.7\n%âãÏÓ\n'),
   text: new TextEncoder().encode('Just some text pretending to be an image.'),
 };
+
+export const HEALTHY: HealthReport = { status: 'ok', checks: { database: { status: 'ok', latencyMs: 1 } } };
+
+/** Canned monitoring data for the /api/ops route. */
+export const EMPTY_OPS_STATUS: Awaited<ReturnType<OpsStore['status']>> = {
+  worker: { lastSeenAt: null, healthy: false },
+  queue: { waiting: 0, retrying: 0, processing: 0, oldestWaitingSeconds: null },
+  last24h: { completed: 0, failed: 0, failureRate: null, medianSecondsToResult: null },
+  failuresByReason: [],
+  alerts: { open: [], recent: [] },
+};
+
+/** Everything buildApp needs, faked; tests override the parts they care about. */
+export function testAppDeps(overrides: Partial<AppDeps> = {}): AppDeps {
+  return {
+    uploads: new InMemoryUploadStore(),
+    storage: new InMemoryStorage(),
+    changes: new FakeChangeFeed(),
+    health: async () => HEALTHY,
+    ops: { status: async () => EMPTY_OPS_STATUS },
+    logger: silentLogger,
+    ...overrides,
+  };
+}
+

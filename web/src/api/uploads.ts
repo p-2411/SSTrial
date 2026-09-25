@@ -1,4 +1,5 @@
 import type {
+  OpsStatusResponse,
   CreateUploadRequest,
   CreateUploadResponse,
   ListUploadsResponse,
@@ -20,6 +21,11 @@ export function listUploads(status: UploadFilter, cursor?: string): Promise<List
 
 export async function getUploadCounts(): Promise<UploadCountsResponse['counts']> {
   return (await apiRequest<UploadCountsResponse>('/api/uploads/counts')).counts;
+}
+
+/** Health, queue, throughput and alerts for the System status page. */
+export function getOpsStatus(): Promise<OpsStatusResponse> {
+  return apiRequest<OpsStatusResponse>('/api/ops');
 }
 
 export async function getUpload(id: string): Promise<UploadDetail> {

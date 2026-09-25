@@ -2,7 +2,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import { isActiveStatus, type UploadDetail, type UploadFilter } from '@label-extractor/shared';
 import { ApiRequestError } from './client.ts';
 import { isLiveConnected } from './liveConnection.ts';
-import { getUpload, getUploadCounts, listUploads, retryUpload } from './uploads.ts';
+import { getOpsStatus, getUpload, getUploadCounts, listUploads, retryUpload } from './uploads.ts';
 
 /**
  * Server state lives in React Query: caching, polling and retries are handled here so
@@ -28,6 +28,9 @@ export const uploadKeys = {
   counts: () => [...uploadKeys.all, 'counts'] as const,
   detail: (id: string) => [...uploadKeys.all, 'detail', id] as const,
 };
+
+/** How often the System status page (and the sidebar's alert dot) refresh. */
+export const OPS_REFRESH_MS = 15_000;
 
 /** Don't retry requests that can't succeed on a second try (e.g. 404), retry others twice. */
 function retryUnlessClientError(failureCount: number, error: Error): boolean {
@@ -84,5 +87,15 @@ export function useRetryUpload() {
       await queryClient.invalidateQueries({ queryKey: uploadKeys.lists() });
       await queryClient.invalidateQueries({ queryKey: uploadKeys.counts() });
     },
+  });
+}
+
+/** Health, queue, throughput and alerts. Refreshes on a timer: monitoring data changes by the minute. */
+export function useOpsStatus() {
+  return useQuery({
+    queryKey: ['ops'],
+    queryFn: getOpsStatus,
+    retry: retryUnlessClientError,
+    refetchInterval: OPS_REFRESH_MS,
   });
 }

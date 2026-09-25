@@ -22,3 +22,12 @@ export function formatDateTime(iso: string): string {
 export function fileTypeLabel(mimeType: SupportedMimeType): string {
   return SUPPORTED_FILE_TYPES[mimeType]?.label ?? mimeType;
 }
+
+/** 45 → "45s", 190 → "3 min", 7500 → "2 h 5 min". */
+export function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  return minutes % 60 === 0 ? `${hours} h` : `${hours} h ${minutes % 60} min`;
+}

@@ -15,6 +15,7 @@ import {
 import { createUploadStore, type UploadRecord, type UploadStore } from '../../src/uploads/store.ts';
 import { createPostgresRateLimiter } from '../../src/extraction/rate-limiter.ts';
 import { listenForUploadChanges } from '../../src/api/upload-changes.ts';
+import { createOpsStore } from '../../src/ops/store.ts';
 import { startExtractionWorker } from '../../src/worker/worker.ts';
 import { FILE_BYTES, InMemoryStorage, SAMPLE_EXTRACTION, silentLogger } from '../fakes.ts';
 
@@ -93,6 +94,9 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
     await boss?.stop({ graceful: false });
     if (sql) {
       await sql`delete from uploads where id = any(${createdIds})`;
+      // Tests use their own 'test-…' keys for alerts and rate limits; don't leave them in the app's data.
+      await sql`delete from ops_alerts where key like 'test-%'`;
+      await sql`delete from llm_rate_limits where key like 'test-%'`;
       await sql.unsafe(`drop schema if exists ${TEST_SCHEMA} cascade`);
       await sql.end();
     }
@@ -352,6 +356,40 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       await expect.poll(() => seen, { timeout: 5000 }).toContain('queued');
       expect(seen[0]).toBe('queued'); // the 'uploading' insert was not announced
       unsubscribe();
+    });
+  });
+
+  describe('monitoring store (real SQL)', () => {
+    const ops = () => createOpsStore(sql);
+    const key = () => `test-${crypto.randomUUID()}`;
+
+    it('opens an alert once, updates it while firing, and resolves it when it stops', async () => {
+      const store = ops();
+      const alertKey = key();
+      const alert = { key: alertKey, severity: 'warning' as const, title: 'Test', message: 'first' };
+
+      expect(await store.raiseAlert(alert)).toBe(true);
+      expect(await store.raiseAlert({ ...alert, message: 'second' })).toBe(false);
+      let { alerts } = await store.status();
+      expect(alerts.open.find((a) => a.key === alertKey)).toMatchObject({ message: 'second', occurrences: 2, resolvedAt: null });
+
+      const openKeys = alerts.open.map((a) => a.key).filter((k) => k !== alertKey);
+      expect(await store.resolveAlertsExcept(openKeys)).toContain(alertKey);
+      ({ alerts } = await store.status());
+      expect(alerts.recent.find((a) => a.key === alertKey)?.resolvedAt).not.toBeNull();
+    });
+
+    it('reports the worker as healthy right after a heartbeat', async () => {
+      const store = ops();
+      await store.recordHeartbeat('worker');
+      expect((await store.status()).worker).toMatchObject({ healthy: true, lastSeenAt: expect.any(String) });
+    });
+
+    it('computes the signals and status from real uploads', async () => {
+      const signals = await ops().signals(15, 10);
+      expect(signals).toEqual(expect.objectContaining({ waiting: expect.any(Number), recentCompleted: expect.any(Number) }));
+      const status = await ops().status();
+      expect(status.last24h.completed).toBeGreaterThan(0); // earlier tests completed uploads
     });
   });
 });

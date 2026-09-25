@@ -4,10 +4,13 @@ import {
   EXTRACTION_DEAD_LETTER_QUEUE,
   EXTRACTION_QUEUE,
   FINALISE_QUEUE,
+  OPS_MONITOR_QUEUE,
   type ExtractionJobData,
   type FinaliseJobData,
 } from '../infra/queue.ts';
 import type { FileStorage } from '../infra/storage.ts';
+import { runMonitor } from '../ops/monitor.ts';
+import type { OpsStore } from '../ops/store.ts';
 import { finaliseUpload } from '../uploads/finalise.ts';
 import type { UploadStore } from '../uploads/store.ts';
 import { processUpload, type JobOutcome, type ProcessUploadDeps } from './process-upload.ts';
@@ -25,6 +28,8 @@ export interface WorkerDeps extends ProcessUploadDeps {
   concurrency: number;
   /** How often idle workers check for new jobs. */
   pollingIntervalSeconds?: number;
+  /** When given, this worker also runs the once-a-minute monitor (see ops/monitor.ts). */
+  ops?: OpsStore;
 }
 
 export async function startExtractionWorker(deps: WorkerDeps): Promise<void> {
@@ -78,6 +83,16 @@ export async function startExtractionWorker(deps: WorkerDeps): Promise<void> {
       logger.info({ uploadId }, 'Deleted an unconfirmed upload with an unsupported file type');
     }
   });
+
+  if (deps.ops) {
+    const ops = deps.ops;
+    await boss.work(OPS_MONITOR_QUEUE, { batchSize: 1 }, async () => {
+      await runMonitor({ ops, logger });
+    });
+    // Every minute, cluster-wide: pg-boss creates one job per tick however many workers there are.
+    await boss.schedule(OPS_MONITOR_QUEUE, '* * * * *');
+    await runMonitor({ ops, logger }); // don't wait a minute for the first heartbeat
+  }
 
   logger.info({ concurrency: deps.concurrency }, 'Worker is waiting for jobs');
 }

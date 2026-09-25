@@ -10,6 +10,8 @@ import { createLogger } from '../infra/logger.ts';
 import { createUploadJobs, startQueue } from '../infra/queue.ts';
 import { createSupabaseStorage, syncBucketSettings } from '../infra/storage.ts';
 import { createUploadStore } from '../uploads/store.ts';
+import { databaseCheck, queueCheck, runHealthChecks } from '../ops/health.ts';
+import { createOpsStore } from '../ops/store.ts';
 import { buildApp } from './app.ts';
 import { listenForUploadChanges } from './upload-changes.ts';
 
@@ -25,6 +27,8 @@ const boss = await startQueue({ connectionString: config.DATABASE_URL, role: 'ap
 const app = await buildApp({
   logger,
   changes: await listenForUploadChanges(sql, logger),
+  health: () => runHealthChecks([databaseCheck(sql), queueCheck(boss)]),
+  ops: createOpsStore(sql),
   webDistDir: config.WEB_DIST_DIR,
   uploads: createUploadStore(sql, createUploadJobs(boss)),
   storage: createSupabaseStorage({

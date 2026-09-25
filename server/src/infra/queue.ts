@@ -34,6 +34,9 @@ export const FINALISE_QUEUE = 'upload-finalise';
 /** Run finalise jobs a little after the signed URL stops accepting uploads. */
 export const FINALISE_DELAY_SECONDS = SIGNED_UPLOAD_URL_TTL_SECONDS + 10 * 60;
 
+/** Runs the monitoring rules once a minute (a pg-boss cron schedule: once per minute, cluster-wide). */
+export const OPS_MONITOR_QUEUE = 'ops-monitor';
+
 export interface ExtractionJobData {
   uploadId: string;
 }
@@ -76,10 +79,10 @@ export async function startQueue(options: StartQueueOptions): Promise<PgBoss> {
     connectionString: options.connectionString,
     application_name: `label-extractor-${options.role}`,
     max: options.poolMax ?? 3,
-    // Maintenance (expiring stuck jobs, deleting old ones) only needs to run somewhere; the API is
-    // purely a producer. We don't use cron scheduling at all.
+    // Maintenance (expiring stuck jobs, deleting old ones) and the monitor's cron schedule only need
+    // to run somewhere: in the workers. The API is purely a producer.
     supervise: options.role === 'worker',
-    schedule: false,
+    schedule: options.role === 'worker',
     ...options.overrides,
   });
 
@@ -101,6 +104,10 @@ async function ensureQueues(boss: PgBoss, retryPolicy: QueueOptions): Promise<vo
     await boss.updateQueue(EXTRACTION_QUEUE, retryPolicy);
   } else {
     await boss.createQueue(EXTRACTION_QUEUE, { ...retryPolicy, deadLetter: EXTRACTION_DEAD_LETTER_QUEUE });
+  }
+  if (!(await boss.getQueue(OPS_MONITOR_QUEUE))) {
+    // A missed run is simply replaced by the next minute's, so never retry.
+    await boss.createQueue(OPS_MONITOR_QUEUE, { retryLimit: 0, expireInSeconds: 50 });
   }
   if (!(await boss.getQueue(FINALISE_QUEUE))) {
     // Finalising only fails if storage or the database is down, so retry patiently.

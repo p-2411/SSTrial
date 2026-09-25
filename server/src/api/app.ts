@@ -5,9 +5,10 @@ import type { Logger } from '../infra/logger.ts';
 import { handleError, notFound } from './errors.ts';
 import { eventRoutes, type EventRoutesDeps } from './routes/events.ts';
 import { exportRoutes } from './routes/exports.ts';
+import { opsRoutes, type OpsRoutesDeps } from './routes/ops.ts';
 import { uploadRoutes, type UploadRoutesDeps } from './routes/uploads.ts';
 
-export interface AppDeps extends UploadRoutesDeps, EventRoutesDeps {
+export interface AppDeps extends UploadRoutesDeps, EventRoutesDeps, OpsRoutesDeps {
   logger: Logger;
   /** Built web app to serve alongside the API (production). Omit in development: Vite serves it. */
   webDistDir?: string;
@@ -26,7 +27,7 @@ export async function buildApp(deps: AppDeps) {
 
   app.setErrorHandler(handleError);
 
-  app.get('/api/health', async () => ({ status: 'ok' }));
+  await app.register(opsRoutes, deps);
   await app.register(uploadRoutes, deps);
   await app.register(exportRoutes, deps);
   await app.register(eventRoutes, deps);

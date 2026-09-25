@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp, type App } from '../../src/api/app.ts';
-import { FakeChangeFeed, InMemoryStorage, InMemoryUploadStore, silentLogger } from '../fakes.ts';
+import { FakeChangeFeed, testAppDeps } from '../fakes.ts';
 
 // Server-sent events need a real socket (inject() waits for a response that never ends), so these
 // tests listen on a random port and read the stream with fetch.
@@ -11,7 +11,7 @@ let baseUrl: string;
 
 beforeEach(async () => {
   changes = new FakeChangeFeed();
-  app = await buildApp({ uploads: new InMemoryUploadStore(), storage: new InMemoryStorage(), changes, logger: silentLogger });
+  app = await buildApp(testAppDeps({ changes }));
   baseUrl = await app.listen({ host: '127.0.0.1', port: 0 });
 });
 

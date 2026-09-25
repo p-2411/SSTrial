@@ -35,6 +35,9 @@ const apiSchema = z.object({
 
 const workerSchema = z.object({
   ...shared,
+  /** The worker serves only GET /api/health, so the host can check it's alive. */
+  HOST: z.string().default('0.0.0.0'),
+  PORT: z.coerce.number().int().positive().default(3001),
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_MODEL: z.string().min(1).default('gpt-5.4-mini'),
   /** Per-request timeout for the LLM call. Must stay well under the job's expiry (see queue.ts). */
