@@ -90,11 +90,10 @@ export async function processUpload(deps: ProcessUploadDeps, job: ExtractionJob)
       return { status: 'retry', code: error.code, message: error.message };
     }
 
-    // Tell the user whether we gave up after retrying, or never retried because it wouldn't help.
-    const message = error.retryable ? `${error.message} Gave up after ${job.attempt} attempts.` : error.message;
-    await deps.uploads.fail(upload.id, { code: error.code, message });
+    // Attempt counts go to the logs, not the user: the reason is what they can act on.
+    await deps.uploads.fail(upload.id, { code: error.code, message: error.message });
     log.error(logContext, 'Extraction failed permanently');
-    return { status: 'failed', code: error.code, message };
+    return { status: 'failed', code: error.code, message: error.message };
   }
 }
 

@@ -96,7 +96,7 @@ describe('processUpload — retry behaviour', () => {
     expect(uploads.get(UPLOAD_ID)).toMatchObject({ status: 'completed', attempts: 3, error: null });
   });
 
-  it('gives up after the final attempt and says so in the failure reason', async () => {
+  it('gives up after the final attempt, keeping the last reason', async () => {
     const extractor = scriptedExtractor(new APIConnectionTimeoutError());
 
     const outcomes = await runLikeTheQueue(extractor);
@@ -108,7 +108,7 @@ describe('processUpload — retry behaviour', () => {
       attempts: MAX_EXTRACTION_ATTEMPTS,
       error: {
         code: 'LLM_TIMEOUT',
-        message: `The AI service took too long to respond. Gave up after ${MAX_EXTRACTION_ATTEMPTS} attempts.`,
+        message: 'The AI service took too long to respond.',
       },
     });
   });

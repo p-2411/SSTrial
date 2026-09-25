@@ -139,7 +139,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
     const upload = await waitForStatus(id, 'failed');
     expect(upload).toMatchObject({
       attempts: RETRY_LIMIT + 1,
-      error: { code: 'LLM_TIMEOUT', message: expect.stringContaining(`Gave up after ${RETRY_LIMIT + 1} attempts`) },
+      error: { code: 'LLM_TIMEOUT', message: 'The AI service took too long to respond.' },
     });
     await expect.poll(() => boss.findJobs(EXTRACTION_DEAD_LETTER_QUEUE, { data: { uploadId: id } })).toHaveLength(1);
   }, 30_000);

@@ -55,11 +55,7 @@ export function StatusDetail({ upload }: { upload: UploadSummary }) {
     case 'failed':
       return <p className={cn(base, 'text-danger')}>{upload.error?.message ?? 'Processing failed.'}</p>;
     case 'processing':
-      return (
-        <p className={cn(base, 'text-brand')}>
-          {upload.attempts > 1 ? `Reading label, attempt ${upload.attempts} of ${upload.maxAttempts}` : 'Reading label'}
-        </p>
-      );
+      return <p className={cn(base, 'text-brand')}>Reading label</p>;
     case 'queued':
       // Queued again after a failed attempt: say why, and that it's handled.
       return upload.error ? (

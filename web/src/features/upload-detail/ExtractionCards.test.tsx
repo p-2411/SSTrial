@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { LabelExtraction } from '@label-extractor/shared';
-import { AllergensCard, CoreInformationCard, IngredientsCard } from './ExtractionCards';
+import { CoreInformationCard } from './ExtractionCards';
 
 const full: LabelExtraction = {
   productName: 'Barista Oat Milk',
@@ -11,18 +11,26 @@ const full: LabelExtraction = {
   netWeight: { value: 1, unit: 'l', text: '1 L' },
 };
 
+const empty: LabelExtraction = { productName: null, brand: null, ingredients: [], allergens: [], netWeight: null };
+
+function renderCard(result: LabelExtraction) {
+  render(<CoreInformationCard result={result} />);
+  return screen.getByRole('region', { name: 'Core information' });
+}
+
 describe('CoreInformationCard', () => {
-  it('shows the product name, brand and quantity, and that the data was validated', () => {
-    render(<CoreInformationCard result={full} />);
-    const card = screen.getByRole('region', { name: 'Core information' });
+  it('shows every extracted field in one card, and that the data was validated', () => {
+    const card = renderCard(full);
 
     expect(within(card).getByText('Barista Oat Milk')).toBeInTheDocument();
     expect(within(card).getByText('Meadow & Mill')).toBeInTheDocument();
+    expect(within(card).getByText('Contains oats, gluten.')).toBeInTheDocument();
+    expect(within(card).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Water', 'oats (10%)', 'sea salt']);
     expect(within(card).getByText('Validated against the label schema')).toBeInTheDocument();
   });
 
   it('labels liquids as volume, writes litres as L, and skips a redundant "printed as"', () => {
-    render(<CoreInformationCard result={full} />);
+    renderCard(full);
 
     expect(screen.getByText('Net volume')).toBeInTheDocument();
     expect(screen.getByText('1 L')).toBeInTheDocument();
@@ -30,42 +38,17 @@ describe('CoreInformationCard', () => {
   });
 
   it('keeps the printed wording when it adds information', () => {
-    render(<CoreInformationCard result={{ ...full, netWeight: { value: 500, unit: 'g', text: 'Net Wt 500 g (17.6 oz)' } }} />);
+    renderCard({ ...full, netWeight: { value: 500, unit: 'g', text: 'Net Wt 500 g (17.6 oz)' } });
 
     expect(screen.getByText('Net weight')).toBeInTheDocument();
     expect(screen.getByText('Printed as “Net Wt 500 g (17.6 oz)”')).toBeInTheDocument();
   });
 
-  it('says explicitly when a field was not on the label', () => {
-    render(<CoreInformationCard result={{ ...full, brand: null, netWeight: null }} />);
-    expect(screen.getAllByText('Not found on label')).toHaveLength(2);
-  });
-});
+  it('says explicitly when something was not on the label', () => {
+    renderCard(empty);
 
-describe('AllergensCard', () => {
-  it('lists each declared allergen, with a sentence for screen readers', () => {
-    render(<AllergensCard allergens={['oats', 'gluten']} />);
-
-    expect(screen.getByText('Contains oats, gluten.')).toBeInTheDocument();
-    expect(screen.getByText('oats')).toBeInTheDocument();
-  });
-
-  it('says when no allergens are declared', () => {
-    render(<AllergensCard allergens={[]} />);
-    expect(screen.getByText('No allergens declared on label')).toBeInTheDocument();
-  });
-});
-
-describe('IngredientsCard', () => {
-  it('lists ingredients in label order with a count', () => {
-    render(<IngredientsCard ingredients={full.ingredients} />);
-
-    expect(screen.getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Water', 'oats (10%)', 'sea salt']);
-    expect(screen.getByText('(3)')).toBeInTheDocument();
-  });
-
-  it('says when there is no ingredient list', () => {
-    render(<IngredientsCard ingredients={[]} />);
+    expect(screen.getAllByText('Not found on label')).toHaveLength(3);
+    expect(screen.getByText('None declared on label')).toBeInTheDocument();
     expect(screen.getByText('No ingredient list found on label')).toBeInTheDocument();
   });
 });

@@ -7,7 +7,7 @@ import { InlineError } from '@/components/InlineError';
 import { StatusPill } from '@/components/StatusPill';
 import { Skeleton } from '@/components/ui/skeleton';
 import { fileTypeLabel, formatDateTime, formatRelativeTime } from '@/lib/format';
-import { AllergensCard, CoreInformationCard, IngredientsCard } from './ExtractionCards';
+import { CoreInformationCard } from './ExtractionCards';
 import { JsonDisclosure } from './JsonDisclosure';
 import { SourceDocumentCard } from './SourceDocumentCard';
 import { StatusNotice } from './StatusNotice';
@@ -19,7 +19,6 @@ export function UploadDetailView() {
 
   return (
     <div className="grid min-w-0 gap-5">
-
       {isPending && <DetailSkeleton />}
 
       {isError && !upload &&
@@ -61,29 +60,16 @@ function Detail({ upload }: { upload: UploadDetail }) {
           <Fact label="File">
             {fileTypeLabel(upload.mimeType)}, {formatBytes(upload.sizeBytes)}
           </Fact>
-          {upload.attempts > 0 && (
-            <Fact label="Attempts">
-              {upload.attempts} of {upload.maxAttempts}
-            </Fact>
-          )}
         </dl>
       </header>
 
       <StatusNotice upload={upload} />
 
-      {/* Extracted data first, then the source document to check it against. */}
-      <div className="grid items-start gap-4">
-        {upload.result && (
-          <div className="grid gap-4">
-            <CoreInformationCard result={upload.result} />
-            <AllergensCard allergens={upload.result.allergens} />
-            <IngredientsCard ingredients={upload.result.ingredients} />
-            <JsonDisclosure data={upload.result} />
-          </div>
-        )}
-        {/* Keyed by id so switching uploads resets the remembered preview URL. */}
-        <SourceDocumentCard key={upload.id} upload={upload} />
-      </div>
+      {/* Extracted data first, then the source document to check it against, then the raw JSON. */}
+      {upload.result && <CoreInformationCard result={upload.result} />}
+      {/* Keyed by id so switching uploads resets the remembered preview URL. */}
+      <SourceDocumentCard key={upload.id} upload={upload} />
+      {upload.result && <JsonDisclosure data={upload.result} />}
     </>
   );
 }

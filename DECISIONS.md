@@ -24,7 +24,7 @@ The LLM sits behind a `LabelExtractor` interface. Every failure becomes an `Extr
 | Malformed JSON, truncated output, schema mismatch | Refusal or content filter |
 | Unknown errors (retrying is safe) | Valid answer with nothing label-like in it; file missing |
 
-- **The queue owns retries, not the SDK** (`maxRetries: 0`). That gives one retry policy: 5 attempts, backing off about 15 s, 30 s, 60 s and 120 s with jitter. It survives restarts, and the user can see it. Between attempts the upload goes back to `queued` with the reason ("The AI service is rate-limiting requests. Retrying automatically."). The final failure says "Gave up after 5 attempts".
+- **The queue owns retries, not the SDK** (`maxRetries: 0`). That gives one retry policy: 5 attempts, backing off about 15 s, 30 s, 60 s and 120 s with jitter. It survives restarts, and the user can see it. Between attempts the upload goes back to `queued` with the reason ("The AI service is rate-limiting requests. Retrying automatically."). Attempt counts stay in the logs; users only see the reason.
 - **Output is never trusted.** Structured outputs constrain the model, and every response is still parsed with Zod. We store normalised, validated data or nothing.
 - **Crashes and hangs.** A job still active after 180 s is expired and retried by pg-boss. If the *final* attempt dies, the job lands in the dead-letter queue, whose handler marks the upload failed, so nothing sits in `processing` forever.
 - **Idempotency.** Every status change is a guarded `UPDATE … WHERE status IN (…)`, so duplicate deliveries, double clicks and races are no-ops.

@@ -1,4 +1,4 @@
-import { ChevronDown, Copy } from 'lucide-react';
+import { ChevronRight, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import type { LabelExtraction } from '@label-extractor/shared';
 import { Button } from '@/components/ui/button';
@@ -22,7 +22,8 @@ export function JsonDisclosure({ data }: { data: LabelExtraction }) {
     <Collapsible className="group/json">
       <CollapsibleTrigger asChild>
         <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground">
-          <ChevronDown className="transition-transform group-data-[state=open]/json:rotate-180" aria-hidden />
+          {/* Points right when collapsed, down when open. */}
+          <ChevronRight className="transition-transform group-data-[state=open]/json:rotate-90" aria-hidden />
           Structured data (JSON)
         </Button>
       </CollapsibleTrigger>

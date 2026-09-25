@@ -52,7 +52,7 @@ describe('UploadList', () => {
     renderList();
 
     expect(await screen.findByText('Maple Pecan Crunch')).toBeInTheDocument();
-    expect(screen.getByText('Reading label, attempt 2 of 5')).toBeInTheDocument();
+    expect(screen.getByText('Reading label')).toBeInTheDocument();
     expect(screen.getByText('The AI service is rate-limiting requests. Retrying automatically.')).toBeInTheDocument();
     expect(screen.getByText("Couldn't find any product label information in this file.")).toBeInTheDocument();
     expect(screen.getByText('4 files, 2 in progress')).toBeInTheDocument();

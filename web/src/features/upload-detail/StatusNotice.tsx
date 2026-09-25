@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button';
 /** Explains a not-yet-completed upload: waiting, being read, retrying, or failed (with a retry button). */
 export function StatusNotice({ upload }: { upload: UploadDetail }) {
   const retry = useRetryUpload();
-  const attempt = `attempt ${upload.attempts} of ${upload.maxAttempts}`;
 
   switch (upload.status) {
     case 'queued':
@@ -19,7 +18,7 @@ export function StatusNotice({ upload }: { upload: UploadDetail }) {
             <RotateCw />
             <AlertTitle className="font-semibold">Retrying automatically</AlertTitle>
             <AlertDescription className="text-warning/90">
-              {upload.error.message} That was {attempt}; the next attempt starts shortly.
+              {upload.error.message} It will be tried again shortly.
             </AlertDescription>
           </Alert>
         );
@@ -37,9 +36,7 @@ export function StatusNotice({ upload }: { upload: UploadDetail }) {
       return (
         <Alert role="status" className="border-brand/20 bg-brand-soft text-brand">
           <Sparkles className="animate-pulse motion-reduce:animate-none" />
-          <AlertTitle className="font-semibold">
-            AI agent is reading the label{upload.attempts > 1 && `, ${attempt}`}
-          </AlertTitle>
+          <AlertTitle className="font-semibold">AI agent is reading the label</AlertTitle>
           <AlertDescription className="text-brand/80">This usually takes 5 to 20 seconds.</AlertDescription>
         </Alert>
       );
