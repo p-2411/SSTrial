@@ -200,13 +200,65 @@ describe('GET /api/uploads — list', () => {
 
   it('returns an empty list when there are no uploads', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/uploads' });
-    expect(response.json()).toEqual({ uploads: [] });
+    expect(response.json()).toEqual({ uploads: [], nextCursor: null });
   });
 
-  it('rejects an invalid limit', async () => {
-    expect((await app.inject({ method: 'GET', url: '/api/uploads?limit=0' })).statusCode).toBe(400);
+  it('rejects an invalid limit, filter or cursor', async () => {
+    for (const query of ['limit=0', 'limit=500', 'status=pending', 'cursor=not-an-id']) {
+      expect((await app.inject({ method: 'GET', url: `/api/uploads?${query}` })).statusCode).toBe(400);
+    }
+  });
+
+  it('filters by status on the server', async () => {
+    seedMany(['completed', 'failed', 'queued', 'processing', 'completed']);
+
+    const statusesFor = async (filter: string) =>
+      (await app.inject({ method: 'GET', url: `/api/uploads?status=${filter}` })).json().uploads.map((u: { status: string }) => u.status);
+
+    expect(await statusesFor('completed')).toEqual(['completed', 'completed']);
+    expect(await statusesFor('failed')).toEqual(['failed']);
+    expect((await statusesFor('in-progress')).sort()).toEqual(['processing', 'queued']);
+  });
+
+  it('pages through every upload exactly once, newest first', async () => {
+    const ids = seedMany(Array<'completed'>(7).fill('completed'));
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const url: string = `/api/uploads?limit=3${cursor ? `&cursor=${cursor}` : ''}`;
+      const page = (await app.inject({ method: 'GET', url })).json();
+      seen.push(...page.uploads.map((u: { id: string }) => u.id));
+      cursor = page.nextCursor;
+    } while (cursor);
+
+    expect(seen).toEqual([...ids].reverse());
   });
 });
+
+describe('GET /api/uploads/counts', () => {
+  it('counts each view on the server, ignoring uploads still being uploaded', async () => {
+    seedMany(['completed', 'completed', 'failed', 'queued', 'processing', 'uploading']);
+
+    const response = await app.inject({ method: 'GET', url: '/api/uploads/counts' });
+
+    expect(response.json()).toEqual({ counts: { all: 5, 'in-progress': 2, completed: 2, failed: 1 } });
+  });
+});
+
+/** Seeds one upload per status, oldest first; returns their IDs in that order. */
+function seedMany(statuses: Array<'completed' | 'failed' | 'queued' | 'processing' | 'uploading'>): string[] {
+  return statuses.map((status, i) => {
+    const id = `b0000000-0000-4000-8000-${String(i).padStart(12, '0')}`;
+    uploads.seed({
+      id,
+      status,
+      createdAt: new Date(Date.UTC(2026, 0, 1, 0, i)),
+      result: status === 'completed' ? SAMPLE_EXTRACTION : null,
+      error: status === 'failed' ? { code: 'LLM_TIMEOUT' } : null,
+    });
+    return id;
+  });
+}
 
 describe('GET /api/uploads/:id — detail', () => {
   it('returns the extracted data and a preview link for a completed upload', async () => {

@@ -119,9 +119,38 @@ export type CreateUploadResponse =
   /** An identical file is already queued, processing or done: nothing to upload. */
   | { kind: 'duplicate'; upload: UploadSummary };
 
-/** GET /api/uploads */
+/**
+ * The views of the upload list. The server does the filtering and counting, so both stay correct
+ * however many uploads there are.
+ */
+export const UPLOAD_FILTERS = {
+  all: ['queued', 'processing', 'completed', 'failed'],
+  'in-progress': ['queued', 'processing'],
+  completed: ['completed'],
+  failed: ['failed'],
+} as const satisfies Record<string, readonly UploadStatus[]>;
+
+export type UploadFilter = keyof typeof UPLOAD_FILTERS;
+export const UPLOAD_FILTER_IDS = Object.keys(UPLOAD_FILTERS) as UploadFilter[];
+
+/** GET /api/uploads?status=…&cursor=…&limit=… — newest first, one page at a time. */
+export const listUploadsQuerySchema = z.object({
+  status: z.enum(UPLOAD_FILTER_IDS as [UploadFilter, ...UploadFilter[]]).default('all'),
+  /** The `nextCursor` of the previous page. */
+  cursor: z.uuid().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+export type ListUploadsQuery = z.input<typeof listUploadsQuerySchema>;
+
 export interface ListUploadsResponse {
   uploads: UploadSummary[];
+  /** Pass as `cursor` to get the next page; `null` on the last page. */
+  nextCursor: string | null;
+}
+
+/** GET /api/uploads/counts — how many uploads each view holds. */
+export interface UploadCountsResponse {
+  counts: Record<UploadFilter, number>;
 }
 
 /** GET /api/uploads/:id, POST /api/uploads/:id/complete, POST /api/uploads/:id/retry */

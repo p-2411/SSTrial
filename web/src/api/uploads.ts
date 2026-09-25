@@ -2,16 +2,24 @@ import type {
   CreateUploadRequest,
   CreateUploadResponse,
   ListUploadsResponse,
+  UploadCountsResponse,
   UploadDetail,
+  UploadFilter,
   UploadResponse,
-  UploadSummary,
 } from '@label-extractor/shared';
 import { apiRequest } from './client.ts';
 
 /** Plain functions for each API endpoint. React Query hooks wrap these in queries.ts. */
 
-export async function listUploads(): Promise<UploadSummary[]> {
-  return (await apiRequest<ListUploadsResponse>('/api/uploads')).uploads;
+/** One page of the list, filtered and ordered by the server. */
+export function listUploads(status: UploadFilter, cursor?: string): Promise<ListUploadsResponse> {
+  const params = new URLSearchParams({ status });
+  if (cursor) params.set('cursor', cursor);
+  return apiRequest<ListUploadsResponse>(`/api/uploads?${params}`);
+}
+
+export async function getUploadCounts(): Promise<UploadCountsResponse['counts']> {
+  return (await apiRequest<UploadCountsResponse>('/api/uploads/counts')).counts;
 }
 
 export async function getUpload(id: string): Promise<UploadDetail> {

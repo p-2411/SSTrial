@@ -1,6 +1,7 @@
 import { Inbox } from 'lucide-react';
 import { errorMessage } from '@/api/client';
-import { useUploadList } from '@/api/queries';
+import { useUploadCounts, useUploadList } from '@/api/queries';
+import { Button } from '@/components/ui/button';
 import { InlineError } from '@/components/InlineError';
 import { Card, CardAction, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -20,15 +21,20 @@ interface UploadListProps {
 }
 
 export function UploadList({ pending, onRetryPending, onDismissPending }: UploadListProps) {
-  const { data: uploads, isPending, isError, error, refetch, isRefetching } = useUploadList();
   const filter = useStatusFilter();
+  const list = useUploadList(filter.id);
+  const { data: counts } = useUploadCounts();
   const now = useNow();
-  const announcement = useStatusAnnouncements(uploads);
 
-  const visible = uploads?.filter((upload) => filter.matches(upload.status));
-  const inProgress = uploads?.filter((u) => u.status === 'queued' || u.status === 'processing').length ?? 0;
-  const hasRows = pending.length > 0 || (visible !== undefined && visible.length > 0);
-  const hasCompleted = uploads?.some((u) => u.status === 'completed') ?? false;
+  // The server filters and pages; this is just every page loaded so far, in order.
+  const uploads = list.data?.pages.flatMap((page) => page.uploads);
+  const announcement = useStatusAnnouncements(uploads);
+  const { isPending, isError, error, refetch, isRefetching } = list;
+
+  const total = counts?.[filter.id];
+  const inProgress = counts?.['in-progress'] ?? 0;
+  const hasRows = pending.length > 0 || (uploads !== undefined && uploads.length > 0);
+  const hasCompleted = (counts?.completed ?? 0) > 0;
 
   return (
     <Card aria-labelledby="uploads-heading" className="gap-0 py-0" role="region">
@@ -36,10 +42,10 @@ export function UploadList({ pending, onRetryPending, onDismissPending }: Upload
         <CardTitle id="uploads-heading" className="text-base font-semibold">
           {filter.label}
         </CardTitle>
-        {uploads && uploads.length > 0 && (
+        {total !== undefined && total > 0 && (
           <CardDescription className="tabular-nums">
-            {uploads.length} {uploads.length === 1 ? 'file' : 'files'}
-            {inProgress > 0 && `, ${inProgress} in progress`}
+            {total} {total === 1 ? 'file' : 'files'}
+            {filter.id === 'all' && inProgress > 0 && `, ${inProgress} in progress`}
           </CardDescription>
         )}
         {/* Only offered once there's extracted data to export. */}
@@ -62,8 +68,16 @@ export function UploadList({ pending, onRetryPending, onDismissPending }: Upload
           {pending.map((upload) => (
             <PendingUploadRow key={upload.localId} upload={upload} onRetry={onRetryPending} onDismiss={onDismissPending} />
           ))}
-          {visible?.map((upload) => <UploadRow key={upload.id} upload={upload} now={now} />)}
+          {uploads?.map((upload) => <UploadRow key={upload.id} upload={upload} now={now} />)}
         </ul>
+      )}
+
+      {list.hasNextPage && (
+        <div className="border-t border-border/70 p-3 text-center">
+          <Button variant="ghost" size="sm" onClick={() => void list.fetchNextPage()} disabled={list.isFetchingNextPage}>
+            {list.isFetchingNextPage ? 'Loading…' : 'Load more'}
+          </Button>
+        </div>
       )}
 
       {isPending && <ListSkeleton />}
@@ -85,7 +99,7 @@ export function UploadList({ pending, onRetryPending, onDismissPending }: Upload
             <Inbox className="size-5" aria-hidden />
           </span>
           <p className="font-semibold">{filter.emptyText}</p>
-          {uploads.length === 0 && (
+          {filter.id === 'all' && uploads.length === 0 && (
             <p className="max-w-sm text-sm text-muted-foreground">
               Add a label photo or PDF above. Each file is read in the background, and its product name, brand,
               ingredients, allergens and net weight appear here.

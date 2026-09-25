@@ -1,7 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { isActiveStatus, type UploadDetail, type UploadSummary } from '@label-extractor/shared';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { isActiveStatus, type UploadDetail, type UploadFilter } from '@label-extractor/shared';
 import { ApiRequestError } from './client.ts';
-import { getUpload, listUploads, retryUpload } from './uploads.ts';
+import { getUpload, getUploadCounts, listUploads, retryUpload } from './uploads.ts';
 
 /**
  * Server state lives in React Query: caching, polling and retries are handled here so
@@ -13,7 +13,10 @@ export const POLL_INTERVAL_MS = 2_000;
 
 export const uploadKeys = {
   all: ['uploads'] as const,
-  list: () => [...uploadKeys.all, 'list'] as const,
+  /** Every filtered list; pass a filter for one of them. */
+  lists: () => [...uploadKeys.all, 'list'] as const,
+  list: (filter: UploadFilter) => [...uploadKeys.lists(), filter] as const,
+  counts: () => [...uploadKeys.all, 'counts'] as const,
   detail: (id: string) => [...uploadKeys.all, 'detail', id] as const,
 };
 
@@ -23,14 +26,31 @@ function retryUnlessClientError(failureCount: number, error: Error): boolean {
   return failureCount < 2;
 }
 
-/** The upload list. Polls only while at least one upload is still in progress. */
-export function useUploadList() {
-  return useQuery({
-    queryKey: uploadKeys.list(),
-    queryFn: listUploads,
+/**
+ * One view of the upload list, filtered and paginated by the server ("Load more" fetches the next
+ * page). Polls only while something on screen is still in progress.
+ */
+export function useUploadList(filter: UploadFilter) {
+  return useInfiniteQuery({
+    queryKey: uploadKeys.list(filter),
+    queryFn: ({ pageParam }) => listUploads(filter, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     retry: retryUnlessClientError,
     refetchInterval: (query) =>
-      query.state.data?.some((upload: UploadSummary) => isActiveStatus(upload.status)) ? POLL_INTERVAL_MS : false,
+      query.state.data?.pages.some((page) => page.uploads.some((upload) => isActiveStatus(upload.status)))
+        ? POLL_INTERVAL_MS
+        : false,
+  });
+}
+
+/** How many uploads each view holds, counted by the server. Polls while anything is in progress. */
+export function useUploadCounts() {
+  return useQuery({
+    queryKey: uploadKeys.counts(),
+    queryFn: getUploadCounts,
+    retry: retryUnlessClientError,
+    refetchInterval: (query) => ((query.state.data?.['in-progress'] ?? 0) > 0 ? POLL_INTERVAL_MS : false),
   });
 }
 
@@ -54,7 +74,8 @@ export function useRetryUpload() {
     mutationFn: retryUpload,
     onSuccess: async (upload) => {
       queryClient.setQueryData(uploadKeys.detail(upload.id), upload);
-      await queryClient.invalidateQueries({ queryKey: uploadKeys.list() });
+      await queryClient.invalidateQueries({ queryKey: uploadKeys.lists() });
+      await queryClient.invalidateQueries({ queryKey: uploadKeys.counts() });
     },
   });
 }

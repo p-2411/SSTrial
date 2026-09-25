@@ -24,7 +24,7 @@ beforeEach(() => {
   mocked.createUpload.mockResolvedValue({ kind: 'created', upload: summary({ status: 'uploading' }), uploadUrl: 'https://storage/signed' });
   mocked.putFileToStorage.mockResolvedValue();
   mocked.completeUpload.mockResolvedValue({ ...summary({ status: 'queued' }), result: null, fileUrl: null });
-  mocked.listUploads.mockResolvedValue([]);
+  mocked.listUploads.mockResolvedValue({ uploads: [], nextCursor: null });
 });
 
 describe('useFileUploads', () => {

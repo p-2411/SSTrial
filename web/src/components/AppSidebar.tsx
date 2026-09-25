@@ -13,7 +13,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { useUploadList } from '@/api/queries';
+import { useUploadCounts } from '@/api/queries';
 import { filterSearch, STATUS_FILTERS, useStatusFilter } from '@/features/uploads-list/statusFilters';
 
 /**
@@ -23,7 +23,7 @@ import { filterSearch, STATUS_FILTERS, useStatusFilter } from '@/features/upload
 export function AppSidebar() {
   const active = useStatusFilter();
   const { pathname } = useLocation();
-  const { data: uploads } = useUploadList();
+  const { data: counts } = useUploadCounts();
 
   return (
     <Sidebar>
@@ -46,7 +46,7 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {STATUS_FILTERS.map((filter) => {
-                const count = uploads?.filter((upload) => filter.matches(upload.status)).length;
+                const count = counts?.[filter.id];
                 const isActive = filter === active;
                 return (
                   <SidebarMenuItem key={filter.id}>

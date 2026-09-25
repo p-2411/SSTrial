@@ -7,7 +7,11 @@ import {
   SUPPORTED_TYPES_LABEL,
   validateFileMetadata,
   type CreateUploadResponse,
+  listUploadsQuerySchema,
+  UPLOAD_FILTERS,
+  UPLOAD_FILTER_IDS,
   type ListUploadsResponse,
+  type UploadCountsResponse,
   type UploadResponse,
 } from '@label-extractor/shared';
 import type { FileStorage } from '../../infra/storage.ts';
@@ -25,7 +29,6 @@ export interface UploadRoutesDeps {
 const PREVIEW_URL_TTL_SECONDS = 10 * 60;
 
 const idParams = z.object({ id: z.uuid() });
-const listQuery = z.object({ limit: z.coerce.number().int().min(1).max(200).default(100) });
 
 /**
  * Upload endpoints. The upload flow is three requests from the browser:
@@ -118,10 +121,26 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage }: U
 
   // List & detail -------------------------------------------------------------------------
   app.get('/api/uploads', async (request): Promise<ListUploadsResponse> => {
-    const query = listQuery.safeParse(request.query);
-    if (!query.success) throw new ApiError(400, 'BAD_REQUEST', 'limit must be a whole number from 1 to 200.');
-    const records = await uploads.listRecent(query.data.limit);
-    return { uploads: records.map(toUploadSummary) };
+    const query = listUploadsQuerySchema.safeParse(request.query);
+    if (!query.success) {
+      throw new ApiError(400, 'BAD_REQUEST', `Use status=${UPLOAD_FILTER_IDS.join('|')}, a cursor from a previous page, and limit=1–100.`);
+    }
+    const { status, cursor, limit } = query.data;
+    // Ask for one extra row: if it comes back, there's another page after this one.
+    const records = await uploads.list({ statuses: UPLOAD_FILTERS[status], limit: limit + 1, after: cursor });
+    const page = records.slice(0, limit);
+    return {
+      uploads: page.map(toUploadSummary),
+      nextCursor: records.length > limit ? page.at(-1)!.id : null,
+    };
+  });
+
+  app.get('/api/uploads/counts', async (): Promise<UploadCountsResponse> => {
+    const byStatus = await uploads.countByStatus();
+    const count = (statuses: readonly string[]) => statuses.reduce((sum, s) => sum + (byStatus[s as keyof typeof byStatus] ?? 0), 0);
+    return {
+      counts: Object.fromEntries(UPLOAD_FILTER_IDS.map((id) => [id, count(UPLOAD_FILTERS[id])])) as UploadCountsResponse['counts'],
+    };
   });
 
   app.get('/api/uploads/:id', async (request): Promise<UploadResponse> => {

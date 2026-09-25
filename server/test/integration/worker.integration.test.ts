@@ -242,4 +242,38 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       expect(storage.files.has(upload.storagePath)).toBe(false);
     });
   });
+
+  describe('upload list (real SQL)', () => {
+    it('pages through uploads with a keyset cursor, without gaps or repeats', async () => {
+      // Created in one burst, so several share a millisecond: the ID tie-breaker must keep order exact.
+      const ids: string[] = [];
+      for (let i = 0; i < 7; i++) {
+        const id = crypto.randomUUID();
+        createdIds.push(id);
+        ids.push(id);
+        await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png`, contentSha256: null });
+        await sql`update uploads set status = 'failed', error_code = 'LLM_TIMEOUT' where id = ${id}`;
+      }
+
+      const seen: string[] = [];
+      let after: string | undefined;
+      for (;;) {
+        const page = await uploads.list({ statuses: ['failed'], limit: 3, after });
+        if (page.length === 0) break;
+        seen.push(...page.map((u) => u.id));
+        after = page.at(-1)!.id;
+      }
+
+      const ours = seen.filter((id) => ids.includes(id));
+      expect(new Set(ours).size).toBe(ids.length);
+      const all = await uploads.list({ statuses: ['failed'], limit: 1000 });
+      expect(ours).toEqual(all.map((u) => u.id).filter((id) => ids.includes(id)));
+    });
+
+    it('counts uploads by status', async () => {
+      const counts = await uploads.countByStatus();
+      expect(counts.failed).toBeGreaterThanOrEqual(7);
+      expect(counts).not.toHaveProperty('uploading');
+    });
+  });
 });

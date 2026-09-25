@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { jsonResponse, renderWithProviders } from '../../test/render.tsx';
 import { summary } from '../../test/fixtures.ts';
+import { UPLOAD_FILTERS, UPLOAD_FILTER_IDS, type UploadFilter, type UploadSummary } from '@label-extractor/shared';
 import { UploadList } from './UploadList.tsx';
 
 const noop = () => {};
@@ -13,9 +14,30 @@ function renderList(url = '/') {
 
 afterEach(() => vi.unstubAllGlobals());
 
+/**
+ * A fake API that filters and counts like the real server, so the list can be tested end to end.
+ * Returns the URLs requested.
+ */
+function stubApi(uploads: UploadSummary[]): string[] {
+  const requested: string[] = [];
+  const inView = (filter: UploadFilter) => uploads.filter((u) => (UPLOAD_FILTERS[filter] as readonly string[]).includes(u.status));
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string) => {
+      requested.push(input);
+      const url = new URL(input, 'http://test');
+      if (url.pathname === '/api/uploads/counts') {
+        return jsonResponse({ counts: Object.fromEntries(UPLOAD_FILTER_IDS.map((id) => [id, inView(id).length])) });
+      }
+      return jsonResponse({ uploads: inView((url.searchParams.get('status') ?? 'all') as UploadFilter), nextCursor: null });
+    }),
+  );
+  return requested;
+}
+
 describe('UploadList', () => {
   it('shows loading placeholders, then an empty state that invites an upload', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ uploads: [] })));
+    stubApi([]);
     renderList();
 
     expect(screen.getByLabelText('Loading uploads')).toBeInTheDocument();
@@ -49,7 +71,7 @@ describe('UploadList', () => {
         error: { code: 'NO_LABEL_DATA', message: "Couldn't find any product label information in this file." },
       }),
     ];
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ uploads })));
+    stubApi(uploads);
     renderList();
 
     expect(await screen.findByText('Maple Pecan Crunch')).toBeInTheDocument();
@@ -67,23 +89,25 @@ describe('UploadList', () => {
       summary({ id: 'a', fileName: 'done.png', status: 'completed' }),
       summary({ id: 'b', fileName: 'broken.png', status: 'failed', error: { code: 'NO_LABEL_DATA', message: 'Nothing found.' } }),
     ];
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ uploads })));
+    const requested = stubApi(uploads);
     renderList('/?status=failed');
 
     expect(await screen.findByText('broken.png')).toBeInTheDocument();
+    // The server does the filtering; the browser only asks for the view.
+    expect(requested).toContain('/api/uploads?status=failed');
     expect(screen.queryByText('done.png')).not.toBeInTheDocument();
     expect(screen.getByText('Failed', { selector: '[data-slot=card-title]' })).toBeInTheDocument();
   });
 
   it('shows an empty message for a filter with no matches', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ uploads: [summary({ status: 'completed' })] })));
+    stubApi([summary({ status: 'completed' })]);
     renderList('/?status=in-progress');
 
     expect(await screen.findByText('Nothing is being processed right now.')).toBeInTheDocument();
   });
 
   it('offers CSV and JSON exports once something has completed', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ uploads: [summary({ status: 'completed' })] })));
+    stubApi([summary({ status: 'completed' })]);
     renderList();
 
     await userEvent.click(await screen.findByRole('button', { name: 'Export' }));
@@ -93,10 +117,32 @@ describe('UploadList', () => {
   });
 
   it('hides the export menu when nothing has completed yet', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ uploads: [summary({ status: 'queued' })] })));
+    stubApi([summary({ status: 'queued' })]);
     renderList();
 
     expect(await screen.findByText('Waiting to be processed')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Export' })).not.toBeInTheDocument();
+  });
+
+  it('loads the next page from the server on "Load more"', async () => {
+    const first = summary({ id: 'first', fileName: 'first.png' });
+    const second = summary({ id: 'second', fileName: 'second.png' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string) => {
+        const url = new URL(input, 'http://test');
+        if (url.pathname === '/api/uploads/counts') return jsonResponse({ counts: { all: 2, 'in-progress': 0, completed: 2, failed: 0 } });
+        return url.searchParams.get('cursor') === 'first'
+          ? jsonResponse({ uploads: [second], nextCursor: null })
+          : jsonResponse({ uploads: [first], nextCursor: 'first' });
+      }),
+    );
+    renderList();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Load more' }));
+
+    expect(await screen.findByText('second.png')).toBeInTheDocument();
+    expect(screen.getByText('first.png')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
   });
 });

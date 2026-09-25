@@ -98,7 +98,10 @@ export function useFileUploads() {
         // Hand over to the server-side list: cache the detail, wait for the list to include this
         // upload, then drop the local row, so it moves across without a flicker.
         queryClient.setQueryData(uploadKeys.detail(confirmed.id), confirmed);
-        await queryClient.invalidateQueries({ queryKey: uploadKeys.list() });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: uploadKeys.lists() }),
+          queryClient.invalidateQueries({ queryKey: uploadKeys.counts() }),
+        ]);
         dispatch({ type: 'removed', localId });
       } catch (error) {
         update(localId, { phase: 'failed', error: errorMessage(error) });

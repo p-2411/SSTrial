@@ -1,42 +1,39 @@
 import { useSearchParams } from 'react-router';
 import type { LucideIcon } from 'lucide-react';
 import { CheckCircle2, Files, Loader2, XCircle } from 'lucide-react';
-import type { UploadStatus } from '@label-extractor/shared';
+import type { UploadFilter } from '@label-extractor/shared';
 
 /**
  * The list can be narrowed by status. The filter lives in the URL (?status=failed) so it survives
- * refreshes, can be shared, and is shown in the sidebar.
+ * refreshes, can be shared, and is shown in the sidebar. Which statuses each view holds is defined
+ * once, in shared (UPLOAD_FILTERS); the server does the filtering and counting.
  */
 export interface StatusFilter {
-  id: 'all' | 'in-progress' | 'completed' | 'failed';
+  id: UploadFilter;
   label: string;
   icon: LucideIcon;
-  matches: (status: UploadStatus) => boolean;
   /** Shown when the filter matches nothing. */
   emptyText: string;
 }
 
 export const STATUS_FILTERS: StatusFilter[] = [
-  { id: 'all', label: 'All uploads', icon: Files, matches: () => true, emptyText: 'No uploads yet' },
+  { id: 'all', label: 'All uploads', icon: Files, emptyText: 'No uploads yet' },
   {
     id: 'in-progress',
     label: 'In progress',
     icon: Loader2,
-    matches: (status) => status === 'queued' || status === 'processing',
     emptyText: 'Nothing is being processed right now.',
   },
   {
     id: 'completed',
     label: 'Completed',
     icon: CheckCircle2,
-    matches: (status) => status === 'completed',
     emptyText: 'No completed uploads yet.',
   },
   {
     id: 'failed',
     label: 'Failed',
     icon: XCircle,
-    matches: (status) => status === 'failed',
     emptyText: 'No failed uploads.',
   },
 ];
