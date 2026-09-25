@@ -86,7 +86,8 @@ function ShowMenu({ filters, onChange }: { filters: LogFilters; onChange: (chang
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" className="h-9">
           <ListFilter data-icon="inline-start" aria-hidden />
-          Show {midSentence(filters.type ? LOG_EVENT_TYPES[filters.type] : LOG_LEVEL_FILTERS[filters.level])}
+          {/* The space keeps the accessible name "Show everything" rather than "Showeverything". */}
+          <span className="font-normal">Show</span> {midSentence(filters.type ? LOG_EVENT_TYPES[filters.type] : LOG_LEVEL_FILTERS[filters.level])}
           <ChevronDown data-icon="inline-end" aria-hidden />
         </Button>
       </DropdownMenuTrigger>
