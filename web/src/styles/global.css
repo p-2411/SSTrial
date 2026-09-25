@@ -1,0 +1,107 @@
+/*
+ * Design tokens and base styles.
+ *
+ * The look borrows from product packaging: the extracted data is shown as a label information
+ * panel (heavy black rules, condensed heavy type), and everything around it stays quiet.
+ * Yellow is the "shelf tag" highlight — used for drag-over, selection and focus, never behind text
+ * that needs to be read at length.
+ */
+:root {
+  --paper: #ffffff;
+  --board: #f1f2ef; /* cool grey, like packaging board */
+  --ink: #000000;
+  --text: #24272b;
+  --muted: #666b71;
+  --line: #d9dbd6;
+  --tag: #ffd60a;
+
+  --queued: #666b71;
+  --processing: #1f5fd1;
+  --completed: #177a38;
+  --failed: #b8232a;
+  --failed-wash: #fbeeee;
+
+  --font: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+  /* Type scale (1.25 ratio) */
+  --step--1: 0.8125rem;
+  --step-0: 0.9375rem;
+  --step-1: 1.125rem;
+  --step-2: 1.5rem;
+  --step-3: 2.125rem;
+
+  --radius: 6px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  color-scheme: light;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--board);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--step-0);
+  line-height: 1.5;
+  font-variation-settings: 'wdth' 100;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px var(--tag);
+}
+
+/* Visually hidden but still read by screen readers. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

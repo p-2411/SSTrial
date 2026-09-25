@@ -17,6 +17,7 @@ export function toUploadSummary(record: UploadRecord): UploadSummary {
     attempts: record.attempts,
     maxAttempts: MAX_EXTRACTION_ATTEMPTS,
     error: record.error,
+    productName: record.result?.productName ?? null,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
     completedAt: record.completedAt?.toISOString() ?? null,

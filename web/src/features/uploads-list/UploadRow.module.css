@@ -1,0 +1,87 @@
+/* Shared by UploadRow and PendingUploadRow so both kinds of row line up in one list. */
+.row {
+  display: grid;
+  grid-template-columns: 7.25rem minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+
+.link {
+  color: inherit;
+  text-decoration: none;
+  border-left: 4px solid transparent;
+  padding-left: calc(var(--space-4) - 4px);
+}
+
+.link:hover {
+  background: #fafaf8;
+}
+
+/* The selected row gets the shelf-tag marker. */
+.active,
+.active:hover {
+  border-left-color: var(--ink);
+  background: #fffbe0;
+}
+
+.status {
+  padding-top: 2px;
+}
+
+.main {
+  min-width: 0;
+}
+
+.name {
+  font-weight: 700;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail,
+.found,
+.failure,
+.retrying {
+  font-size: var(--step--1);
+  margin-top: 2px;
+}
+
+.detail {
+  color: var(--muted);
+}
+
+.found {
+  color: var(--text);
+}
+
+.failure {
+  color: var(--failed);
+}
+
+.retrying {
+  color: var(--processing);
+}
+
+.meta {
+  display: grid;
+  justify-items: end;
+  font-size: var(--step--1);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .status {
+    grid-column: 1 / -1;
+  }
+}

@@ -1,0 +1,53 @@
+.notice {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  background: var(--paper);
+  border-left: 4px solid var(--queued);
+  max-width: 40rem;
+}
+
+.processing {
+  border-left-color: var(--processing);
+}
+
+.retrying {
+  border-left-color: var(--processing);
+  background: #eef3fc;
+}
+
+.failed {
+  border-left-color: var(--failed);
+  background: var(--failed-wash);
+}
+
+.title {
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.failed .title {
+  color: var(--failed);
+}
+
+.notice > [role='progressbar'] {
+  margin-top: var(--space-2);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.actionError {
+  color: var(--failed);
+  font-size: var(--step--1);
+}
+
+.hint {
+  color: var(--muted);
+  font-size: var(--step--1);
+}

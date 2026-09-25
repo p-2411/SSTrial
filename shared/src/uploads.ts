@@ -84,6 +84,8 @@ export interface UploadSummary {
    * Otherwise `null`.
    */
   error: { code: UploadErrorCode; message: string } | null;
+  /** Extracted product name, so the list can show what each file turned out to be. */
+  productName: string | null;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;

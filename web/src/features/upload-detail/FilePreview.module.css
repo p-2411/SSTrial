@@ -1,0 +1,37 @@
+.figure {
+  margin: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.image,
+.frame {
+  display: block;
+  width: 100%;
+  max-height: 26rem;
+  background: var(--board);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.image {
+  object-fit: contain;
+}
+
+.frame {
+  height: 26rem;
+}
+
+.caption {
+  font-size: var(--step--1);
+}
+
+.unavailable {
+  display: grid;
+  place-items: center;
+  min-height: 8rem;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: var(--step--1);
+}
