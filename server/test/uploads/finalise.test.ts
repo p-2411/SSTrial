@@ -12,7 +12,7 @@ beforeEach(() => {
   storage = new InMemoryStorage();
 });
 
-const finalise = () => finaliseUpload({ uploads, storage }, ID);
+const finalise = (caller: 'browser' | 'finalise-job' = 'browser') => finaliseUpload({ uploads, storage }, ID, { caller });
 
 describe('finaliseUpload', () => {
   it('queues extraction when a supported file has arrived', async () => {
@@ -62,6 +62,30 @@ describe('finaliseUpload', () => {
 
     await expect(finalise()).resolves.toMatchObject({ outcome: 'already-finalised' });
     expect(uploads.enqueued).toEqual([]);
+  });
+
+  it('cancels the finalise job when the browser confirms the upload', async () => {
+    const upload = uploads.seed({ id: ID });
+    storage.put(upload.storagePath, FILE_BYTES.png);
+
+    await finalise('browser');
+    expect(uploads.finaliseCancelled).toEqual([ID]);
+  });
+
+  it('does not cancel the finalise job when it is the one finalising (it would cancel itself)', async () => {
+    const upload = uploads.seed({ id: ID });
+    storage.put(upload.storagePath, FILE_BYTES.png);
+
+    await expect(finalise('finalise-job')).resolves.toMatchObject({ outcome: 'queued' });
+    expect(uploads.finaliseCancelled).toEqual([]);
+  });
+
+  it('cancels the finalise job when the browser path rejects the file', async () => {
+    const upload = uploads.seed({ id: ID });
+    storage.put(upload.storagePath, FILE_BYTES.text);
+
+    await finalise('browser');
+    expect(uploads.finaliseCancelled).toEqual([ID]);
   });
 
   it('reports an upload that no longer exists', async () => {

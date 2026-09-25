@@ -11,7 +11,8 @@ import type { UploadRecord, UploadStore } from './store.ts';
  *   - the finalise job, once the signed upload URL has expired, for uploads the browser never
  *     confirmed (tab closed, connection lost). By then no more bytes can arrive, so an upload
  *     with no file is discarded for good.
- * Whichever runs first wins; the other finds the upload already finalised.
+ * Whichever runs first wins; the other finds the upload already finalised. When the browser wins,
+ * the finalise job is cancelled in the same transaction, so it never runs just to find nothing to do.
  */
 
 export type FinaliseResult =
@@ -30,7 +31,13 @@ export interface FinaliseDeps {
   storage: Pick<FileStorage, 'readHead' | 'remove'>;
 }
 
-export async function finaliseUpload(deps: FinaliseDeps, id: string): Promise<FinaliseResult> {
+export interface FinaliseOptions {
+  /** Only the browser cancels the finalise job; the job itself can't cancel its own run. */
+  caller: 'browser' | 'finalise-job';
+}
+
+export async function finaliseUpload(deps: FinaliseDeps, id: string, { caller }: FinaliseOptions): Promise<FinaliseResult> {
+  const settle = { cancelFinalise: caller === 'browser' };
   const upload = await deps.uploads.findById(id);
   if (!upload) return { outcome: 'not-found' };
   if (upload.status !== 'uploading') return { outcome: 'already-finalised', upload };
@@ -44,12 +51,12 @@ export async function finaliseUpload(deps: FinaliseDeps, id: string): Promise<Fi
     // Not something we'd ever process (e.g. a renamed .exe), so don't keep it. File first: if the
     // delete fails, the row survives and the finalise job tries again later.
     await deps.storage.remove(upload.storagePath);
-    await deps.uploads.discardUnfinished(upload.id);
+    await deps.uploads.discardUnfinished(upload.id, settle);
     return { outcome: 'rejected' };
   }
 
   // A valid file with the wrong extension (a PNG saved as .jpg) is accepted under its real type.
-  const queued = await deps.uploads.markUploaded(upload.id, detected);
+  const queued = await deps.uploads.markUploaded(upload.id, detected, settle);
   if (queued) return { outcome: 'queued', upload: queued };
 
   // The other caller finalised it between our read and our update.

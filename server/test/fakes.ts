@@ -5,7 +5,7 @@ import type { UploadChange, UploadChangeFeed } from '../src/api/upload-changes.t
 import type { OpsStore } from '../src/ops/store.ts';
 import { RateLimitWaitTooLong, type RateLimiter } from '../src/extraction/rate-limiter.ts';
 import { StorageUnavailableError, type FileStorage } from '../src/infra/storage.ts';
-import type { NewUpload, UploadRecord, UploadStore } from '../src/uploads/store.ts';
+import type { NewUpload, SettleOptions, UploadRecord, UploadStore } from '../src/uploads/store.ts';
 
 /**
  * In-memory stand-ins for Postgres, the queue and Supabase Storage, so API and worker logic can be
@@ -33,6 +33,8 @@ export class InMemoryUploadStore implements UploadStore {
   readonly enqueued: string[] = [];
   /** Upload IDs a finalise job was scheduled for, in order. */
   readonly finaliseScheduled: string[] = [];
+  /** Upload IDs whose finalise job was cancelled, in order. */
+  readonly finaliseCancelled: string[] = [];
 
   seed(overrides: Partial<UploadRecord> & { id: string }): UploadRecord {
     const now = new Date();
@@ -101,15 +103,17 @@ export class InMemoryUploadStore implements UploadStore {
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     yield* completed;
   }
-  async markUploaded(id: string, mimeType: SupportedMimeType) {
+  async markUploaded(id: string, mimeType: SupportedMimeType, options?: SettleOptions) {
     const row = this.transition(id, ['uploading'], { status: 'queued', mimeType });
     if (row) this.enqueued.push(id);
+    if (row && options?.cancelFinalise) this.finaliseCancelled.push(id);
     return row;
   }
-  async discardUnfinished(id: string) {
+  async discardUnfinished(id: string, options?: SettleOptions) {
     const row = this.rows.get(id);
     if (!row || row.status !== 'uploading') return null;
     this.rows.delete(id);
+    if (options?.cancelFinalise) this.finaliseCancelled.push(id);
     return row;
   }
   async requeue(id: string, from: 'failed' | 'completed') {

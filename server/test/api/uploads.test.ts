@@ -123,7 +123,7 @@ describe('POST /api/uploads — duplicate files', () => {
 describe('POST /api/uploads/:id/complete — confirm the upload and queue it', () => {
   const complete = (id = ID) => app.inject({ method: 'POST', url: `/api/uploads/${id}/complete` });
 
-  it('verifies the file and queues exactly one extraction job', async () => {
+  it('verifies the file, queues exactly one extraction job and cancels the finalise job', async () => {
     seedUploaded(FILE_BYTES.png);
 
     const response = await complete();
@@ -131,6 +131,8 @@ describe('POST /api/uploads/:id/complete — confirm the upload and queue it', (
     expect(response.statusCode).toBe(200);
     expect(response.json().upload).toMatchObject({ id: ID, status: 'queued' });
     expect(uploads.enqueued).toEqual([ID]);
+    // The upload is settled, so its finalise job would have nothing to do.
+    expect(uploads.finaliseCancelled).toEqual([ID]);
   });
 
   it('is idempotent: confirming twice does not queue the work twice', async () => {
@@ -159,6 +161,7 @@ describe('POST /api/uploads/:id/complete — confirm the upload and queue it', (
     expect(storage.files.has(upload.storagePath)).toBe(false);
     expect(uploads.rows.has(ID)).toBe(false);
     expect(uploads.enqueued).toEqual([]);
+    expect(uploads.finaliseCancelled).toEqual([ID]);
   });
 
   it('accepts a valid file with the wrong extension, under its real type', async () => {
@@ -178,6 +181,8 @@ describe('POST /api/uploads/:id/complete — confirm the upload and queue it', (
     expect(response.json().error.code).toBe('FILE_NOT_UPLOADED');
     expect(uploads.get(ID).status).toBe('uploading');
     expect(uploads.enqueued).toEqual([]);
+    // The finalise job stays: it settles the upload if the browser never manages to.
+    expect(uploads.finaliseCancelled).toEqual([]);
   });
 
   it('returns 404 for unknown or malformed IDs', async () => {

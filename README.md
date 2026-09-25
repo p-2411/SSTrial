@@ -56,7 +56,7 @@ uploading ─(browser confirms)─► queued ─(worker claims)─► processing
                                                                └──► failed (reason shown; retry if it could help)
 ```
 
-- **Every upload finishes.** Creating an upload schedules a *finalise* job for just after its signed URL expires. It confirms a file the browser never confirmed, or discards an upload whose file never arrived.
+- **Every upload finishes.** Creating an upload schedules a *finalise* job for just after its signed URL expires. It confirms a file the browser never confirmed, or discards an upload whose file never arrived. When the browser does confirm, the job is cancelled in the same transaction.
 - **Rejected files aren't kept.** Content that isn't really a JPEG, PNG, WebP or PDF is deleted with its upload; the browser shows why, with "Try again".
 - **Duplicates are recognised.** An identical file (same SHA-256) points to the existing upload instead of being processed again.
 

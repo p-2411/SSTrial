@@ -56,6 +56,12 @@ export interface NewUpload {
   contentSha256: string | null;
 }
 
+/** Options for the two ways an upload leaves `uploading`. */
+export interface SettleOptions {
+  /** Cancel the upload's finalise job in the same transaction (see UploadJobs.cancelFinalise). */
+  cancelFinalise?: boolean;
+}
+
 export interface UploadStore {
   // ---- Used by the API --------------------------------------------------------------------
   /** Inserts the row and schedules its finalise job, atomically (see FINALISE_QUEUE). */
@@ -73,12 +79,12 @@ export interface UploadStore {
   /** Every completed upload, newest first, read in batches so an export of any size can stream. */
   streamCompleted(): AsyncIterable<UploadRecord>;
   /** `uploading → queued` and enqueue the job, atomically. `mimeType` is the type sniffed from the bytes. */
-  markUploaded(id: string, mimeType: SupportedMimeType): Promise<UploadRecord | null>;
+  markUploaded(id: string, mimeType: SupportedMimeType, options?: SettleOptions): Promise<UploadRecord | null>;
   /**
    * Deletes an upload that never finished uploading, or whose file was rejected. Only `uploading`
    * rows can go, so a confirmed upload is never removed by a late or duplicate call.
    */
-  discardUnfinished(id: string): Promise<UploadRecord | null>;
+  discardUnfinished(id: string, options?: SettleOptions): Promise<UploadRecord | null>;
   /**
    * `failed|completed → queued` with attempts and any result cleared, and enqueue a fresh job,
    * atomically. `from` is the status the caller saw, so a concurrent change makes this a no-op.
@@ -186,21 +192,28 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
       }
     },
 
-    async markUploaded(id, mimeType) {
-      // Row update and job creation share one transaction: we can never end up with a `queued`
+    async markUploaded(id, mimeType, options) {
+      // Row update and job changes share one transaction: we can never end up with a `queued`
       // row that has no job (stuck forever) or a job for a row that isn't `queued`.
       return sql.begin(async (tx) => {
         const record = await transition(tx`
           update uploads set status = 'queued', mime_type = ${mimeType}
           where id = ${id} and status = 'uploading'
           returning *`);
-        if (record) await jobs.enqueueExtraction(id, tx);
+        if (record) {
+          await jobs.enqueueExtraction(id, tx);
+          if (options?.cancelFinalise) await jobs.cancelFinalise(id, tx);
+        }
         return record;
       });
     },
 
-    discardUnfinished(id) {
-      return transition(sql`delete from uploads where id = ${id} and status = 'uploading' returning *`);
+    discardUnfinished(id, options) {
+      return sql.begin(async (tx) => {
+        const record = await transition(tx`delete from uploads where id = ${id} and status = 'uploading' returning *`);
+        if (record && options?.cancelFinalise) await jobs.cancelFinalise(id, tx);
+        return record;
+      });
     },
 
     async requeue(id, from) {

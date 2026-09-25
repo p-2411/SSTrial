@@ -42,7 +42,7 @@ The LLM sits behind a `LabelExtractor` interface. Every failure becomes an `Extr
 
 ## Every upload reaches a final state
 
-- **Nothing to clean up.** Creating an upload also schedules a one-off *finalise* job for just after its signed URL expires, in the same transaction. If the browser confirmed, the job does nothing. If the file arrived but the tab closed, the job confirms it. If nothing arrived, the upload is discarded. There's no periodic sweeper.
+- **Nothing to clean up.** Creating an upload also schedules a one-off *finalise* job for just after its signed URL expires, in the same transaction. If the browser confirms (or its file is rejected), the job is cancelled in that same transaction, so it never runs. If the file arrived but the tab closed, the job confirms it. If nothing arrived, the upload is discarded. There's no periodic sweeper.
 - **Rejected files aren't kept.** If the bytes aren't a supported type, the file and the upload are deleted, and the browser shows the reason on its own row with "Try again".
 - **Unreadable results are surfaced.** A saved result that no longer fits the schema is flagged and can be run again, not shown as blank.
 

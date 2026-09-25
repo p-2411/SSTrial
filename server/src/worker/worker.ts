@@ -72,7 +72,7 @@ export async function startExtractionWorker(deps: WorkerDeps): Promise<void> {
   await boss.work(FINALISE_QUEUE, { batchSize: 1 }, async ([job]: Job<FinaliseJobData>[]) => {
     if (!job) return;
     const { uploadId } = job.data;
-    const result = await finaliseUpload(deps, uploadId);
+    const result = await finaliseUpload(deps, uploadId, { caller: 'finalise-job' });
     if (result.outcome === 'not-uploaded') {
       // The URL has expired, so this file can never arrive: the upload is simply dropped.
       await deps.uploads.discardUnfinished(uploadId);

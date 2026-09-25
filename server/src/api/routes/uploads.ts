@@ -105,7 +105,7 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage }: U
   // 3. Confirm the upload finished ---------------------------------------------------------------
   app.post('/api/uploads/:id/complete', async (request): Promise<UploadResponse> => {
     const { id } = await loadUpload(request.params);
-    const result = await finaliseUpload({ uploads, storage }, id);
+    const result = await finaliseUpload({ uploads, storage }, id, { caller: 'browser' });
 
     switch (result.outcome) {
       case 'queued':

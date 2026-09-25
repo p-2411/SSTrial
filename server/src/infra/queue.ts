@@ -132,6 +132,8 @@ export interface UploadJobs {
   enqueueExtraction(uploadId: string, tx?: Db): Promise<void>;
   /** Make sure a new upload reaches a final state even if the browser never confirms it. */
   scheduleFinalise(uploadId: string, tx?: Db): Promise<void>;
+  /** Cancel that finalise job once the browser has settled the upload, so it never runs for nothing. */
+  cancelFinalise(uploadId: string, tx?: Db): Promise<void>;
 }
 
 export function createUploadJobs(boss: PgBoss): UploadJobs {
@@ -146,7 +148,13 @@ export function createUploadJobs(boss: PgBoss): UploadJobs {
     },
     async scheduleFinalise(uploadId, tx) {
       const data: FinaliseJobData = { uploadId };
-      await boss.send(FINALISE_QUEUE, data, { ...inTransaction(tx), startAfter: FINALISE_DELAY_SECONDS });
+      // The job's ID is the upload's, so it can be found and cancelled without storing a job ID.
+      await boss.send(FINALISE_QUEUE, data, { ...inTransaction(tx), id: uploadId, startAfter: FINALISE_DELAY_SECONDS });
+    },
+    async cancelFinalise(uploadId, tx) {
+      // Also cancels a job that is running, so only the browser's path may call this: the
+      // finalise job must not cancel itself.
+      await boss.cancel(FINALISE_QUEUE, uploadId, inTransaction(tx));
     },
   };
 }

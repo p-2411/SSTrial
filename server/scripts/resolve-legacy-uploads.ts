@@ -47,7 +47,7 @@ try {
       await jobs.scheduleFinalise(row.id);
       continue;
     }
-    const result = await finaliseUpload({ uploads, storage }, row.id);
+    const result = await finaliseUpload({ uploads, storage }, row.id, { caller: 'finalise-job' });
     if (result.outcome === 'not-uploaded') await uploads.discardUnfinished(row.id);
     logger.info({ uploadId: row.id, outcome: result.outcome }, 'Finalised an unconfirmed upload');
   }

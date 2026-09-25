@@ -111,7 +111,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
     scripts.set(fileName, { steps, calls: 0 });
     const upload = await uploads.create({ id, fileName, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${fileName}`, contentSha256: null });
     storage.put(upload.storagePath, uniquePng());
-    expect(await uploads.markUploaded(id, 'image/png')).toMatchObject({ status: 'queued' });
+    expect(await uploads.markUploaded(id, 'image/png', { cancelFinalise: true })).toMatchObject({ status: 'queued' });
     return id;
   }
 
@@ -223,9 +223,31 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
     it('schedules a finalise job for after the signed upload URL expires', async () => {
       const upload = await createUnconfirmed();
 
-      const [job] = await boss.findJobs<{ uploadId: string }>(FINALISE_QUEUE, { data: { uploadId: upload.id } });
+      // The job's ID is the upload's.
+      const job = await boss.getJobById(FINALISE_QUEUE, upload.id);
       const delaySeconds = (job!.startAfter.getTime() - upload.createdAt.getTime()) / 1000;
       expect(delaySeconds).toBeGreaterThanOrEqual(FINALISE_DELAY_SECONDS - 5);
+    });
+
+    it('cancels the finalise job in the same transaction when the browser confirms', async () => {
+      const upload = await createUnconfirmed(uniquePng());
+      await uploads.markUploaded(upload.id, 'image/png', { cancelFinalise: true });
+
+      expect((await boss.getJobById(FINALISE_QUEUE, upload.id))?.state).toBe('cancelled');
+    });
+
+    it('cancels the finalise job when the browser path discards the upload', async () => {
+      const upload = await createUnconfirmed();
+      await uploads.discardUnfinished(upload.id, { cancelFinalise: true });
+
+      expect((await boss.getJobById(FINALISE_QUEUE, upload.id))?.state).toBe('cancelled');
+    });
+
+    it('keeps the finalise job when confirming without cancelling (the finalise job itself)', async () => {
+      const upload = await createUnconfirmed(uniquePng());
+      await uploads.markUploaded(upload.id, 'image/png');
+
+      expect((await boss.getJobById(FINALISE_QUEUE, upload.id))?.state).toBe('created');
     });
 
     // The scheduled job runs hours later; these send an immediate one to exercise the handler.
