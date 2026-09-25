@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from 'node:timers/promises';
 import type postgres from 'postgres';
 import { ExtractionError } from './errors.ts';
 
@@ -43,14 +44,21 @@ export function createPostgresRateLimiter(sql: postgres.Sql, options: RateLimite
   const maxWaitMs = options.maxWaitMs ?? 30_000;
   const { key } = options;
   let ensured: Promise<unknown> | undefined;
+  /** Creates the bucket's row once. A failure isn't cached, so the next acquire() tries again. */
+  const ensureBucket = () =>
+    (ensured ??= sql`insert into llm_rate_limits (key, tokens) values (${key}, ${capacity}) on conflict (key) do nothing`.catch(
+      (error: unknown) => {
+        ensured = undefined;
+        throw error;
+      },
+    ));
 
   // Tokens available right now: what was left, plus what has refilled since, capped at capacity.
   const available = sql`least(${capacity}::float8, tokens + extract(epoch from clock_timestamp() - refilled_at) * ${perSecond}::float8)`;
 
   return {
     async acquire(signal) {
-      ensured ??= sql`insert into llm_rate_limits (key, tokens) values (${key}, ${capacity}) on conflict (key) do nothing`;
-      await ensured;
+      await ensureBucket();
       const started = Date.now();
 
       for (;;) {
@@ -76,7 +84,7 @@ export function createPostgresRateLimiter(sql: postgres.Sql, options: RateLimite
           throw new RateLimitWaitTooLong(waitMs);
         }
         // A little jitter so waiting workers don't all retry at the same instant.
-        await sleep(waitMs + Math.random() * 100, signal);
+        await sleep(waitMs + Math.random() * 100, undefined, { signal });
       }
     },
 
@@ -90,18 +98,4 @@ export function createPostgresRateLimiter(sql: postgres.Sql, options: RateLimite
             paused_until = greatest(coalesce(llm_rate_limits.paused_until, clock_timestamp()), excluded.paused_until)`;
     },
   };
-}
-
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(timer);
-        reject(signal.reason);
-      },
-      { once: true },
-    );
-  });
 }

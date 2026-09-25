@@ -3,7 +3,8 @@ import { NavLink, useLocation } from 'react-router';
 import { formatBytes, type UploadSummary } from '@label-extractor/shared';
 import { FileTypeTile } from '@/components/FileTypeTile';
 import { StatusPill } from '@/components/StatusPill';
-import { fileTypeLabel, formatDateTime, formatRelativeTime } from '@/lib/format';
+import { RelativeTime } from '@/components/RelativeTime';
+import { fileTypeLabel } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 /** Shared by UploadRow and PendingUploadRow so both kinds of row line up in one list. */
@@ -64,9 +65,7 @@ export const UploadRow = memo(function UploadRow({ upload, now }: { upload: Uplo
         </div>
         <div className="flex flex-col items-end gap-1.5">
           <StatusPill status={upload.status} />
-          <time className="text-xs text-muted-foreground tabular-nums" dateTime={upload.createdAt} title={formatDateTime(upload.createdAt)}>
-            {formatRelativeTime(upload.createdAt, now)}
-          </time>
+          <RelativeTime className="text-xs text-muted-foreground tabular-nums" iso={upload.createdAt} now={now} />
         </div>
       </NavLink>
     </li>

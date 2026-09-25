@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { formatBytes, mimeTypeFromFileName } from '@label-extractor/shared';
+import { formatBytes } from '@label-extractor/shared';
 import { FileTypeTile } from '@/components/FileTypeTile';
 import { StatusPill } from '@/components/StatusPill';
 import { Button } from '@/components/ui/button';
@@ -22,14 +22,13 @@ interface PendingUploadRowProps {
  * re-render.
  */
 export const PendingUploadRow = memo(function PendingUploadRow({ upload, onRetry, onDismiss }: PendingUploadRowProps) {
-  const { file, phase } = upload;
+  const { file, mimeType, phase } = upload;
   const hasError = phase === 'rejected' || phase === 'failed';
-  const mimeType = mimeTypeFromFileName(file.name);
   const meta = mimeType ? `${fileTypeLabel(mimeType)}, ${formatBytes(file.size)}` : formatBytes(file.size);
 
   return (
     <li className={rowClassName}>
-      <FileTypeTile mimeType={mimeType ?? 'image/png'} />
+      <FileTypeTile mimeType={mimeType} />
       <div className="min-w-0 flex-1">
         <RowTitle name={file.name} meta={meta} />
         {hasError ? (

@@ -3,9 +3,11 @@ import { formatBytes, type UploadDetail } from '@label-extractor/shared';
 import { ApiRequestError, errorMessage } from '@/api/client';
 import { useUploadDetail } from '@/api/queries';
 import { InlineError } from '@/components/InlineError';
+import { RelativeTime } from '@/components/RelativeTime';
 import { StatusPill } from '@/components/StatusPill';
 import { Skeleton } from '@/components/ui/skeleton';
-import { fileTypeLabel, formatDateTime, formatRelativeTime } from '@/lib/format';
+import { fileTypeLabel } from '@/lib/format';
+import { useNow } from '@/lib/useNow';
 import { cn } from '@/lib/utils';
 import { CoreInformationCard } from './ExtractionCards';
 import { JsonDisclosure } from './JsonDisclosure';
@@ -58,6 +60,7 @@ export function UploadDetailView({ id }: { id: string }) {
 }
 
 function Detail({ upload }: { upload: UploadDetail }) {
+  const now = useNow();
   // Like the list rows: the product leads once the label is read; until then, the file name.
   const productName = upload.result?.productName ?? null;
   const fileFacts = `${fileTypeLabel(upload.mimeType)}, ${formatBytes(upload.sizeBytes)}`;
@@ -88,9 +91,7 @@ function Detail({ upload }: { upload: UploadDetail }) {
             )}
           </Fact>
           <Fact label="Uploaded" className="shrink-0">
-            <time dateTime={upload.createdAt} title={formatDateTime(upload.createdAt)}>
-              {formatRelativeTime(upload.createdAt)}
-            </time>
+            <RelativeTime iso={upload.createdAt} now={now} />
           </Fact>
         </dl>
       </header>

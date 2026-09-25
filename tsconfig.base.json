@@ -8,6 +8,8 @@
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     // Source files are run directly (Node type stripping on the server, Vite on the web),
     // so we type-check only and import with explicit .ts extensions.
     "noEmit": true,

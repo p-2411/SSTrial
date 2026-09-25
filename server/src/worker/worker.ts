@@ -1,5 +1,4 @@
 import type { Job, JobResult, JobWithMetadata, PgBoss } from 'pg-boss';
-import type { Logger } from '../infra/logger.ts';
 import {
   EXTRACTION_DEAD_LETTER_QUEUE,
   EXTRACTION_QUEUE,

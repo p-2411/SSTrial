@@ -2,7 +2,7 @@ import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
-import { validateFileMetadata } from '@label-extractor/shared';
+import { validateFileMetadata, type SupportedMimeType } from '@label-extractor/shared';
 import { errorMessage } from '../../api/client.ts';
 import { uploadKeys } from '../../api/queries.ts';
 import { completeUpload, createUpload, putFileToStorage } from '../../api/uploads.ts';
@@ -27,6 +27,8 @@ export type PendingUploadPhase =
 export interface PendingUpload {
   localId: string;
   file: File;
+  /** The type validation settled on; null if the file was rejected. */
+  mimeType: SupportedMimeType | null;
   phase: PendingUploadPhase;
   /** 0–1, while uploading. */
   progress: number;
@@ -140,6 +142,7 @@ export function useFileUploads() {
         const upload: PendingUpload = {
           localId: crypto.randomUUID(),
           file,
+          mimeType: validation.ok ? validation.mimeType : null,
           phase: validation.ok ? 'waiting' : 'rejected',
           progress: 0,
           error: validation.ok ? null : validation.message,
