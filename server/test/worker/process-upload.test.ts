@@ -279,3 +279,40 @@ describe('processUpload — shared rate limiting', () => {
   });
 });
 
+describe('processUpload — an attempt taken over by another worker', () => {
+  /**
+   * An extractor that, while "calling the LLM", lets another worker take the upload over — what
+   * happens when this worker stops heartbeating (e.g. it lost the database) and the job is handed on.
+   */
+  function takenOverWhile(outcome: typeof SAMPLE_EXTRACTION | Error): LabelExtractor {
+    return {
+      async extract() {
+        await uploads.startAttempt(UPLOAD_ID); // the other worker's attempt claims the upload
+        if (outcome instanceof Error) throw outcome;
+        return outcome;
+      },
+    };
+  }
+
+  it("can't save its result over the attempt that took over", async () => {
+    await expect(run(takenOverWhile(SAMPLE_EXTRACTION))).resolves.toMatchObject({ status: 'skipped' });
+    // Still owned by, and waiting on, the attempt that took over.
+    expect(uploads.get(UPLOAD_ID)).toMatchObject({ status: 'processing', result: null, attempts: 2 });
+  });
+
+  it("can't schedule a retry or fail the upload either", async () => {
+    await expect(run(takenOverWhile(new APIConnectionTimeoutError()))).resolves.toMatchObject({ status: 'skipped' });
+    expect(uploads.get(UPLOAD_ID)).toMatchObject({ status: 'processing', error: null });
+
+    const badKey = APIError.generate(401, { error: { code: 'invalid_api_key', message: 'bad key' } }, undefined, new Headers());
+    await expect(run(takenOverWhile(badKey), { attempt: 2 })).resolves.toMatchObject({ status: 'skipped' });
+    expect(uploads.get(UPLOAD_ID).status).toBe('processing');
+  });
+
+  it('the attempt that took over finishes normally', async () => {
+    await run(takenOverWhile(SAMPLE_EXTRACTION)); // stood down
+    await expect(run(scriptedExtractor(SAMPLE_EXTRACTION), { attempt: 3 })).resolves.toEqual({ status: 'completed' });
+    expect(uploads.get(UPLOAD_ID)).toMatchObject({ status: 'completed', result: SAMPLE_EXTRACTION, claimToken: null });
+  });
+});
+

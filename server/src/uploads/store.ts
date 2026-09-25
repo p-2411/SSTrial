@@ -15,6 +15,10 @@ import type { UploadJobs } from '../infra/queue.ts';
  * If the row isn't in an allowed state the update matches nothing and the method returns `null`.
  * That makes every operation idempotent and race-safe without explicit locks — e.g. a
  * double-clicked "complete", or the same job delivered twice, simply becomes a no-op.
+ *
+ * The worker's writes are also fenced by a claim token: each processing attempt gets a fresh one,
+ * and only the attempt holding the current token can finish the upload. A worker whose job was
+ * handed to another worker (it stopped heartbeating) can't overwrite anything afterwards.
  */
 
 export interface UploadRecord {
@@ -31,6 +35,8 @@ export interface UploadRecord {
   result: LabelExtraction | null;
   /** The row has a result, but it no longer matches the extraction schema. */
   resultUnreadable: boolean;
+  /** The processing attempt that currently owns the upload (see `startAttempt`). */
+  claimToken: string | null;
   createdAt: Date;
   updatedAt: Date;
   completedAt: Date | null;
@@ -81,20 +87,26 @@ export interface UploadStore {
 
   // ---- Used by the worker -----------------------------------------------------------------
   /**
-   * `queued|processing → processing` and count the attempt. `processing` is allowed as a
-   * from-state so a job retried after a worker crash can pick the upload back up.
+   * `queued|processing → processing`, count the attempt and issue a fresh claim token, which the
+   * attempt must present to finish. `processing` is allowed as a from-state so a job retried after
+   * a worker crash can pick the upload back up — taking the claim from the old attempt.
    */
   startAttempt(id: string): Promise<UploadRecord | null>;
   /** Records the hash the worker computed from the actual bytes (the browser's is only a claim). */
   recordContentHash(id: string, sha256: string): Promise<void>;
   /** The newest *completed* upload of an identical file other than `excludeId`, to reuse its result. */
   findCompletedTwin(sha256: string, excludeId: string): Promise<UploadRecord | null>;
-  /** `processing → completed` with the validated result. */
-  complete(id: string, result: LabelExtraction): Promise<UploadRecord | null>;
-  /** `processing → queued`, recording why this attempt failed; the queue will retry it. */
-  scheduleRetry(id: string, code: UploadErrorCode): Promise<UploadRecord | null>;
-  /** `queued|processing → failed` — permanent. */
-  fail(id: string, code: UploadErrorCode): Promise<UploadRecord | null>;
+  /** `processing → completed` with the validated result. Null if `claimToken` is no longer current. */
+  complete(id: string, claimToken: string, result: LabelExtraction): Promise<UploadRecord | null>;
+  /** `processing → queued`, recording why this attempt failed; the queue will retry it. Needs the claim. */
+  scheduleRetry(id: string, claimToken: string, code: UploadErrorCode): Promise<UploadRecord | null>;
+  /** `processing → failed` — permanent. Needs the claim. */
+  fail(id: string, claimToken: string, code: UploadErrorCode): Promise<UploadRecord | null>;
+  /**
+   * `queued|processing → failed`, whoever holds the claim. Only for the dead-letter safety net,
+   * which runs when every attempt died without finishing and so no attempt will ever finish it.
+   */
+  failAbandoned(id: string, code: UploadErrorCode): Promise<UploadRecord | null>;
 }
 
 export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadStore {
@@ -195,7 +207,7 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
       return sql.begin(async (tx) => {
         const record = await transition(tx`
           update uploads
-          set status = 'queued', attempts = 0, error_code = null, result = null, completed_at = null
+          set status = 'queued', attempts = 0, error_code = null, result = null, completed_at = null, claim_token = null
           where id = ${id} and status = ${from}
           returning *`);
         if (record) await jobs.enqueueExtraction(id, tx);
@@ -206,30 +218,37 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
     startAttempt(id) {
       return transition(sql`
         update uploads
-        set status = 'processing', attempts = attempts + 1, error_code = null
+        set status = 'processing', attempts = attempts + 1, error_code = null, claim_token = gen_random_uuid()
         where id = ${id} and status in ('queued', 'processing')
         returning *`);
     },
 
-    complete(id, result) {
+    complete(id, claimToken, result) {
       return transition(sql`
         update uploads
         set status = 'completed', result = ${sql.json(result as postgres.JSONValue)}, completed_at = now(),
-            error_code = null
-        where id = ${id} and status = 'processing'
+            error_code = null, claim_token = null
+        where id = ${id} and status = 'processing' and claim_token = ${claimToken}
         returning *`);
     },
 
-    scheduleRetry(id, code) {
+    scheduleRetry(id, claimToken, code) {
       return transition(sql`
-        update uploads set status = 'queued', error_code = ${code}
-        where id = ${id} and status = 'processing'
+        update uploads set status = 'queued', error_code = ${code}, claim_token = null
+        where id = ${id} and status = 'processing' and claim_token = ${claimToken}
         returning *`);
     },
 
-    fail(id, code) {
+    fail(id, claimToken, code) {
       return transition(sql`
-        update uploads set status = 'failed', error_code = ${code}
+        update uploads set status = 'failed', error_code = ${code}, claim_token = null
+        where id = ${id} and status = 'processing' and claim_token = ${claimToken}
+        returning *`);
+    },
+
+    failAbandoned(id, code) {
+      return transition(sql`
+        update uploads set status = 'failed', error_code = ${code}, claim_token = null
         where id = ${id} and status in ('queued', 'processing')
         returning *`);
     },
@@ -245,6 +264,7 @@ function toRecord(row: postgres.Row): UploadRecord {
     sizeBytes: row.size_bytes,
     storagePath: row.storage_path,
     contentSha256: row.content_sha256 ?? null,
+    claimToken: row.claim_token ?? null,
     status: row.status,
     attempts: row.attempts,
     error: row.error_code ? { code: row.error_code } : null,

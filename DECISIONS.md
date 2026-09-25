@@ -27,7 +27,8 @@ The LLM sits behind a `LabelExtractor` interface. Every failure becomes an `Extr
 - **The queue owns retries, not the SDK** (`maxRetries: 0`). That gives one retry policy: 5 attempts, backing off about 15 s, 30 s, 60 s and 120 s with jitter. It survives restarts, and the user can see it. Between attempts the upload goes back to `queued` with the reason ("The AI service is rate-limiting requests. Retrying automatically."). Attempt counts stay in the logs; users only see the reason.
 - **Rate limits are shared and honoured.** All workers draw from one token bucket in Postgres (`OPENAI_REQUESTS_PER_MINUTE`). When OpenAI answers 429 with `Retry-After` / `retry-after-ms`, the bucket pauses for that long, so every worker backs off together.
 - **Output is never trusted.** Structured outputs constrain the model, and every response is still parsed with Zod. We store normalised, validated data or nothing.
-- **Crashes and hangs.** A job still active after 180 s is expired and retried by pg-boss. If the *final* attempt dies, the job lands in the dead-letter queue, whose handler marks the upload failed, so nothing sits in `processing` forever.
+- **Crashes and hangs.** Workers heartbeat every 15 s while processing. If the heartbeats stop (the worker died or lost the database), pg-boss hands the job to another worker within about a minute; a job still active after 180 s is expired regardless. If the *final* attempt dies, the job lands in the dead-letter queue, whose handler marks the upload failed, so nothing sits in `processing` forever.
+- **One writer per upload.** Each attempt gets a fresh claim token, and saving a result, scheduling a retry or failing the upload only succeed with the current one. A worker whose job was handed on can't overwrite anything when it eventually finishes; it stands down.
 - **Idempotency.** Every status change is a guarded `UPDATE … WHERE status IN (…)`, so duplicate deliveries, double clicks and races are no-ops.
 - **Manual retry.** Users can retry failures that aren't caused by the file itself (e.g. after credit is topped up).
 
@@ -69,7 +70,7 @@ It's also styled with their brand, taken from supplyscope.io and their product s
 ## Other trade-offs and things deliberately left out
 
 - **No authentication or multi-tenancy:** everyone shares one list. This is the first thing to add before real use, along with per-user quotas.
-- **A rare double LLM call.** If a job expires while its worker is still alive but cut off from the database, a second worker can read the same label; the stored result stays correct, it just costs extra. The fix is pg-boss heartbeats (a live job keeps its claim; a dead worker is noticed in seconds, not 3 minutes) plus a claim token on the upload row that saving the result must match. Not built yet.
+- **A double LLM call is still possible, just rarer.** If a worker loses the database mid-call, its job is handed on and the label is read twice. The claim token makes the second read harmless, and heartbeats make the handover prompt, but an in-flight LLM call can't be taken back.
 - **Migrations only go forward.** There are no down scripts; one-off data changes are committed scripts (`server/scripts/`), not ad-hoc SQL.
 - **No CI.** Tests and deploys are run by hand.
 - **Not supported:** HEIC photos (they'd need converting first), and PDFs are limited by size, not page count.

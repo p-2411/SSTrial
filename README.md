@@ -148,6 +148,5 @@ Errors are always `{ "error": { "code", "message" } }`, with a message written f
 Deliberately left out to stay within the time box. The reasoning is in [DECISIONS.md](DECISIONS.md#other-trade-offs-and-things-deliberately-left-out).
 
 - **Authentication and per-user data:** everyone sees one shared list.
-- **Protection against a rare double LLM call** when a live worker loses its claim on a job (the fix is in DECISIONS.md).
 - **HEIC conversion** and a **PDF page-count limit**.
 - **CI/CD.** Deploys are run by hand with `railway up`. Next steps would be tests on every push and Railway deploying from GitHub.

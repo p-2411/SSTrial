@@ -22,7 +22,7 @@ import { processUpload, type JobOutcome, type ProcessUploadDeps } from './proces
 
 export interface WorkerDeps extends ProcessUploadDeps {
   boss: PgBoss;
-  uploads: ProcessUploadDeps['uploads'] & Pick<UploadStore, 'fail' | 'findById' | 'markUploaded' | 'discardUnfinished'>;
+  uploads: ProcessUploadDeps['uploads'] & Pick<UploadStore, 'failAbandoned' | 'findById' | 'markUploaded' | 'discardUnfinished'>;
   storage: ProcessUploadDeps['storage'] & Pick<FileStorage, 'readHead' | 'remove'>;
   /** Jobs this process handles at once. */
   concurrency: number;
@@ -64,7 +64,7 @@ export async function startExtractionWorker(deps: WorkerDeps): Promise<void> {
   // forever.
   await boss.work(EXTRACTION_DEAD_LETTER_QUEUE, { batchSize: 1 }, async ([job]: Job<ExtractionJobData>[]) => {
     if (!job) return;
-    const failed = await deps.uploads.fail(job.data.uploadId, 'PROCESSING_TIMEOUT');
+    const failed = await deps.uploads.failAbandoned(job.data.uploadId, 'PROCESSING_TIMEOUT');
     if (failed) logger.error({ uploadId: job.data.uploadId }, 'Marked upload failed from the dead-letter queue');
   });
 

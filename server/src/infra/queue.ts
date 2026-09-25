@@ -58,6 +58,14 @@ export const EXTRACTION_RETRY_POLICY = {
   expireInSeconds: 180,
 } satisfies QueueOptions;
 
+/**
+ * A worker processing an extraction job refreshes its claim this often (pg-boss sends the
+ * heartbeats automatically, every half interval). If the refreshes stop — the worker died, or can't
+ * reach the database — pg-boss hands the job to another worker after about this long plus one
+ * supervision pass, instead of waiting for the full expiry.
+ */
+export const EXTRACTION_HEARTBEAT_SECONDS = 30;
+
 /** Total attempts including the first: retries + 1. Shown in the UI ("attempt 2 of 5"). */
 export const MAX_EXTRACTION_ATTEMPTS = EXTRACTION_RETRY_POLICY.retryLimit + 1;
 
@@ -133,7 +141,8 @@ export function createUploadJobs(boss: PgBoss): UploadJobs {
       // Duplicates are prevented by the caller, not here: jobs are only enqueued alongside a guarded
       // status transition (e.g. `uploading → queued`), which can only succeed once.
       const data: ExtractionJobData = { uploadId };
-      await boss.send(EXTRACTION_QUEUE, data, inTransaction(tx));
+      // Heartbeats are set per job: pg-boss can't add them to an existing queue.
+      await boss.send(EXTRACTION_QUEUE, data, { ...inTransaction(tx), heartbeatSeconds: EXTRACTION_HEARTBEAT_SECONDS });
     },
     async scheduleFinalise(uploadId, tx) {
       const data: FinaliseJobData = { uploadId };

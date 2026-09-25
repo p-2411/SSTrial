@@ -42,6 +42,7 @@ export class InMemoryUploadStore implements UploadStore {
       sizeBytes: 1234,
       storagePath: `uploads/${overrides.id}.png`,
       contentSha256: null,
+      claimToken: null,
       status: 'uploading',
       attempts: 0,
       error: null,
@@ -119,6 +120,7 @@ export class InMemoryUploadStore implements UploadStore {
       result: null,
       resultUnreadable: false,
       completedAt: null,
+      claimToken: null,
     });
     if (row) this.enqueued.push(id);
     return row;
@@ -129,21 +131,27 @@ export class InMemoryUploadStore implements UploadStore {
       status: 'processing',
       attempts: (row?.attempts ?? 0) + 1,
       error: null,
+      claimToken: crypto.randomUUID(),
     });
   }
-  async complete(id: string, result: LabelExtraction) {
-    return this.transition(id, ['processing'], { status: 'completed', result, error: null, completedAt: new Date() });
+  async complete(id: string, claimToken: string, result: LabelExtraction) {
+    return this.transition(id, ['processing'], { status: 'completed', result, error: null, completedAt: new Date(), claimToken: null }, claimToken);
   }
-  async scheduleRetry(id: string, code: UploadErrorCode) {
-    return this.transition(id, ['processing'], { status: 'queued', error: { code } });
+  async scheduleRetry(id: string, claimToken: string, code: UploadErrorCode) {
+    return this.transition(id, ['processing'], { status: 'queued', error: { code }, claimToken: null }, claimToken);
   }
-  async fail(id: string, code: UploadErrorCode) {
-    return this.transition(id, ['queued', 'processing'], { status: 'failed', error: { code } });
+  async fail(id: string, claimToken: string, code: UploadErrorCode) {
+    return this.transition(id, ['processing'], { status: 'failed', error: { code }, claimToken: null }, claimToken);
+  }
+  async failAbandoned(id: string, code: UploadErrorCode) {
+    return this.transition(id, ['queued', 'processing'], { status: 'failed', error: { code }, claimToken: null });
   }
 
-  private transition(id: string, from: UploadRecord['status'][], changes: Partial<UploadRecord>) {
+  /** A guarded update: only from the given statuses and, when `claimToken` is given, only if it's current. */
+  private transition(id: string, from: UploadRecord['status'][], changes: Partial<UploadRecord>, claimToken?: string) {
     const row = this.rows.get(id);
     if (!row || !from.includes(row.status)) return null;
+    if (claimToken !== undefined && row.claimToken !== claimToken) return null;
     const updated = { ...row, ...changes, updatedAt: new Date() };
     this.rows.set(id, updated);
     return updated;

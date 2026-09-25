@@ -7,6 +7,7 @@ import { createDb } from '../../src/infra/db.ts';
 import {
   createUploadJobs,
   EXTRACTION_DEAD_LETTER_QUEUE,
+  EXTRACTION_HEARTBEAT_SECONDS,
   EXTRACTION_QUEUE,
   FINALISE_DELAY_SECONDS,
   FINALISE_QUEUE,
@@ -390,6 +391,45 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       expect(signals).toEqual(expect.objectContaining({ waiting: expect.any(Number), recentCompleted: expect.any(Number) }));
       const status = await ops().status();
       expect(status.last24h.completed).toBeGreaterThan(0); // earlier tests completed uploads
+    });
+  });
+
+  describe('claims on uploads being processed (real SQL)', () => {
+    async function createProcessable() {
+      const id = crypto.randomUUID();
+      createdIds.push(id);
+      await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png`, contentSha256: null });
+      // Straight to 'queued' without a job, so no running worker picks it up during the test.
+      await sql`update uploads set status = 'queued' where id = ${id}`;
+      return id;
+    }
+
+    it('only the attempt holding the current claim can finish the upload', async () => {
+      const id = await createProcessable();
+      const first = await uploads.startAttempt(id);
+      const second = await uploads.startAttempt(id); // e.g. the job was handed to another worker
+
+      expect(first!.claimToken).not.toEqual(second!.claimToken);
+      expect(await uploads.complete(id, first!.claimToken!, SAMPLE_EXTRACTION)).toBeNull();
+      expect(await uploads.scheduleRetry(id, first!.claimToken!, 'LLM_TIMEOUT')).toBeNull();
+      expect(await uploads.fail(id, first!.claimToken!, 'LLM_TIMEOUT')).toBeNull();
+
+      await expect(uploads.complete(id, second!.claimToken!, SAMPLE_EXTRACTION)).resolves.toMatchObject({
+        status: 'completed',
+        claimToken: null,
+      });
+    });
+
+    it('the dead-letter safety net can still fail an upload whatever its claim', async () => {
+      const id = await createProcessable();
+      await uploads.startAttempt(id);
+      await expect(uploads.failAbandoned(id, 'PROCESSING_TIMEOUT')).resolves.toMatchObject({ status: 'failed' });
+    });
+
+    it('extraction jobs are created with a heartbeat', async () => {
+      const id = await queueUpload(SAMPLE_EXTRACTION);
+      const [job] = await boss.findJobs(EXTRACTION_QUEUE, { data: { uploadId: id } });
+      expect(job!.heartbeatSeconds).toBe(EXTRACTION_HEARTBEAT_SECONDS);
     });
   });
 });
