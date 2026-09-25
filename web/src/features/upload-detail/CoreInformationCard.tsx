@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { ShieldCheck, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -152,40 +152,65 @@ export function CoreInformationCard({ upload }: { upload: UploadDetail & { resul
 }
 
 /**
- * Editing one field at a time, and confirming fields as right. Saves name the revision on screen,
- * so if someone else saved first nothing is overwritten: the editor closes and their version shows.
+ * Editing one field at a time, and confirming fields as right.
+ *
+ * Nobody's change is silently lost: when an editor opens it remembers the field's value, and a
+ * save goes ahead only if that value is still what the server has. A live update showing that
+ * someone else changed the same field closes the editor instead (their version shows); a change
+ * to a different field doesn't matter, and the save simply goes against the latest revision. If a
+ * save still loses a race, the server refuses it (409) and the same happens.
  */
-function useFieldReview(upload: UploadDetail) {
+function useFieldReview(upload: UploadDetail & { result: LabelExtraction }) {
   const mutation = useEditResult(upload.id);
-  const [editing, setEditing] = useState<ConfidenceField | null>(null);
+  const [editing, setEditing] = useState<{ field: ConfidenceField; valueAtOpen: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const checking = useRef(false); // a double click mustn't send two checks
 
-  const send = async (request: { changes?: ResultChanges; checked?: ConfidenceField[] }) => {
+  const current = (field: ConfidenceField) => JSON.stringify(upload.result[field]);
+  const close = (field: ConfidenceField) => setEditing((open) => (open?.field === field ? null : open));
+  const theyChangedIt = (field: ConfidenceField) => {
+    close(field);
+    toast.error('Someone else just changed this', { description: 'Showing their version. Make your change again if it still applies.' });
+  };
+
+  const save = async (field: ConfidenceField, changes: ResultChanges) => {
+    if (editing?.field === field && current(field) !== editing.valueAtOpen) return theyChangedIt(field);
     setError(null);
     try {
-      await mutation.mutateAsync({ revision: upload.revision, ...request });
-      setEditing(null);
+      await mutation.mutateAsync({ revision: upload.revision, changes });
+      close(field);
     } catch (failure) {
-      if (failure instanceof ApiRequestError && failure.code === 'EDIT_CONFLICT') {
-        setEditing(null);
-        toast.error('Someone else just changed this upload', { description: 'Showing their version. Make your change again if it still applies.' });
-      } else if (request.changes) {
-        setError(errorMessage(failure)); // shown in the editor, which stays open
-      } else {
-        toast.error("Couldn't mark it as checked", { description: errorMessage(failure) });
-      }
+      if (failure instanceof ApiRequestError && failure.code === 'EDIT_CONFLICT') theyChangedIt(field);
+      else setError(errorMessage(failure)); // shown in the editor, which stays open
+    }
+  };
+
+  const check = async (field: ConfidenceField) => {
+    if (checking.current) return;
+    checking.current = true;
+    try {
+      await mutation.mutateAsync({ revision: upload.revision, checked: [field] });
+    } catch (failure) {
+      const conflict = failure instanceof ApiRequestError && failure.code === 'EDIT_CONFLICT';
+      toast.error(conflict ? 'Someone else just changed this upload' : "Couldn't mark it as checked", {
+        description: conflict ? 'Showing their version. Check it again if it still applies.' : errorMessage(failure),
+      });
+    } finally {
+      checking.current = false;
     }
   };
 
   return {
-    editing,
+    editing: editing?.field ?? null,
     edit: (field: ConfidenceField) => {
       setError(null);
-      setEditing(field);
+      setEditing({ field, valueAtOpen: current(field) });
     },
-    check: (field: ConfidenceField) => void send({ checked: [field] }),
+    check: (field: ConfidenceField) => void check(field),
     editorProps: {
-      onSave: (changes: ResultChanges) => void send({ changes }),
+      onSave: (changes: ResultChanges) => {
+        if (editing) void save(editing.field, changes);
+      },
       onCancel: () => setEditing(null),
       saving: mutation.isPending,
       error,

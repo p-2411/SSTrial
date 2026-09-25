@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EditResultRequest, ExtractionConfidence, LabelExtraction, UploadDetail } from '@label-extractor/shared';
 import { detail } from '@/test/fixtures';
-import { jsonResponse, renderWithProviders } from '@/test/render';
+import { jsonResponse, Providers, renderWithProviders } from '@/test/render';
 import { CoreInformationCard } from './CoreInformationCard';
 
 const RESULT: LabelExtraction = {
@@ -52,8 +52,15 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 function renderCard(value: Upload = upload()) {
-  renderWithProviders(<CoreInformationCard upload={value} />);
-  return screen.getByRole('region', { name: 'Core information' });
+  const { client, rerender } = renderWithProviders(<CoreInformationCard upload={value} />);
+  // A live update arriving: the same card, with the upload as it is now on the server.
+  const update = (next: Upload) =>
+    rerender(
+      <Providers client={client}>
+        <CoreInformationCard upload={next} />
+      </Providers>,
+    );
+  return Object.assign(screen.getByRole('region', { name: 'Core information' }), { update });
 }
 
 describe('editing extracted data', () => {
@@ -169,5 +176,49 @@ describe('reviewing', () => {
 
     expect(await screen.findByRole('button', { name: 'Edit brand' })).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: 'Brand' })).not.toBeInTheDocument();
+  });
+
+  it("won't save over a change someone else made to the same field while the editor was open", async () => {
+    const card = renderCard();
+    await userEvent.click(screen.getByRole('button', { name: 'Edit brand' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Brand' }), ' Mine');
+    // Their save arrives through the live stream: a new revision, and a different brand.
+    card.update({ ...upload({ revision: 1 }), result: { ...RESULT, brand: 'Theirs' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(sent).toEqual([]);
+    expect(await screen.findByText('Theirs')).toBeInTheDocument(); // editor closed, their value shows
+  });
+
+  it("saves against the latest revision when someone else changed a different field", async () => {
+    const card = renderCard();
+    await userEvent.click(screen.getByRole('button', { name: 'Edit brand' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Brand' }), ' Mine');
+    card.update({ ...upload({ revision: 1 }), result: { ...RESULT, productName: 'Renamed by someone else' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(sent).toEqual([{ revision: 1, changes: { brand: 'Harvest & Hearth Mine' } }]);
+  });
+
+  it('keeps an open editor, and its draft, when another field is marked as checked', async () => {
+    renderCard();
+    await userEvent.click(screen.getByRole('button', { name: 'Edit brand' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Brand' }), ' Mine');
+    await userEvent.click(screen.getByRole('button', { name: 'Mark net weight as checked' }));
+
+    await vi.waitFor(() => expect(sent).toHaveLength(1));
+    expect(screen.getByRole('textbox', { name: 'Brand' })).toHaveValue('Harvest & Hearth Mine');
+  });
+
+  it('sends one check, however quickly it is clicked twice', async () => {
+    // The first request is still on its way when the second click lands.
+    let release: (response: Response) => void = () => {};
+    answer = () => new Promise<Response>((resolve) => (release = resolve)) as unknown as Response;
+    renderCard();
+    const check = screen.getByRole('button', { name: 'Mark net weight as checked' });
+    await userEvent.dblClick(check);
+
+    expect(sent).toHaveLength(1);
+    release(jsonResponse({ upload: upload({ revision: 1 }) }));
   });
 });
