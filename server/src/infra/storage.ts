@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { MAX_FILE_SIZE_BYTES, SUPPORTED_MIME_TYPES } from '@label-extractor/shared';
 
 /**
  * Where uploaded files live. The rest of the server only sees this interface, so tests use an
@@ -84,6 +85,24 @@ export function createSupabaseStorage(options: SupabaseStorageOptions): FileStor
       return new Uint8Array(await data.arrayBuffer());
     },
   };
+}
+
+/**
+ * Makes the bucket's rules match the shared upload rules (shared/src/files.ts): private, with the
+ * same size limit and allowed types. Run on API start-up, so those rules are defined in exactly one
+ * place — Supabase enforces them on signed uploads, but no longer keeps its own copy to drift.
+ */
+export async function syncBucketSettings(options: { url: string; secretKey: string; bucket: string }): Promise<void> {
+  const storage = createClient(options.url, options.secretKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  }).storage;
+  const settings = { public: false, fileSizeLimit: MAX_FILE_SIZE_BYTES, allowedMimeTypes: [...SUPPORTED_MIME_TYPES] };
+
+  const existing = await storage.getBucket(options.bucket);
+  const { error } = existing.data
+    ? await storage.updateBucket(options.bucket, settings)
+    : await storage.createBucket(options.bucket, settings);
+  if (error) throw new StorageUnavailableError(`Could not apply bucket settings: ${error.message}`, { cause: error });
 }
 
 /** Supabase reports a missing object as 400 or 404 depending on the endpoint. */

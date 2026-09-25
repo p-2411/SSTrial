@@ -8,7 +8,7 @@ import { loadApiConfig } from '../infra/config.ts';
 import { createDb } from '../infra/db.ts';
 import { createLogger } from '../infra/logger.ts';
 import { createExtractionQueue, startQueue } from '../infra/queue.ts';
-import { createSupabaseStorage } from '../infra/storage.ts';
+import { createSupabaseStorage, syncBucketSettings } from '../infra/storage.ts';
 import { createUploadStore } from '../uploads/store.ts';
 import { buildApp } from './app.ts';
 
@@ -16,6 +16,9 @@ const config = loadApiConfig();
 const logger = createLogger({ name: 'api', level: config.LOG_LEVEL, pretty: config.NODE_ENV === 'development' });
 
 const sql = createDb(config.DATABASE_URL, { max: config.DATABASE_POOL_MAX });
+
+// The bucket's size and type limits come from the shared upload rules, applied here on every start.
+await syncBucketSettings({ url: config.SUPABASE_URL, secretKey: config.SUPABASE_SECRET_KEY, bucket: config.STORAGE_BUCKET });
 const boss = await startQueue({ connectionString: config.DATABASE_URL, role: 'api', logger });
 
 const app = await buildApp({
