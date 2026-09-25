@@ -31,6 +31,7 @@ function Harness() {
     <>
       <output data-testid="url">{pathname + search}</output>
       <Link to="/uploads/def">Open oat milk</Link>
+      <Link to="/uploads/abc">Open granola</Link>
     </>
   );
 }
@@ -76,6 +77,19 @@ describe('UploadDetailPanel', () => {
     expect(await screen.findByRole('heading', { level: 2, name: 'back-of-pack.png' })).toBeInTheDocument();
     // Not repeated in the metadata row.
     expect(screen.getByText('File').parentElement).toHaveTextContent('FilePNG, 48.8 KB');
+  });
+
+  it("closes an open editor when another upload is chosen, so a draft can't be saved to the wrong one", async () => {
+    renderAt('/uploads/def');
+    await screen.findByRole('complementary', { name: 'Barista Oat Milk' }); // now cached
+    await userEvent.click(screen.getByRole('link', { name: 'Open granola' }));
+    await screen.findByRole('complementary', { name: 'Maple Pecan Crunch' });
+    await userEvent.click(screen.getByRole('button', { name: 'Edit product name' }));
+
+    await userEvent.click(screen.getByRole('link', { name: 'Open oat milk' }));
+
+    expect(await screen.findByRole('complementary', { name: 'Barista Oat Milk' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Product name' })).not.toBeInTheDocument();
   });
 
   it('swaps to another upload without closing when a different row is chosen', async () => {

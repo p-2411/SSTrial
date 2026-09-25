@@ -54,7 +54,9 @@ export function UploadDetailView({ id }: { id: string }) {
           </>
         ))}
 
-      {upload && <Detail upload={upload} />}
+      {/* Keyed by upload: everything inside that belongs to one upload (an open editor and its
+          draft, the preview link) starts afresh for the next, even when it's already cached. */}
+      {upload && <Detail key={upload.id} upload={upload} />}
     </div>
   );
 }
@@ -101,8 +103,7 @@ function Detail({ upload }: { upload: UploadDetail }) {
 
       {/* Extracted data first, then the source document to check it against, then the raw JSON. */}
       {upload.result && <CoreInformationCard upload={{ ...upload, result: upload.result }} />}
-      {/* Keyed by id so switching uploads resets the remembered preview URL. */}
-      <SourceDocumentCard key={upload.id} upload={upload} />
+      <SourceDocumentCard upload={upload} />
       {upload.result && <JsonDisclosure data={upload.result} fileName={upload.fileName} />}
     </>
   );
