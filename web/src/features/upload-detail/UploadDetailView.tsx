@@ -67,6 +67,25 @@ export function UploadDetailView({ id }: { id: string }) {
   );
 }
 
+/** In place of the detail when it failed to render: the panel stays open, and can try again. */
+export function DetailFailed({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="grid min-w-0 gap-5">
+      <h2 id={DETAIL_TITLE_ID} className="sr-only">
+        Upload
+      </h2>
+      {/* pr-10 keeps it clear of the panel's close button. */}
+      <div className="pr-10">
+        <InlineError
+          title="Couldn't show this upload"
+          message="Something went wrong on this page. Try again, or pick another upload from the list."
+          onRetry={onRetry}
+        />
+      </div>
+    </div>
+  );
+}
+
 function Detail({ upload }: { upload: UploadDetail }) {
   const now = useNow();
   // Like the list rows: the product leads once the label is read; until then, the file name.

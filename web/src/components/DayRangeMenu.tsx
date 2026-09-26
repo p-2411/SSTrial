@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState } from 'react';
 import { CalendarDays, ChevronDown, Loader2 } from 'lucide-react';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ANY_TIME, DAY_PRESETS, describeDayRange, sameRange, toDay, type DayRange } from '@/lib/dayRange';
@@ -64,17 +65,31 @@ export function DayRangeMenu({ range, onChange, label }: DayRangeMenuProps) {
             );
           })}
         </div>
-        <Suspense
-          fallback={
-            <div className="grid h-[19.5rem] w-[17.5rem] place-items-center text-muted-foreground" aria-label="Loading the calendar">
-              <Loader2 className="size-5 animate-spin" aria-hidden />
-            </div>
-          }
-        >
-          <DayRangeCalendar range={range} today={today} onChange={onChange} />
-        </Suspense>
+        {/* If the calendar's code can't be fetched (see loadPageCode), the spans on the left still work. */}
+        <ErrorBoundary fallback={() => <CalendarUnavailable />}>
+          <Suspense
+            fallback={
+              <div role="status" aria-label="Loading the calendar" className={cn(CALENDAR_SIZE, 'grid place-items-center text-muted-foreground')}>
+                <Loader2 className="size-5 animate-spin motion-reduce:animate-none" aria-hidden />
+              </div>
+            }
+          >
+            <DayRangeCalendar range={range} today={today} onChange={onChange} />
+          </Suspense>
+        </ErrorBoundary>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/** The calendar's footprint, which what stands in for it keeps, so the menu doesn't change size. */
+const CALENDAR_SIZE = 'h-[19.5rem] w-[17.5rem]';
+
+function CalendarUnavailable() {
+  return (
+    <p role="alert" className={cn(CALENDAR_SIZE, 'grid place-content-center p-6 text-center text-sm text-muted-foreground')}>
+      The calendar couldn't load. Pick a span on the left, or reload the page to try again.
+    </p>
   );
 }
 

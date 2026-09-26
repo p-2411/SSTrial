@@ -4,11 +4,12 @@ import { LOG_RETENTION_DAYS, type LogEvent } from '@label-extractor/shared';
 import { errorMessage } from '@/api/client';
 import { isFiltered, type LogFilters } from '@/api/logs';
 import { useLogs } from '@/api/queries';
+import { EmptyState } from '@/components/EmptyState';
 import { InlineError } from '@/components/InlineError';
+import { StaleDataNotice } from '@/components/StaleDataNotice';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { TONE_CLASSES } from '@/lib/tone';
 import { useNow } from '@/lib/useNow';
 import { cn } from '@/lib/utils';
 import { groupByDay } from './groupByDay';
@@ -42,11 +43,8 @@ export function ActivityLog() {
         </div>
       </CardHeader>
 
-      {/* Refresh failed but we still have events: keep showing them, and say they may be out of date. */}
       {isError && events && (
-        <p role="status" className={cn('border-b px-5 py-2 text-sm', TONE_CLASSES.warning)}>
-          Couldn't refresh the log, so recent events may be missing. {errorMessage(error)}
-        </p>
+        <StaleDataNotice what="the activity log" error={error} onRetry={() => void refetch()} retrying={isRefetching} className="px-5" />
       )}
 
       {/* Every row has a line beneath it, so each day's heading is ruled above and below. Only the
@@ -86,7 +84,7 @@ export function ActivityLog() {
         </div>
       )}
 
-      {events?.length === 0 && <EmptyState filters={filters} onClearFilters={() => setFilters(NO_LOG_FILTERS)} />}
+      {events?.length === 0 && <NoEvents filters={filters} onClearFilters={() => setFilters(NO_LOG_FILTERS)} />}
     </Card>
   );
 }
@@ -96,39 +94,25 @@ function fileNameIn(events: LogEvent[] | undefined): string | null {
   return events?.find((event) => event.fileName !== null)?.fileName ?? null;
 }
 
-function EmptyState({ filters, onClearFilters }: { filters: LogFilters; onClearFilters: () => void }) {
+/** Nothing to show: nothing has happened yet, or nothing matches the filters (which it offers to clear). */
+function NoEvents({ filters, onClearFilters }: { filters: LogFilters; onClearFilters: () => void }) {
   const filtered = isFiltered(filters) || filters.upload !== null;
   const justOneUpload = filters.upload !== null && !isFiltered(filters);
-  return (
-    <div className="flex flex-col items-center gap-2 px-6 py-10 text-center">
-      <span className="grid size-10 place-items-center rounded-full bg-muted text-muted-foreground">
-        <ScrollText className="size-5" aria-hidden />
-      </span>
-      <p className="font-semibold">
-        {justOneUpload
-          ? 'Nothing recorded for this upload'
-          : filters.search
-            ? `No events mention “${filters.search}”`
-            : filtered
-              ? 'No events match these filters'
-              : 'Nothing has happened yet'}
-      </p>
-      {filters.search && <p className="max-w-sm text-sm text-muted-foreground">Try fewer words, or part of a file name.</p>}
-      {justOneUpload && (
-        <p className="max-w-sm text-sm text-muted-foreground">
-          A deleted upload's events are kept for {LOG_RETENTION_DAYS} days, and uploads from before the activity log existed have none.
-        </p>
-      )}
-      {!filtered && (
-        <p className="max-w-sm text-sm text-muted-foreground">Upload a label and each step of its journey appears here.</p>
-      )}
-      {filtered && (
-        <Button variant="outline" size="sm" onClick={onClearFilters}>
-          Show every event
-        </Button>
-      )}
-    </div>
-  );
+  const title = justOneUpload
+    ? 'Nothing recorded for this upload'
+    : filters.search
+      ? `No events mention “${filters.search}”`
+      : filtered
+        ? 'No events match these filters'
+        : 'Nothing has happened yet';
+  const hint = justOneUpload
+    ? `A deleted upload's events are kept for ${LOG_RETENTION_DAYS} days, and uploads from before the activity log existed have none.`
+    : filters.search
+      ? 'Try fewer words, or part of a file name.'
+      : filtered
+        ? undefined
+        : 'Upload a label and each step of its journey appears here.';
+  return <EmptyState icon={ScrollText} title={title} hint={hint} action={filtered ? { label: 'Clear filters', onClick: onClearFilters } : undefined} />;
 }
 
 function LogSkeleton() {

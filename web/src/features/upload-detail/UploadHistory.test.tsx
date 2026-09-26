@@ -113,7 +113,7 @@ describe('UploadHistory', () => {
 
     await vi.waitFor(() => expect(requests.at(-1)!.url).toBe('/api/uploads/u1/history?type=extraction.failed&type=extraction.abandoned'));
     expect(await screen.findByText('Nothing in the history matches these filters.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Show all of it' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Clear filters' })).toBeInTheDocument();
   });
 
   it('fetches what a change did only when its details are opened', async () => {

@@ -1,12 +1,14 @@
-import { createBrowserRouter, createPath, Navigate, Outlet, useLocation } from 'react-router';
+import { createBrowserRouter, createPath, Navigate, Outlet, useLocation, type RouteObject } from 'react-router';
 import { RequireAuth, RequireRole } from '@/auth/guards';
 import { SignInPage } from '@/auth/SignInPage';
+import { PageSpinner } from '@/components/PageSpinner';
 import { loadSystemPage } from '@/features/system/loadSystemPage';
 import { UploadsPage } from '@/features/uploads-list/UploadsPage';
 import { loadPageCode } from '@/lib/loadPageCode';
 import { FORMER_SYSTEM_PATHS, HOME_PATH, SIGN_IN_PATH, SYSTEM_PATH, UPLOAD_PATH_PATTERN } from '@/routes';
 import { AppShell } from './AppShell';
 import { NotFoundPage } from './NotFoundPage';
+import { RouteError } from './RouteError';
 
 /**
  * Routes. /sign-in stands alone; everything else needs a signed-in member and sits inside the app
@@ -16,19 +18,24 @@ import { NotFoundPage } from './NotFoundPage';
  *   /system       how the system is running, then the activity log (admins only)
  * /system accepts the log's filters, ?q=…&type=…&upload=… (see logFilters.ts); the old /status
  * and /logs addresses lead there, filters and all. Desktop layout only.
+ *
+ * A page that fails shows RouteError in its place. Pages inside the shell have their own, so the
+ * sidebar stays; the shell's and the standalone routes' fill the window.
  */
-export const router = createBrowserRouter([
-  { path: SIGN_IN_PATH, element: <SignInPage /> },
+export const routes: RouteObject[] = [
+  { path: SIGN_IN_PATH, element: <SignInPage />, errorElement: <RouteError standalone /> },
   {
     element: (
       <RequireAuth>
         <AppShell />
       </RequireAuth>
     ),
+    errorElement: <RouteError standalone />,
     children: [
       {
         path: HOME_PATH,
         element: <UploadsPage />,
+        errorElement: <RouteError />,
         // Renders nothing itself: the route only has to match. UploadDetailPanel (always mounted, so
         // it can animate open and closed) reads it.
         children: [{ path: UPLOAD_PATH_PATTERN, element: null }],
@@ -40,20 +47,25 @@ export const router = createBrowserRouter([
             <Outlet />
           </RequireRole>
         ),
+        errorElement: <RouteError />,
         children: [
           // Its own chunk, loaded on first visit (see loadSystemPage). After a deploy an open tab's
           // chunks are gone; loadPageCode reloads it onto the new build.
           {
             path: SYSTEM_PATH,
             lazy: async () => ({ Component: (await loadPageCode(loadSystemPage, { reload: openAfreshWhereGoing })).SystemPage }),
+            // Opened directly, the shell shows while the page's code loads, with this in its place.
+            hydrateFallbackElement: <PageSpinner className="flex-1" />,
           },
           ...FORMER_SYSTEM_PATHS.map((path) => ({ path, element: <ToSystemPage /> })),
         ],
       },
     ],
   },
-  { path: '*', element: <NotFoundPage /> },
-]);
+  { path: '*', element: <NotFoundPage />, errorElement: <RouteError standalone /> },
+];
+
+export const router = createBrowserRouter(routes);
 
 /** Where the System page used to be split in two: straight on to it, keeping any log filters. */
 function ToSystemPage() {

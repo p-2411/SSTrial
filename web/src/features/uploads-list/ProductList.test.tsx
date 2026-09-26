@@ -111,7 +111,7 @@ describe('searching, filtering and picking products', () => {
     await userEvent.type(screen.getByRole('searchbox', { name: 'Search products' }), 'barley{Enter}');
     expect(await screen.findByText('No products match')).toBeInTheDocument();
     expect(requests.at(-1)?.url).toBe('/api/uploads?view=products&q=barley');
-    await userEvent.click(screen.getByRole('button', { name: 'Clear search and filter' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
 
     expect(await screen.findByText('Barista Oat Milk')).toBeInTheDocument();
     expect(screen.getByRole('searchbox', { name: 'Search products' })).toHaveValue('');

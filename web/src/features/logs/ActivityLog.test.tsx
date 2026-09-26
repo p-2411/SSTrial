@@ -192,7 +192,7 @@ describe('ActivityLog', () => {
     expect(screen.getByRole('searchbox', { name: 'Search the activity log' })).toHaveValue('barley');
     expect(requested[0]).toBe('/api/logs?q=barley');
 
-    await user.click(screen.getByRole('button', { name: 'Show every event' }));
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
 
     await vi.waitFor(() => expect(requested.at(-1)).toBe('/api/logs'));
     expect(screen.getByRole('searchbox', { name: 'Search the activity log' })).toHaveValue('');
@@ -234,7 +234,7 @@ describe('ActivityLog', () => {
     renderPage('/system?type=extraction.failed');
 
     expect(await screen.findByText('No events match these filters')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Show every event' }));
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
 
     await vi.waitFor(() => expect(requested.at(-1)).toBe('/api/logs'));
     expect(await screen.findByText('Nothing has happened yet')).toBeInTheDocument();

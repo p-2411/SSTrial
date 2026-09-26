@@ -76,7 +76,10 @@ beforeEach(() => {
 
 const deleteCalls = () => vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'DELETE');
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe('UploadDetailPanel', () => {
   it('shows nothing on the list', () => {
@@ -178,6 +181,17 @@ describe('UploadDetailPanel', () => {
     // Named after its heading, which still says it's loading: nothing half-finished is shown.
     expect(screen.getByRole('complementary', { name: 'Loading upload' })).toBeInTheDocument();
     expect(screen.queryByText('still-reading.png')).not.toBeInTheDocument();
+  });
+
+  it('shows an upload it cannot display as a problem with that upload alone, and still closes', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {}); // React reports the caught error
+    // Data the page can't make sense of (no reviews at all, not even an empty set).
+    uploads.broken = { ...uploads.abc!, id: 'broken', fieldReviews: null as unknown as UploadDetail['fieldReviews'] };
+    renderAt('/uploads/broken');
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't show this upload");
+    await userEvent.click(screen.getByRole('button', { name: 'Close details' }));
+    expect(screen.getByTestId('url')).toHaveTextContent(/^\/$/);
   });
 
   describe('deleting', () => {

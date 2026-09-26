@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router';
-import { Loader2 } from 'lucide-react';
 import type { Role } from '@label-extractor/shared';
+import { PageSpinner } from '@/components/PageSpinner';
 import { SIGN_IN_PATH } from '@/routes';
 import { useAuth } from './AuthProvider';
 import { ROLE_LABELS, useHasRole } from './roles';
@@ -12,11 +12,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation();
 
   if (state.status === 'loading') {
-    return (
-      <div className="grid min-h-svh place-content-center" role="status" aria-label="Loading">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden />
-      </div>
-    );
+    return <PageSpinner className="min-h-svh" />;
   }
   if (state.status === 'signed-out') {
     return <Navigate to={SIGN_IN_PATH} replace state={{ from: location.pathname + location.search }} />;

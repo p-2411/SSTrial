@@ -6,8 +6,10 @@ import { errorMessage } from '@/api/client';
 import { useDeleteUploads, useUploadList } from '@/api/queries';
 import { NO_PRODUCT_FILTER, type ProductFilter } from '@/api/uploads';
 import { DayRangeMenu } from '@/components/DayRangeMenu';
+import { EmptyState } from '@/components/EmptyState';
 import { InlineError } from '@/components/InlineError';
 import { SearchInput } from '@/components/SearchInput';
+import { StaleDataNotice } from '@/components/StaleDataNotice';
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -25,7 +27,7 @@ import { useNow } from '@/lib/useNow';
 import { useSelection } from '@/lib/useSelection';
 import { UPLOAD_PATH_PATTERN } from '@/routes';
 import { ExportMenu } from './ExportMenu';
-import { ListSkeleton, StaleListBanner } from './listParts';
+import { ListSkeleton } from './listParts';
 import { UploadRow } from './UploadRow';
 
 /**
@@ -96,7 +98,7 @@ export function ProductList() {
         </div>
       )}
 
-      {isError && rows && <StaleListBanner error={error} />}
+      {isError && rows && <StaleDataNotice what="the products" error={error} onRetry={() => void refetch()} retrying={isRefetching} />}
 
       {rows && rows.length > 0 && (
         // While a new search or filter loads, the last results stay, faded, rather than blinking out.
@@ -123,7 +125,12 @@ export function ProductList() {
         </div>
       )}
 
-      {rows?.length === 0 && (isFiltered ? <NoMatches onClear={() => changeFilter(NO_PRODUCT_FILTER)} /> : <EmptyState />)}
+      {rows?.length === 0 &&
+        (isFiltered ? (
+          <EmptyState icon={SearchX} title="No products match" action={{ label: 'Clear filters', onClick: () => changeFilter(NO_PRODUCT_FILTER) }} />
+        ) : (
+          <EmptyState icon={Inbox} title="No products yet" hint="Upload a label photo or PDF above." />
+        ))}
 
       <DeleteDialog ids={confirmingDelete} onClose={() => setConfirmingDelete(null)} />
     </Card>
@@ -185,33 +192,5 @@ function DeleteDialog({ ids, onClose }: { ids: string[] | null; onClose: () => v
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-  );
-}
-
-/** A search or filter that matches nothing: say so, and offer the way back. */
-function NoMatches({ onClear }: { onClear: () => void }) {
-  return (
-    <div className="flex flex-col items-center gap-2 px-6 py-10 text-center">
-      <span className="grid size-10 place-items-center rounded-full bg-muted text-muted-foreground">
-        <SearchX className="size-5" aria-hidden />
-      </span>
-      <p className="font-semibold">No products match</p>
-      <Button variant="outline" size="sm" onClick={onClear}>
-        Clear search and filter
-      </Button>
-    </div>
-  );
-}
-
-/** Nothing has been added yet: say how to start. */
-function EmptyState() {
-  return (
-    <div className="flex flex-col items-center gap-2 px-6 py-10 text-center">
-      <span className="grid size-10 place-items-center rounded-full bg-muted text-muted-foreground">
-        <Inbox className="size-5" aria-hidden />
-      </span>
-      <p className="font-semibold">No products yet</p>
-      <p className="max-w-sm text-sm text-muted-foreground">Upload a label photo or PDF above.</p>
-    </div>
   );
 }

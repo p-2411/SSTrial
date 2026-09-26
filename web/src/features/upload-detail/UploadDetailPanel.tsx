@@ -10,10 +10,11 @@ import {
 } from 'react';
 import { useLocation, useMatch, useNavigate } from 'react-router';
 import { X } from 'lucide-react';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { HOME_PATH, UPLOAD_PATH_PATTERN } from '@/routes';
-import { DETAIL_TITLE_ID, UploadDetailView } from './UploadDetailView';
+import { DETAIL_TITLE_ID, DetailFailed, UploadDetailView } from './UploadDetailView';
 
 /**
  * The open panel's default width, which is also the narrowest it can be dragged to: a share of the
@@ -154,7 +155,10 @@ export const UploadDetailPanel = memo(function UploadDetailPanel() {
               whether floating or at the end. Never a sideways scrollbar: in a narrow panel one
               showed up under everything, as extra space. */}
           <div className="h-full overflow-x-hidden overflow-y-auto px-6 pt-6 pb-3 [scrollbar-gutter:stable]" style={{ width }}>
-            <UploadDetailView id={shownId} />
+            {/* One upload failing to render breaks only this panel, and the next upload starts afresh. */}
+            <ErrorBoundary key={shownId} fallback={(retry) => <DetailFailed onRetry={retry} />}>
+              <UploadDetailView id={shownId} />
+            </ErrorBoundary>
           </div>
         </>
       )}

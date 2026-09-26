@@ -4,6 +4,7 @@ import { errorMessage } from '@/api/client';
 import { useUploadList } from '@/api/queries';
 import { InlineError } from '@/components/InlineError';
 import { SegmentedTabsList, SegmentedTabsTrigger } from '@/components/SegmentedTabs';
+import { StaleDataNotice } from '@/components/StaleDataNotice';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
@@ -11,7 +12,6 @@ import { PendingUploadRow } from '@/features/upload/PendingUploadRow';
 import type { PendingUpload } from '@/features/upload/useFileUploads';
 import { useNow } from '@/lib/useNow';
 import { useSelection, type Selection } from '@/lib/useSelection';
-import { StaleListBanner } from './listParts';
 import { ReviewActions } from './ReviewActions';
 import { UploadRow } from './UploadRow';
 import { useUploadAnnouncements } from './useUploadAnnouncements';
@@ -145,7 +145,7 @@ function ListState({ list, rows, children }: { list: ReturnType<typeof useUpload
   }
   return (
     <>
-      {list.isError && <StaleListBanner error={list.error} />}
+      {list.isError && <StaleDataNotice what="your uploads" error={list.error} onRetry={() => void list.refetch()} retrying={list.isRefetching} />}
       {children}
       {list.hasNextPage && (
         <div className="border-t border-border/70 p-3 text-center">

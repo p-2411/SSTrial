@@ -5,6 +5,7 @@ import { UPLOAD_EVENT_TYPE_IDS, type LogLevel, type UploadDetail, type UploadHis
 import { ApiRequestError, errorMessage } from '@/api/client';
 import { isFiltered, NO_ACTIVITY_FILTERS, type ActivityFilters } from '@/api/logs';
 import { useRevertUpload, useUploadHistory } from '@/api/queries';
+import { EmptyState } from '@/components/EmptyState';
 import { ActivityFilterBar } from '@/features/activity/ActivityFilterBar';
 import { EVENT_ACTION_CLASS, EventDetails, EventDetailsTrigger } from '@/features/activity/EventDetails';
 import {
@@ -91,18 +92,12 @@ function HistoryBody({ upload }: { upload: Upload }) {
         </div>
       )}
       {isError && <p className="text-sm text-muted-foreground">Couldn't load the history. {errorMessage(error)}</p>}
-      {entries?.length === 0 && (
-        <div className="grid justify-items-start gap-2">
-          <p className="text-sm text-muted-foreground">
-            {filtered ? 'Nothing in the history matches these filters.' : 'Nothing recorded. Uploads from before the history existed have none.'}
-          </p>
-          {filtered && (
-            <Button variant="outline" size="sm" onClick={() => setFilters(NO_ACTIVITY_FILTERS)}>
-              Show all of it
-            </Button>
-          )}
-        </div>
-      )}
+      {entries?.length === 0 &&
+        (filtered ? (
+          <EmptyState compact title="Nothing in the history matches these filters." action={{ label: 'Clear filters', onClick: () => setFilters(NO_ACTIVITY_FILTERS) }} />
+        ) : (
+          <EmptyState compact title="Nothing recorded." hint="Uploads from before the history existed have none." />
+        ))}
       {entries && entries.length > 0 && (
         // While a new search or filter loads, the last results stay, faded, rather than blinking out.
         <ol
