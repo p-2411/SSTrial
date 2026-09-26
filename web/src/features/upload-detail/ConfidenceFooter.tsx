@@ -87,10 +87,11 @@ export function ConfidenceFooter({
         {text(upload.confidence)}
       </p>
       {flagged && (
+        // Bold text in the footer's own colour, underlined on hover: still a button, so it spins while saving.
         <Button
-          variant="outline"
+          variant="link"
           size="sm"
-          className="ml-auto shrink-0 bg-card text-foreground"
+          className="ml-auto h-auto shrink-0 p-0 font-bold text-current hover:underline"
           aria-label="Mark flagged fields as checked"
           loading={checking}
           onClick={onCheck}
