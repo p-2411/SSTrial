@@ -39,3 +39,31 @@ describe('GET /api/exports/uploads.json', () => {
     expect(body.uploads[0]).toMatchObject({ fileName: 'done.png', productName: SAMPLE_EXTRACTION.productName });
   });
 });
+
+describe('exporting some products', () => {
+  const OTHER = 'a0000000-0000-4000-8000-000000000004';
+  beforeEach(() => {
+    uploads.seed({ id: OTHER, fileName: 'oat-milk.png', status: 'completed', result: { ...SAMPLE_EXTRACTION, productName: 'Barista Oat Milk' } });
+  });
+  const exported = async (query: string) =>
+    ((await app.inject({ method: 'GET', url: `/api/exports/uploads.json${query}` })).json().uploads as Array<{ fileName: string }>).map(
+      (upload) => upload.fileName,
+    );
+
+  it('downloads just the picked ones', async () => {
+    expect(await exported(`?id=${OTHER}`)).toEqual(['oat-milk.png']);
+    expect((await exported(`?id=${OTHER}&id=a0000000-0000-4000-8000-000000000001`)).sort()).toEqual(['done.png', 'oat-milk.png']);
+  });
+
+  it('downloads the ones matching the search, when none are picked', async () => {
+    expect(await exported('?q=OAT')).toEqual(['oat-milk.png']);
+  });
+
+  it('never includes one that isn\'t a product, even when picked', async () => {
+    expect(await exported('?id=a0000000-0000-4000-8000-000000000002')).toEqual([]);
+  });
+
+  it('rejects a malformed ID', async () => {
+    expect((await app.inject({ method: 'GET', url: '/api/exports/uploads.csv?id=nope' })).statusCode).toBe(400);
+  });
+});

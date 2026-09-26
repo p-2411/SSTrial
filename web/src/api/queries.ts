@@ -6,6 +6,9 @@ import { getUploadHistory, listLogs, type LogFilters } from './logs.ts';
 import {
   checkUploads,
   deleteUpload,
+  deleteUploads,
+  NO_PRODUCT_FILTER,
+  type ProductFilter,
   editResult,
   getOpsStatus,
   getUpload,
@@ -36,7 +39,7 @@ export const uploadKeys = {
   all: ['uploads'] as const,
   /** Every list; pass a view for one of them. */
   lists: () => [...uploadKeys.all, 'list'] as const,
-  list: (view: UploadView) => [...uploadKeys.lists(), view] as const,
+  list: (view: UploadView, filter: ProductFilter = NO_PRODUCT_FILTER) => [...uploadKeys.lists(), view, filter] as const,
   detail: (id: string) => [...uploadKeys.all, 'detail', id] as const,
 };
 
@@ -86,10 +89,12 @@ export function storeUpload(queryClient: QueryClient, upload: UploadDetail): voi
  * One of the upload lists (a stage: upload, review, products), filtered and paginated by the server ("Load more" fetches the next
  * page). Polls only while something on screen is still in progress.
  */
-export function useUploadList(view: UploadView) {
+export function useUploadList(view: UploadView, filter: ProductFilter = NO_PRODUCT_FILTER) {
   return useInfiniteQuery({
-    queryKey: uploadKeys.list(view),
-    queryFn: ({ pageParam }) => listUploads(view, pageParam),
+    queryKey: uploadKeys.list(view, filter),
+    queryFn: ({ pageParam }) => listUploads(view, pageParam, filter),
+    // A new search or filter keeps the last results up until its own arrive.
+    placeholderData: keepPreviousData,
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     refetchInterval: (query) =>
@@ -147,6 +152,18 @@ export function useSubmitUploads() {
 
 export function useCheckUploads() {
   return useReviewAction(checkUploads);
+}
+
+/** Deletes the picked uploads the person may delete. Resolves to the IDs deleted. */
+export function useDeleteUploads() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: deleteUploads,
+    onSuccess: async (deleted) => {
+      for (const id of deleted) queryClient.removeQueries({ queryKey: uploadKeys.detail(id) });
+      await Promise.all([refreshUploadLists(queryClient), refreshLogs(queryClient)]);
+    },
+  });
 }
 
 function useReviewAction(action: (ids: string[]) => Promise<string[]>) {

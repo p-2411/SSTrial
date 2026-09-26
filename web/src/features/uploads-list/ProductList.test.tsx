@@ -64,3 +64,79 @@ describe('ProductList', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load the products");
   });
 });
+
+describe('searching, filtering and picking products', () => {
+  const OAT = summary({ id: 'a', productName: 'Barista Oat Milk' });
+  const GRANOLA = summary({ id: 'b', productName: 'Maple Pecan Crunch' });
+
+  /** Answers lists with `list(url)`, and POST /api/uploads/delete with every ID asked for. Returns the requests. */
+  function stubApi(list: (url: string) => UploadSummary[]) {
+    const requests: Array<{ url: string; body?: unknown }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+        requests.push({ url, body });
+        if (url === '/api/uploads/delete') return jsonResponse({ deleted: body.ids });
+        return jsonResponse({ uploads: list(url), nextCursor: null });
+      }),
+    );
+    return requests;
+  }
+
+  it('searches by what was typed, once typing pauses, and filters by when products were added', async () => {
+    const requests = stubApi((url) => (url.includes('q=oat') ? [OAT] : [OAT, GRANOLA]));
+    renderWithProviders(<ProductList />);
+    await screen.findByText('Maple Pecan Crunch');
+
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search products' }), 'oat');
+    await vi.waitFor(() => expect(requests.at(-1)?.url).toBe('/api/uploads?view=products&q=oat'));
+    await vi.waitFor(() => expect(screen.queryByText('Maple Pecan Crunch')).not.toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Added any time' }));
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'In the last 7 days' }));
+    await vi.waitFor(() => expect(requests.at(-1)?.url).toBe('/api/uploads?view=products&q=oat&added=7d'));
+  });
+
+  it('says when nothing matches, and clears the search and filter', async () => {
+    const requests = stubApi((url) => (url.includes('q=') ? [] : [OAT]));
+    renderWithProviders(<ProductList />);
+    await screen.findByText('Barista Oat Milk');
+
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search products' }), 'barley{Enter}');
+    expect(await screen.findByText('No products match')).toBeInTheDocument();
+    expect(requests.at(-1)?.url).toBe('/api/uploads?view=products&q=barley');
+    await userEvent.click(screen.getByRole('button', { name: 'Clear search and filter' }));
+
+    expect(await screen.findByText('Barista Oat Milk')).toBeInTheDocument();
+    expect(screen.getByRole('searchbox', { name: 'Search products' })).toHaveValue('');
+  });
+
+  it('picks products one by one or all at once, and exports just those', async () => {
+    stubApi(() => [OAT, GRANOLA]);
+    renderWithProviders(<ProductList />);
+
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Select Barista Oat Milk' }));
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Select all products' })).toHaveAttribute('data-state', 'indeterminate');
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select all products' }));
+    expect(screen.getByText('2 selected')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Export' }));
+    expect(screen.getByText('2 products selected')).toBeInTheDocument();
+  });
+
+  it('deletes the picked products together, once the person confirms', async () => {
+    const requests = stubApi(() => [OAT, GRANOLA]);
+    renderWithProviders(<ProductList />);
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Select Barista Oat Milk' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select Maple Pecan Crunch' }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    const dialog = screen.getByRole('alertdialog', { name: 'Delete 2 products?' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    await vi.waitFor(() => expect(requests).toContainEqual({ url: '/api/uploads/delete', body: { ids: ['a', 'b'] } }));
+    await vi.waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+  });
+});

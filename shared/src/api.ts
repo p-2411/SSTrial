@@ -40,6 +40,11 @@ export interface SubmitUploadsResponse {
   submitted: string[];
 }
 
+/** POST /api/uploads/delete: the uploads deleted. Any others named weren't the asker's to delete, or were gone. */
+export interface DeleteUploadsResponse {
+  deleted: string[];
+}
+
 /** POST /api/uploads/check: the uploads whose flagged fields are now marked as checked. */
 export interface CheckUploadsResponse {
   checked: string[];

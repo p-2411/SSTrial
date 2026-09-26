@@ -1,7 +1,7 @@
 import { ChevronDown, Download, FileJson, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
 import { errorMessage } from '@/api/client';
-import { fetchExport } from '@/api/uploads';
+import { fetchExport, type ProductFilter } from '@/api/uploads';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -12,17 +12,22 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { saveFile } from '@/lib/saveFile';
 
-async function save(format: 'csv' | 'json') {
+type Products = { ids: string[] } | ProductFilter;
+
+async function save(format: 'csv' | 'json', products: Products) {
   try {
-    const { blob, fileName } = await fetchExport(format);
+    const { blob, fileName } = await fetchExport(format, products);
     saveFile(blob, fileName);
   } catch (error) {
     toast.error("Couldn't export", { description: errorMessage(error) });
   }
 }
 
-/** Downloads every completed extraction, as CSV or JSON (see fetchExport). */
-export function ExportMenu() {
+/**
+ * Downloads products as CSV or JSON (see fetchExport): the picked ones, or else every one the
+ * search and filter match, loaded or not. `label` says which, at the top of the menu.
+ */
+export function ExportMenu({ products, label }: { products: Products; label: string }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -33,12 +38,12 @@ export function ExportMenu() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">All completed uploads</DropdownMenuLabel>
-        <DropdownMenuItem onSelect={() => void save('csv')}>
+        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{label}</DropdownMenuLabel>
+        <DropdownMenuItem onSelect={() => void save('csv', products)}>
           <FileSpreadsheet aria-hidden />
           CSV
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => void save('json')}>
+        <DropdownMenuItem onSelect={() => void save('json', products)}>
           <FileJson aria-hidden />
           JSON
         </DropdownMenuItem>

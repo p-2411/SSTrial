@@ -1,6 +1,7 @@
 import type postgres from 'postgres';
 import { LOG_EVENT_TYPE_IDS, LOG_EVENT_TYPES, type LogEventType, type LogLevel, type LogSource } from '@label-extractor/shared';
 import type { Logger } from '../infra/logger.ts';
+import { containsPattern } from '../infra/search.ts';
 
 /**
  * The activity log: the `events` table (see its migration). Not to be confused with the processes'
@@ -80,7 +81,7 @@ export function createEventStore(sql: postgres.Sql, options: { source: LogSource
         where true
           and type = any(${types.length > 0 ? types : LOG_EVENT_TYPE_IDS}::text[])
           -- A scan, but the table only holds LOG_RETENTION_DAYS of events.
-          ${search ? sql`and message ilike ${`%${escapeLike(search)}%`}` : sql``}
+          ${search ? sql`and message ilike ${containsPattern(search)}` : sql``}
           ${uploadId ? sql`and upload_id = ${uploadId}` : sql``}
           ${after ? sql`and id < ${after}::bigint` : sql``}
         order by id desc
@@ -93,11 +94,6 @@ export function createEventStore(sql: postgres.Sql, options: { source: LogSource
       return result.count;
     },
   };
-}
-
-/** The search as literal text: to `ilike`, `%` and `_` are wildcards, and a backslash escapes them. */
-function escapeLike(text: string): string {
-  return text.replace(/[\\%_]/g, (character) => `\\${character}`);
 }
 
 function toRecord(row: postgres.Row): LogEventRecord {

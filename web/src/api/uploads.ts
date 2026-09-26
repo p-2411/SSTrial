@@ -1,6 +1,8 @@
 import { RESULT_EDIT_PATH } from '@label-extractor/shared';
 import type {
+  AddedWithin,
   CheckUploadsResponse,
+  DeleteUploadsResponse,
   EditResultRequest,
   SubmitUploadsResponse,
   RevertRequest,
@@ -16,12 +18,27 @@ import { apiFetch, apiRequest } from './client.ts';
 
 /** Plain functions for each API endpoint. React Query hooks wrap these in queries.ts. */
 
+/** Narrowing Products: words in a product's name, brand or file name ('' for any), and when it was added. */
+export interface ProductFilter {
+  search: string;
+  added: AddedWithin | null;
+}
+
+export const NO_PRODUCT_FILTER: ProductFilter = { search: '', added: null };
+
+/** The filter as query parameters, which the list and the export take alike. */
+function filterParams({ search, added }: ProductFilter, params = new URLSearchParams()): URLSearchParams {
+  if (search) params.set('q', search);
+  if (added) params.set('added', added);
+  return params;
+}
+
 /**
  * One page of a list, newest first: the signed-in person's own uploads being read or failed
  * (`upload`), their own read uploads waiting for review (`review`), or everyone's `products`.
  */
-export function listUploads(view: UploadView, cursor?: string): Promise<ListUploadsResponse> {
-  const params = new URLSearchParams({ view });
+export function listUploads(view: UploadView, cursor?: string, filter: ProductFilter = NO_PRODUCT_FILTER): Promise<ListUploadsResponse> {
+  const params = filterParams(filter, new URLSearchParams({ view }));
   if (cursor) params.set('cursor', cursor);
   return apiRequest<ListUploadsResponse>(`/api/uploads?${params}`);
 }
@@ -60,6 +77,11 @@ export async function retryUpload(id: string): Promise<UploadDetail> {
 /** Puts the named uploads (the asker's own, in Review) into Products: those with nothing left to check. */
 export async function submitUploads(ids: string[]): Promise<string[]> {
   return (await apiRequest<SubmitUploadsResponse>('/api/uploads/submit', { method: 'POST', body: { ids } })).submitted;
+}
+
+/** Deletes the named uploads the asker may delete (their own, or any if they're an admin). */
+export async function deleteUploads(ids: string[]): Promise<string[]> {
+  return (await apiRequest<DeleteUploadsResponse>('/api/uploads/delete', { method: 'POST', body: { ids } })).deleted;
 }
 
 /** Marks every flagged field of the named uploads as checked, by the asker. */
@@ -121,8 +143,14 @@ function storageErrorMessage(status: number, responseText: string): string {
  * Every completed extraction as a CSV or JSON file, with the file name the server chose. Fetched,
  * not linked: a plain link can't send the sign-in token. Saving it is up to the caller (saveFile).
  */
-export async function fetchExport(format: 'csv' | 'json'): Promise<{ blob: Blob; fileName: string }> {
-  const response = await apiFetch(`/api/exports/uploads.${format}`);
+export async function fetchExport(
+  format: 'csv' | 'json',
+  products: { ids: string[] } | ProductFilter = NO_PRODUCT_FILTER,
+): Promise<{ blob: Blob; fileName: string }> {
+  const params = new URLSearchParams();
+  if ('ids' in products) for (const id of products.ids) params.append('id', id);
+  else filterParams(products, params);
+  const response = await apiFetch(`/api/exports/uploads.${format}${params.size > 0 ? `?${params}` : ''}`);
   const fileName = /filename="([^"]+)"/.exec(response.headers.get('content-disposition') ?? '')?.[1] ?? `uploads.${format}`;
   return { blob: await response.blob(), fileName };
 }

@@ -67,6 +67,7 @@ Each of these moves is declared once, in `shared/src/lifecycle.ts`; the database
 from a status that table allows.
 
 - **Three stages: Upload, Review, Products.** A file is sent and read under *Upload*, then waits under *Review* until its uploader submits it to *Products*, which everyone shares. Until it's submitted it's the uploader's alone: nobody else can list it, open it, edit it or read its history (the API answers 404). Each person can pick up to 50 files at a time and have up to 200 under way.
+- **Finding and acting on products.** Products can be searched (product name, brand or file name) and filtered by when they were added (last 7 or 30 days), by the server. Tick products to export or delete them together; with none ticked, Export takes every product the search and filter match. Review has checkboxes too, so "Mark as checked" and "Submit" can act on just the ticked ones.
 - **Nothing unsure goes into Products unchecked.** A product can only be submitted once every field the model scored under 85 has been checked or corrected by a person. The server enforces it, not just the buttons. Review offers "Mark all as checked" (after a confirmation) and "Submit all ready"; the detail panel offers the same for one product. Reading a product again takes it back out of Products, to be reviewed again.
 - **Every upload finishes.** Creating an upload schedules a *finalise* job for just after its signed URL expires. It confirms a file the browser never confirmed, or discards an upload whose file never arrived. When the browser does confirm, the job is cancelled in the same transaction.
 - **Rejected files aren't kept.** Content that isn't really a JPEG, PNG, WebP or PDF is deleted with its upload; the browser shows why, with "Try again".
@@ -184,7 +185,8 @@ check the token: 503 `AUTH_UNAVAILABLE`, so an Auth outage doesn't sign everyone
 | `GET` | `/api/me` | The signed-in member: `{ id, email, role }` |
 | `POST` | `/api/uploads` | Validate `{ fileName, mimeType, sizeBytes, sha256? }`; return `{ kind: 'created', upload, uploadUrl }`, or `{ kind: 'duplicate', upload }` for a file already processed |
 | `POST` | `/api/uploads/:id/complete` | Check the uploaded bytes and queue the upload (idempotent); 422 and nothing kept if the content isn't a supported type |
-| `GET` | `/api/uploads?view=&cursor=&limit=` | One page of a list, newest first, with `nextCursor`: `products` (everyone's submitted products, the default), `upload` (the asker's own uploads being read, or failed) or `review` (the asker's own read uploads waiting to be submitted) |
+| `GET` | `/api/uploads?view=&q=&added=&cursor=&limit=` | One page of a list, newest first, with `nextCursor`: `products` (everyone's submitted products, the default), `upload` (the asker's own uploads being read, or failed) or `review` (the asker's own read uploads waiting to be submitted). `q` searches product name, brand and file name; `added=7d\|30d` keeps products added in that time |
+| `POST` | `/api/uploads/delete` | Delete `{ ids }` (up to 100): answers `{ deleted }`, skipping any the asker may not delete |
 | `POST` | `/api/uploads/submit` | Submit `{ ids }` (up to 100) to Products: answers `{ submitted }`, those that went in. Only the asker's own, with nothing left to check |
 | `POST` | `/api/uploads/check` | Mark every flagged field of `{ ids }` (up to 100) as checked: answers `{ checked }`. Each is recorded like any other check |
 | `GET` | `/api/uploads/:id` | One upload with its extracted data and a preview URL |
@@ -197,7 +199,7 @@ check the token: 503 `AUTH_UNAVAILABLE`, so an Auth outage doesn't sign everyone
 | `GET` | `/api/logs?type=&type=&upload=&cursor=&limit=` | Admins only. One page of the activity log, newest first, with `nextCursor`. One `type` per type of event wanted; none means every type |
 | `GET` | `/api/health` | Public. Health checks: 200 or 503 |
 | `GET` | `/api/ops` | Admins only. Everything on the System status page |
-| `GET` | `/api/exports/uploads.csv` | Every completed extraction as CSV, one row per product (streamed) |
+| `GET` | `/api/exports/uploads.csv` | Products as CSV, one row per product (streamed): those named with `id=` (repeated, up to 100), or else every one matching `q` and `added` |
 | `GET` | `/api/exports/uploads.json` | The same, as JSON with the full structured data |
 
 Errors are always `{ "error": { "code", "message" } }`, with a message written for users.

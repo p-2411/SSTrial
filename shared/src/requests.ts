@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { LABEL_FIELDS, type LabelField } from './fields.ts';
 import { LOG_EVENT_TYPE_IDS, type LogEventType } from './logs.ts';
 import { NET_QUANTITY_UNITS } from './units.ts';
-import { MAX_UPLOADS_PER_REQUEST, UPLOAD_VIEW_IDS, type UploadView } from './uploads.ts';
+import { ADDED_WITHIN_IDS, MAX_UPLOADS_PER_REQUEST, UPLOAD_VIEW_IDS, type AddedWithin, type UploadView } from './uploads.ts';
 
 /**
  * Zod schemas for request bodies and query strings, which the API validates.
@@ -22,12 +22,29 @@ export const createUploadRequestSchema = z.object({
 });
 export type CreateUploadRequest = z.infer<typeof createUploadRequestSchema>;
 
-/** GET /api/uploads?view=…&cursor=…&limit=… — newest first, one page at a time. */
-export const listUploadsQuerySchema = z.object({
+/** Narrowing a list of products: words in its name, brand or file name, and when it was added. */
+const productFilterSchema = z.object({
+  q: z.string().trim().max(200).optional(),
+  added: z.enum(ADDED_WITHIN_IDS as [AddedWithin, ...AddedWithin[]]).optional(),
+});
+
+/** GET /api/uploads?view=…&q=…&added=…&cursor=…&limit=… — newest first, one page at a time. */
+export const listUploadsQuerySchema = productFilterSchema.extend({
   view: z.enum(UPLOAD_VIEW_IDS as [UploadView, ...UploadView[]]).default('products'),
   /** The `nextCursor` of the previous page. */
   cursor: z.uuid().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
+/**
+ * GET /api/exports/uploads.csv|json?id=…&id=… or ?q=…&added=… — the products picked (one `id`
+ * each), or else every product matching the filter.
+ */
+export const exportQuerySchema = productFilterSchema.extend({
+  id: z
+    .union([z.uuid(), z.array(z.uuid()).max(MAX_UPLOADS_PER_REQUEST)])
+    .optional()
+    .transform((value) => (value === undefined ? undefined : [value].flat())),
 });
 
 const logEventType = z.enum(LOG_EVENT_TYPE_IDS as [LogEventType, ...LogEventType[]]);
@@ -93,7 +110,7 @@ export const revertRequestSchema = z.object({
 });
 export type RevertRequest = z.infer<typeof revertRequestSchema>;
 
-/** POST /api/uploads/submit and POST /api/uploads/check: the uploads to act on, as listed in Review. */
+/** POST /api/uploads/submit, …/check and …/delete: the uploads to act on, as picked in a list. */
 export const uploadIdsRequestSchema = z.object({
   ids: z.array(z.uuid()).min(1).max(MAX_UPLOADS_PER_REQUEST),
 });

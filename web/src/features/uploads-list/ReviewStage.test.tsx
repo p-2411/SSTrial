@@ -85,6 +85,22 @@ describe('ReviewStage', () => {
     await vi.waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
   });
 
+  it('acts on just the ticked ones, when some are', async () => {
+    const posted = stubReview([inReview('a', 'Maple Pecan Crunch', 92), inReview('b', 'Barista Oat Milk', 72), inReview('c', 'Sea Salt Crackers', 95)], {
+      submitted: ['c'],
+    });
+    renderWithProviders(<ReviewStage />);
+
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Select Barista Oat Milk' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select Sea Salt Crackers' }));
+    expect(screen.getByText('2 selected')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Mark 1 as checked' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Submit 1 ready' }));
+
+    await vi.waitFor(() => expect(posted).toEqual([{ url: '/api/uploads/submit', body: { ids: ['c'] } }]));
+  });
+
   it('offers no bulk check when nothing is flagged', async () => {
     stubReview([inReview('a', 'Maple Pecan Crunch', 92)]);
     renderWithProviders(<ReviewStage />);

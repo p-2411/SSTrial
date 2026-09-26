@@ -15,25 +15,32 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { productCount } from '@/lib/format';
 import { useNow } from '@/lib/useNow';
+import { useSelection } from '@/lib/useSelection';
 import { StaleListBanner } from './listParts';
 import { UploadRow } from './UploadRow';
-
-const products = (count: number) => `${count} ${count === 1 ? 'product' : 'products'}`;
 
 /**
  * The second stage, Review: the person's own uploads that have been read, waiting to go into
  * Products. One the model wasn't sure of ("Check (72%)", amber or red) must have its flagged fields
  * checked first: one by one in its detail, or all at once with "Mark all as checked". "Submit all
  * ready" then puts in every one with nothing left to check. The server holds to the same rules.
- * Only the uploader sees these, and the card goes when nothing is waiting.
+ * With some ticked, both act on just those. Only the uploader sees these, and the card goes when
+ * nothing is waiting.
  */
 export function ReviewStage() {
   const list = useUploadList('review');
   const now = useNow();
   const uploads = useMemo(() => list.data?.pages.flatMap((page) => page.uploads), [list.data]);
-  const ready = useMemo(() => uploads?.filter(canSubmitUpload) ?? [], [uploads]);
-  const toCheck = useMemo(() => uploads?.filter(stillToCheck) ?? [], [uploads]);
+  const ids = useMemo(() => uploads?.map((upload) => upload.id) ?? [], [uploads]);
+  const selection = useSelection(ids);
+  // What the buttons act on: the ticked ones, or with none ticked, every one listed.
+  const picked = selection.selected.length > 0;
+  const actOn = (picked ? uploads?.filter((upload) => selection.isSelected(upload.id)) : uploads) ?? [];
+  const ready = actOn.filter(canSubmitUpload);
+  const toCheck = actOn.filter(stillToCheck);
   const submit = useSubmitUploads();
   // The uploads the dialog asks about, fixed as it opens: the list may change underneath it.
   const [confirmingCheck, setConfirmingCheck] = useState<UploadSummary[] | null>(null);
@@ -43,10 +50,11 @@ export function ReviewStage() {
     const ids = ready.map((upload) => upload.id);
     submit.mutate(ids, {
       onSuccess: (submitted) => {
-        if (submitted.length > 0) toast.success(`${products(submitted.length)} added to Products`);
+        selection.clear();
+        if (submitted.length > 0) toast.success(`${productCount(submitted.length)} added to Products`);
         const left = ids.length - submitted.length;
         if (left > 0) {
-          toast.warning(`${products(left)} weren't submitted`, { description: 'They changed since you looked. Check them again.' });
+          toast.warning(`${productCount(left)} weren't submitted`, { description: 'They changed since you looked. Check them again.' });
         }
       },
       onError: (failure) => toast.error("Couldn't submit", { description: errorMessage(failure) }),
@@ -61,13 +69,17 @@ export function ReviewStage() {
   return (
     <Card aria-labelledby="review-heading" className="gap-0 py-0" role="region">
       <CardHeader className="border-b border-border/70 py-4">
-        <CardTitle id="review-heading" className="text-base font-semibold">
-          Review
-        </CardTitle>
+        <div className="flex h-8 items-center gap-3">
+          <Checkbox checked={selection.all} onCheckedChange={(checked) => selection.setAll(checked === true)} aria-label="Select all to review" />
+          <CardTitle id="review-heading" className="text-base font-semibold">
+            Review
+          </CardTitle>
+          {picked && <span className="text-sm text-muted-foreground">{selection.selected.length} selected</span>}
+        </div>
         <CardAction className="flex items-center gap-2">
           {toCheck.length > 0 && (
             <Button variant="outline" size="sm" onClick={() => setConfirmingCheck(toCheck)}>
-              Mark all as checked
+              {picked ? `Mark ${toCheck.length} as checked` : 'Mark all as checked'}
             </Button>
           )}
           <Button
@@ -77,7 +89,7 @@ export function ReviewStage() {
             title={ready.length === 0 ? 'Check the flagged products first' : undefined}
             onClick={submitReady}
           >
-            Submit all ready{ready.length > 0 && ` (${ready.length})`}
+            {picked ? `Submit ${ready.length} ready` : `Submit all ready${ready.length > 0 ? ` (${ready.length})` : ''}`}
           </Button>
         </CardAction>
       </CardHeader>
@@ -86,7 +98,7 @@ export function ReviewStage() {
 
       <ul>
         {uploads.map((upload) => (
-          <UploadRow key={upload.id} upload={upload} now={now} />
+          <UploadRow key={upload.id} upload={upload} now={now} selected={selection.isSelected(upload.id)} onSelect={selection.toggle} />
         ))}
       </ul>
 
@@ -117,7 +129,7 @@ function CheckAllDialog({ uploads, onClose }: { uploads: UploadSummary[] | null;
       uploads.map((upload) => upload.id),
       {
         onSuccess: (checked) => {
-          toast.success(`${products(checked.length)} marked as checked`);
+          toast.success(`${productCount(checked.length)} marked as checked`);
           onClose();
         },
       },
@@ -133,7 +145,7 @@ function CheckAllDialog({ uploads, onClose }: { uploads: UploadSummary[] | null;
     <AlertDialog open={uploads !== null} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Mark {products(count)} as checked?</AlertDialogTitle>
+          <AlertDialogTitle>Mark {productCount(count)} as checked?</AlertDialogTitle>
           <AlertDialogDescription>Their flagged fields are marked as checked by you, and can then be submitted.</AlertDialogDescription>
         </AlertDialogHeader>
         {check.isError && (

@@ -1,5 +1,6 @@
 import { useSearchParams } from 'react-router';
 import type { NavigateOptions } from 'react-router';
+import { MAX_SEARCH_LENGTH } from '@/components/SearchInput';
 import { LOG_EVENT_TYPE_IDS, LOG_EVENT_TYPES, type LogEventType } from '@label-extractor/shared';
 import { logFilterParams, type LogFilters } from '@/api/logs';
 
@@ -11,8 +12,6 @@ import { logFilterParams, type LogFilters } from '@/api/logs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** The longest search the server takes. */
-export const MAX_SEARCH_LENGTH = 200;
 
 export const NO_LOG_FILTERS: LogFilters = { search: '', types: [], upload: null };
 

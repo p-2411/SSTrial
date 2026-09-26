@@ -26,6 +26,7 @@ import type {
   NewUpload,
   SettleOptions,
   StoredFieldReviews,
+  UploadFilter,
   UploadRecord,
   UploadStore,
   UploadVersion,
@@ -137,22 +138,31 @@ export class InMemoryUploadStore implements UploadStore {
   private newest(predicate: (row: UploadRecord) => boolean) {
     return [...this.rows.values()].filter(predicate).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
   }
+  /** Whether a row matches a list's search and date filter, as the real store's SQL decides. */
+  private matches(row: UploadRecord, { search, addedWithinDays }: UploadFilter) {
+    const words = search?.toLowerCase();
+    const found = [row.fileName, row.result?.productName, row.result?.brand].some((text) => text?.toLowerCase().includes(words ?? ''));
+    const since = addedWithinDays === undefined ? null : Date.now() - addedWithinDays * 24 * 60 * 60 * 1000;
+    return (!words || found) && (since === null || (row.submittedAt !== null && row.submittedAt.getTime() >= since));
+  }
   async list({
     statuses,
     submitted,
     uploadedBy,
     limit,
     after,
+    ...filter
   }: {
     statuses: readonly UploadRecord['status'][];
     submitted?: boolean;
     uploadedBy?: string;
     limit: number;
     after?: string;
-  }) {
+  } & UploadFilter) {
     const newestFirst = [...this.rows.values()]
       .filter((row) => statuses.includes(row.status) && (!uploadedBy || row.uploadedBy === uploadedBy))
       .filter((row) => submitted === undefined || (row.submittedAt !== null) === submitted)
+      .filter((row) => this.matches(row, filter))
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id));
     const start = after ? newestFirst.findIndex((row) => row.id === after) + 1 : 0;
     return newestFirst.slice(start, start + limit);
@@ -161,9 +171,10 @@ export class InMemoryUploadStore implements UploadStore {
     const underWay: readonly UploadRecord['status'][] = ['uploading', 'queued', 'processing'];
     return [...this.rows.values()].filter((row) => row.uploadedBy === uploadedBy && underWay.includes(row.status)).length;
   }
-  async *streamProducts() {
+  async *streamProducts({ ids, ...filter }: UploadFilter & { ids?: readonly string[] } = {}) {
     const completed = [...this.rows.values()]
       .filter((row) => row.status === 'completed' && row.submittedAt !== null)
+      .filter((row) => (ids ? ids.includes(row.id) : this.matches(row, filter)))
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     yield* completed;
   }

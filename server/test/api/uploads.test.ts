@@ -264,13 +264,41 @@ describe('GET /api/uploads — the three lists', () => {
     expect((await list()).map((u) => u.id)).toEqual(['a0000000-0000-4000-8000-000000000003']);
   });
 
+  it('searches products by name, brand or file name, and filters them by when they were added', async () => {
+    const day = 24 * 60 * 60 * 1000;
+    const product = (id: string, fileName: string, productName: string, brand: string, daysAgo: number) =>
+      uploads.seed({
+        id,
+        fileName,
+        status: 'completed',
+        result: { ...SAMPLE_EXTRACTION, productName, brand },
+        submittedAt: new Date(Date.now() - daysAgo * day),
+        createdAt: new Date(Date.now() - daysAgo * day),
+      });
+    product('a0000000-0000-4000-8000-000000000001', 'granola.png', 'Maple Pecan Crunch', 'Harvest & Hearth', 1);
+    product('a0000000-0000-4000-8000-000000000002', 'milk.png', 'Barista Oat Milk', 'Oatly', 10);
+    product('a0000000-0000-4000-8000-000000000003', 'crackers.pdf', 'Sea Salt Crackers', 'Harvest & Hearth', 40);
+    const names = async (query: string) =>
+      ((await app.inject({ method: 'GET', url: `/api/uploads${query}` })).json().uploads as Array<{ productName: string }>).map(
+        (upload) => upload.productName,
+      );
+
+    expect(await names('?q=harvest')).toEqual(['Maple Pecan Crunch', 'Sea Salt Crackers']); // brand
+    expect(await names('?q=OAT')).toEqual(['Barista Oat Milk']); // name
+    expect(await names('?q=.pdf')).toEqual(['Sea Salt Crackers']); // file name
+    expect(await names('?added=7d')).toEqual(['Maple Pecan Crunch']);
+    expect(await names('?added=30d')).toEqual(['Maple Pecan Crunch', 'Barista Oat Milk']);
+    expect(await names('?q=harvest&added=30d')).toEqual(['Maple Pecan Crunch']);
+    expect(await names('?q=%20%20')).toHaveLength(3); // blank words find everything
+  });
+
   it('returns an empty list when there are no uploads', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/uploads' });
     expect(response.json()).toEqual({ uploads: [], nextCursor: null });
   });
 
   it('rejects an invalid limit, view or cursor', async () => {
-    for (const query of ['limit=0', 'limit=500', 'view=everything', 'cursor=not-an-id']) {
+    for (const query of ['limit=0', 'limit=500', 'view=everything', 'cursor=not-an-id', 'added=1y', `q=${'a'.repeat(201)}`]) {
       expect((await app.inject({ method: 'GET', url: `/api/uploads?${query}` })).statusCode).toBe(400);
     }
   });

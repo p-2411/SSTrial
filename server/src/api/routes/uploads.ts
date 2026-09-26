@@ -1,6 +1,8 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import {
+  ADDED_WITHIN_DAYS,
+  ADDED_WITHIN_IDS,
   canViewUpload,
   createUploadRequestSchema,
   editResultRequestSchema,
@@ -14,6 +16,7 @@ import {
   UPLOAD_VIEWS,
   type CheckUploadsResponse,
   type CreateUploadResponse,
+  type DeleteUploadsResponse,
   type ListUploadsResponse,
   type SubmitUploadsResponse,
   type UploadResponse,
@@ -140,15 +143,21 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
   app.get('/api/uploads', async (request): Promise<ListUploadsResponse> => {
     const query = listUploadsQuerySchema.safeParse(request.query);
     if (!query.success) {
-      throw new ApiError(400, 'BAD_REQUEST', `Use view=${UPLOAD_VIEW_IDS.join('|')}, a cursor from a previous page, and limit=1–100.`);
+      throw new ApiError(
+        400,
+        'BAD_REQUEST',
+        `Use view=${UPLOAD_VIEW_IDS.join('|')}, q=words (up to 200 characters), added=${ADDED_WITHIN_IDS.join('|')}, a cursor from a previous page, and limit=1–100.`,
+      );
     }
-    const { view, cursor, limit } = query.data;
+    const { view, q, added, cursor, limit } = query.data;
     const { statuses, submitted, own } = UPLOAD_VIEWS[view];
     // Ask for one extra row: if it comes back, there's another page after this one.
     const records = await uploads.list({
       statuses,
       submitted: submitted ?? undefined,
       uploadedBy: own ? request.member!.id : undefined,
+      search: q || undefined,
+      addedWithinDays: added && ADDED_WITHIN_DAYS[added],
       limit: limit + 1,
       after: cursor,
     });
@@ -192,6 +201,17 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
     const { ids } = uploadIds(request.body);
     const checked = await checkFlaggedFields({ uploads, events }, ids, request.member!);
     return { checked: checked.map((upload) => upload.id) };
+  });
+
+  // Deleting several at once: each as DELETE /api/uploads/:id would, skipping any the asker may not.
+  app.post('/api/uploads/delete', async (request): Promise<DeleteUploadsResponse> => {
+    const { ids } = uploadIds(request.body);
+    const deleted: string[] = [];
+    for (const id of new Set(ids)) {
+      const result = await deleteUpload({ uploads, storage, events }, id, request.member!);
+      if (result.outcome === 'deleted') deleted.push(id);
+    }
+    return { deleted };
   });
 
   app.post('/api/uploads/submit', async (request): Promise<SubmitUploadsResponse> => {

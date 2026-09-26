@@ -712,6 +712,38 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       }
     });
 
+    it('finds products by name, brand or file name, by when they were added, and by ID for an export', async () => {
+      const tag = crypto.randomUUID().slice(0, 8); // so other tests' products don't match
+      const product = async (fileName: string, productName: string, daysAgo: number) => {
+        const id = crypto.randomUUID();
+        createdIds.push(id);
+        await uploads.create({ id, fileName: `${tag}-${fileName}`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png`, contentSha256: null, uploadedBy: null });
+        const result = { ...SAMPLE_EXTRACTION, productName: `${productName} ${tag}`, brand: 'Brand_50%' };
+        await sql`
+          update uploads set status = 'completed', result = ${sql.json(result as postgres.JSONValue)},
+            submitted_at = now() - make_interval(days => ${daysAgo})
+          where id = ${id}`;
+        return id;
+      };
+      const fresh = await product('granola.png', 'Maple Pecan Crunch', 1);
+      const older = await product('milk.png', 'Barista Oat Milk', 20);
+      const names = async (filter: { search?: string; addedWithinDays?: number }) =>
+        (await uploads.list({ statuses: ['completed'], submitted: true, limit: 100, ...filter }))
+          .filter((upload) => upload.fileName.startsWith(tag))
+          .map((upload) => upload.fileName.slice(tag.length + 1));
+
+      expect(await names({ search: `oat milk ${tag}`.toUpperCase() })).toEqual(['milk.png']);
+      expect(await names({ search: `${tag}-granola` })).toEqual(['granola.png']);
+      expect(await names({ search: 'brand_50%' })).toEqual(['milk.png', 'granola.png']); // wildcards taken literally, newest first
+      expect(await names({ search: 'brand_5_%' })).toEqual([]);
+      expect(await names({ addedWithinDays: 7 })).toEqual(['granola.png']);
+
+      const exported: string[] = [];
+      for await (const upload of uploads.streamProducts({ ids: [older, crypto.randomUUID()] })) exported.push(upload.id);
+      expect(exported).toEqual([older]);
+      expect(fresh).not.toEqual(older);
+    });
+
     it('only lets a read upload be in Products', async () => {
       const id = crypto.randomUUID();
       createdIds.push(id);

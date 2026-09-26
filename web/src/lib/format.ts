@@ -62,3 +62,8 @@ export function formatDuration(seconds: number): string {
 export function formatOptional<T>(value: T | null, format: (value: T) => string): string {
   return value === null ? '–' : format(value);
 }
+
+/** "1 product", "3 products". */
+export function productCount(count: number): string {
+  return `${count} ${count === 1 ? 'product' : 'products'}`;
+}

@@ -16,6 +16,7 @@ import {
   type UploadTransition,
   type UploadTransitionKeepingRow,
 } from '@label-extractor/shared';
+import { containsPattern } from '../infra/search.ts';
 import type { UploadJobs } from './jobs.ts';
 
 /**
@@ -107,6 +108,15 @@ export interface NewUpload {
   uploadedBy: string | null;
 }
 
+/**
+ * Narrowing a list: words found in the product name, brand or file name (ignoring case), and, for
+ * products, how recently they were added to Products.
+ */
+export interface UploadFilter {
+  search?: string;
+  addedWithinDays?: number;
+}
+
 /** Options for the two ways an upload leaves `uploading`. */
 export interface SettleOptions {
   /** Cancel the upload's finalise job in the same transaction (see UploadJobs.cancelFinalise). */
@@ -123,17 +133,22 @@ export interface UploadQueries {
    * not, if `submitted` says; only `uploadedBy`'s if given. `after` is the ID of the last upload on
    * the previous page (keyset pagination: stable while new uploads arrive, and fast at any depth).
    */
-  list(options: {
-    statuses: readonly UploadStatus[];
-    submitted?: boolean;
-    uploadedBy?: string;
-    limit: number;
-    after?: string;
-  }): Promise<UploadRecord[]>;
+  list(
+    options: {
+      statuses: readonly UploadStatus[];
+      submitted?: boolean;
+      uploadedBy?: string;
+      limit: number;
+      after?: string;
+    } & UploadFilter,
+  ): Promise<UploadRecord[]>;
   /** How many uploads this person has under way (uploading, waiting or being read). */
   countUnderWay(uploadedBy: string): Promise<number>;
-  /** Every product (submitted upload), newest first, read in batches so an export of any size can stream. */
-  streamProducts(): AsyncIterable<UploadRecord>;
+  /**
+   * Every product (submitted upload) matching the filter, or only those in `ids`, newest first,
+   * read in batches so an export of any size can stream.
+   */
+  streamProducts(filter?: UploadFilter & { ids?: readonly string[] }): AsyncIterable<UploadRecord>;
   /** The saved states of an upload's data, oldest first. */
   listVersions(id: string): Promise<UploadVersion[]>;
 }
@@ -244,6 +259,10 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
     sql`status = any(${[...UPLOAD_TRANSITIONS[transition].from]}::upload_status[])`;
   /** The status a lifecycle transition leads to. */
   const statusAfter = (transition: UploadTransitionKeepingRow) => UPLOAD_TRANSITIONS[transition].to;
+  /** SQL conditions for a filter (each `and …`), nothing for what it leaves out. A scan: uploads are few enough. */
+  const matching = ({ search, addedWithinDays }: UploadFilter) => sql`
+    ${search ? sql`and (file_name ilike ${containsPattern(search)} or result->>'productName' ilike ${containsPattern(search)} or result->>'brand' ilike ${containsPattern(search)})` : sql``}
+    ${addedWithinDays ? sql`and submitted_at >= now() - make_interval(days => ${addedWithinDays})` : sql``}`;
 
   return {
     async create(upload) {
@@ -284,7 +303,7 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
         limit 1`);
     },
 
-    async list({ statuses, submitted, uploadedBy, limit, after }) {
+    async list({ statuses, submitted, uploadedBy, limit, after, ...filter }) {
       // The cursor row's own values are looked up in the database, so the comparison uses
       // Postgres's full microsecond timestamps rather than a millisecond-rounded copy.
       const rows = await sql`
@@ -292,6 +311,7 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
         where status = any(${statuses as string[]}::upload_status[])
           ${submitted === undefined ? sql`` : submitted ? sql`and submitted_at is not null` : sql`and submitted_at is null`}
           ${uploadedBy ? sql`and uploaded_by = ${uploadedBy}` : sql``}
+          ${matching(filter)}
           ${after ? sql`and (created_at, id) < (select created_at, id from uploads where id = ${after})` : sql``}
         order by created_at desc, id desc
         limit ${limit}`;
@@ -305,10 +325,11 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
       return row!.count;
     },
 
-    async *streamProducts() {
+    async *streamProducts({ ids, ...filter } = {}) {
       const batches = sql`
         select * from uploads
         where status = 'completed' and submitted_at is not null
+          ${ids ? sql`and id = any(${ids as string[]}::uuid[])` : matching(filter)}
         order by created_at desc`.cursor(500);
       for await (const rows of batches) {
         for (const row of rows) yield toRecord(row);

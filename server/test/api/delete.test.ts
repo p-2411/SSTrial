@@ -62,3 +62,34 @@ describe('DELETE /api/uploads/:id', () => {
     expect((await detail()).json().upload.canDelete).toBe(false);
   });
 });
+
+describe('POST /api/uploads/delete', () => {
+  const MINE = '5a1e7e7e-0000-4000-8000-000000000002';
+  const deleteMany = (ids: string[]) => app.inject({ method: 'POST', url: '/api/uploads/delete', payload: { ids } });
+
+  it('deletes each one the asker may, and skips the rest', async () => {
+    const { uploads, storage, events } = await appFor(OTHER_MEMBER);
+    const mine = uploads.seed({ id: MINE, status: 'completed', result: SAMPLE_EXTRACTION, uploadedBy: OTHER_MEMBER.id });
+    storage.put(mine.storagePath, FILE_BYTES.png);
+
+    const response = await deleteMany([ID, MINE, '5a1e7e7e-0000-4000-8000-000000000099']);
+
+    expect(response.json()).toEqual({ deleted: [MINE] });
+    expect(uploads.rows.has(MINE)).toBe(false);
+    expect(storage.files.has(mine.storagePath)).toBe(false);
+    expect(uploads.rows.has(ID)).toBe(true); // MEMBER's, so not OTHER_MEMBER's to delete
+    expect(events.types).toEqual(['upload.deleted']);
+  });
+
+  it("lets an admin delete anyone's", async () => {
+    const { uploads } = await appFor(ADMIN);
+    expect((await deleteMany([ID])).json()).toEqual({ deleted: [ID] });
+    expect(uploads.rows.size).toBe(0);
+  });
+
+  it('rejects an empty or malformed list', async () => {
+    await appFor(ADMIN);
+    expect((await deleteMany([])).statusCode).toBe(400);
+    expect((await deleteMany(['nope'])).statusCode).toBe(400);
+  });
+});

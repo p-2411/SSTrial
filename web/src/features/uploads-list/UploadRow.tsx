@@ -4,6 +4,7 @@ import { isActiveStatus, type UploadSummary } from '@label-extractor/shared';
 import { FileTypeTile } from '@/components/FileTypeTile';
 import { RelativeTime } from '@/components/RelativeTime';
 import { StatusPill } from '@/components/StatusPill';
+import { Checkbox } from '@/components/ui/checkbox';
 import { rowClassName, RowTitle } from '@/components/UploadRowLayout';
 import { formatFileFacts } from '@/lib/format';
 import { uploadState } from '@/lib/uploadState';
@@ -16,10 +17,24 @@ import { uploadPath } from '@/routes';
  * name leads and the second line says what's happening. A finished or failed upload's row links to
  * its detail view; one still being worked on has nothing to open yet, so it isn't a link.
  *
+ * In a list that can act on several at once, `onSelect` gives the row a checkbox, beside the link
+ * rather than in it (a control can't sit inside a link).
+ *
  * Memoised: the list re-renders whenever anything in it changes (a status, an upload's progress),
  * but React Query keeps unchanged uploads as the same objects, so only changed rows re-render.
  */
-export const UploadRow = memo(function UploadRow({ upload, now }: { upload: UploadSummary; now: number }) {
+export const UploadRow = memo(function UploadRow({
+  upload,
+  now,
+  selected = false,
+  onSelect,
+}: {
+  upload: UploadSummary;
+  now: number;
+  selected?: boolean;
+  /** Picks or unpicks this row; stable, so picking one row doesn't re-render the others. */
+  onSelect?: (id: string, picked: boolean) => void;
+}) {
   const productName = upload.status === 'completed' ? upload.productName : null;
   const content = (
     <>
@@ -44,9 +59,25 @@ export const UploadRow = memo(function UploadRow({ upload, now }: { upload: Uplo
   return (
     // content-visibility: the browser skips laying out rows scrolled out of view, which keeps a long
     // list (after several "Load more"s) cheap. The intrinsic size is roughly one row's height.
-    <li className="border-b border-border/70 [contain-intrinsic-size:auto_4.25rem] [content-visibility:auto] last:border-b-0">
+    <li
+      className={cn(
+        'border-b border-border/70 [contain-intrinsic-size:auto_4.25rem] [content-visibility:auto] last:border-b-0',
+        onSelect && 'flex',
+        selected && 'bg-muted/50',
+      )}
+    >
+      {onSelect && (
+        // The whole strip left of the row picks it, not just the box. Lined up with the file tile.
+        <label className="flex cursor-pointer pt-[1.375rem] pl-4">
+          <Checkbox
+            checked={selected}
+            onCheckedChange={(checked) => onSelect(upload.id, checked === true)}
+            aria-label={`Select ${productName ?? upload.fileName}`}
+          />
+        </label>
+      )}
       {isActiveStatus(upload.status) ? (
-        <div className={cn(rowClassName, 'border-b-0')}>{content}</div>
+        <div className={cn(rowClassName, 'border-b-0', onSelect && 'min-w-0 flex-1 pl-3')}>{content}</div>
       ) : (
         <NavLink
           to={uploadPath(upload.id)}
@@ -54,6 +85,7 @@ export const UploadRow = memo(function UploadRow({ upload, now }: { upload: Uplo
             cn(
               rowClassName,
               'border-b-0 text-inherit no-underline transition-colors outline-none hover:bg-muted/60 focus-visible:bg-muted',
+              onSelect && 'min-w-0 flex-1 pl-3',
               // The open upload gets an indigo marker, like the active item in SupplyScope's lists.
               isActive && 'bg-brand-soft/70 shadow-[inset_3px_0_0_var(--brand)] hover:bg-brand-soft/70',
             )
