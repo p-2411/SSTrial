@@ -1,5 +1,5 @@
 import type { LabelExtraction } from './extraction.ts';
-import { LABEL_FIELDS, REQUIRED_FIELDS, type LabelField } from './fields.ts';
+import { LABEL_FIELDS, type LabelField } from './fields.ts';
 import { formatList } from './text.ts';
 import { textShowsAmount } from './units.ts';
 
@@ -75,6 +75,13 @@ export function flaggedFields(confidence: ExtractionConfidence | null, reviewed:
   if (!confidence) return [];
   return LABEL_FIELDS.filter((field) => !reviewed.includes(field) && needsChecking(confidence[field].score));
 }
+
+/**
+ * What every product must have. One read without it is flagged for a person to look at (see
+ * applyConfidenceChecks): they fill it in, or confirm the label really doesn't show it. Allergens
+ * aren't here: plenty of products declare none.
+ */
+const REQUIRED_FIELDS = ['productName', 'brand', 'netWeight', 'ingredients'] as const satisfies readonly LabelField[];
 
 /** Why a required field that's missing is flagged. */
 const MISSING: Record<(typeof REQUIRED_FIELDS)[number], string> = {

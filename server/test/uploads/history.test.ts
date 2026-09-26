@@ -54,7 +54,7 @@ describe('toHistoryEntries', () => {
       ['upload.edited', true], // its own record of what changed
       ['upload.reverted', true],
       ['extraction.completed', false], // no saved reading to show
-      ['extraction.failed', false], // its facts are for the Logs page
+      ['extraction.failed', false], // its facts are for the activity log
     ]);
   });
 });

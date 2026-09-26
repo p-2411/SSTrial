@@ -8,7 +8,7 @@ import type { LabelField } from './fields.ts';
 export const RESULT_EDIT_PATH = (uploadId: string) => `/api/uploads/${encodeURIComponent(uploadId)}/result`;
 
 /** A person either corrected a field, or confirmed it was already right. */
-export const FIELD_REVIEW_KINDS = ['edited', 'checked'] as const;
+const FIELD_REVIEW_KINDS = ['edited', 'checked'] as const;
 export type FieldReviewKind = (typeof FIELD_REVIEW_KINDS)[number];
 
 export function isFieldReviewKind(value: unknown): value is FieldReviewKind {
@@ -22,5 +22,5 @@ export interface FieldReview {
   at: string;
 }
 
-/** The fields someone has reviewed. A reviewed field no longer counts towards the upload's confidence. */
+/** The fields someone has reviewed. A reviewed field counts as certain (100) in the upload's confidence. */
 export type FieldReviews = Partial<Record<LabelField, FieldReview>>;

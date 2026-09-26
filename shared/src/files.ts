@@ -1,7 +1,8 @@
 import { formatList } from './text.ts';
 
 /**
- * Which files we accept, and the metadata checks that run *before* anything is uploaded.
+ * Which files we accept, and the metadata checks that run *before* anything is uploaded. Zod-free,
+ * so the web app can import it.
  *
  * These rules run in three places:
  *   1. the browser, so the user gets instant feedback without a network round-trip;

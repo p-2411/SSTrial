@@ -308,6 +308,8 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
     sql`status = any(${[...UPLOAD_TRANSITIONS[transition].from]}::upload_status[])`;
   /** The status a lifecycle transition leads to. */
   const statusAfter = (transition: UploadTransitionKeepingRow) => UPLOAD_TRANSITIONS[transition].to;
+  /** SQL for isProduct: in Products. The same condition as the indexes on products, which it lets queries use. */
+  const inProducts = sql`(status = 'completed' and submitted_at is not null)`;
   /**
    * SQL conditions for a filter (each `and …`), nothing for what it leaves out. The words are
    * searched for in the file name, product name and brand as one text, exactly as indexed for
@@ -349,7 +351,7 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
       return oneRecord(sql`
         select * from uploads
         where content_sha256 = ${sha256} and status in ('queued', 'processing', 'completed')
-          and (uploaded_by = ${personId} or (status = 'completed' and submitted_at is not null))
+          and (uploaded_by = ${personId} or ${inProducts})
         order by created_at desc
         limit 1`);
     },
@@ -392,7 +394,7 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
     async *streamProducts({ ids, ...filter } = {}) {
       const batches = sql`
         select * from uploads
-        where status = 'completed' and submitted_at is not null
+        where ${inProducts}
           ${ids ? sql`and id = any(${ids as string[]}::uuid[])` : matching(filter)}
         order by created_at desc, id desc`.cursor(500);
       for await (const rows of batches) {

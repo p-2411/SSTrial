@@ -17,7 +17,7 @@ export interface OpsStore {
 
 /** A worker that hasn't checked in for this long is treated as down. */
 const WORKER_SILENT_AFTER_SECONDS = 180;
-/** The System status page's throughput figures cover this window (`last24h`). */
+/** The System page's throughput figures cover this window (`last24h`). */
 const STATUS_WINDOW_HOURS = 24;
 /** Heartbeats are keyed by process type; only workers send them (the API answers health checks). */
 const WORKER = 'worker';

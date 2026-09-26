@@ -19,10 +19,3 @@ export type LabelField = keyof typeof FIELD_LABELS;
 
 /** In the order the label data is shown. */
 export const LABEL_FIELDS = Object.keys(FIELD_LABELS) as LabelField[];
-
-/**
- * What every product must have. One read without it is flagged for a person to look at (see
- * applyConfidenceChecks): they fill it in, or confirm the label really doesn't show it. Allergens
- * aren't here: plenty of products declare none.
- */
-export const REQUIRED_FIELDS = ['productName', 'brand', 'netWeight', 'ingredients'] as const satisfies readonly LabelField[];

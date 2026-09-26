@@ -11,7 +11,7 @@ export interface OpsRoutesDeps {
   ops: Pick<OpsStore, 'snapshot'>;
 }
 
-/** Health and monitoring endpoints. The System status page reads GET /api/ops. */
+/** Health and monitoring endpoints. The System page's status reads GET /api/ops. */
 export async function opsRoutes(app: FastifyInstance, { health, ops }: OpsRoutesDeps) {
   app.get('/api/health', async (_request, reply): Promise<HealthReport> => {
     const report = await health();

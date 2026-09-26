@@ -29,7 +29,7 @@ describe('signing in', () => {
   });
 
   it('cannot be skipped by spelling the path differently (the router decodes it; the check must too)', async () => {
-    for (const url of ['/%61pi/uploads', '/a%70i/uploads/counts', '/%61pi/exports/uploads.csv', '/%61pi/me']) {
+    for (const url of ['/%61pi/uploads', '/a%70i/uploads/7d0a3f5e-0000-4000-8000-000000000001', '/%61pi/exports/uploads.csv', '/%61pi/me']) {
       expect((await get(url)).statusCode, url).toBe(401);
     }
   });

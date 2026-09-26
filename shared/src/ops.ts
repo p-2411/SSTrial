@@ -1,4 +1,4 @@
-/** Contracts for GET /api/ops — the data behind the System status page. */
+/** Contracts for GET /api/ops — the data behind the System page's status. */
 
 export interface HealthCheckResult {
   status: 'ok' | 'error';

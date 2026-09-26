@@ -1,8 +1,8 @@
 /**
  * Who can do what. Members do the work (upload, review, export); admins can also see how the
- * system is running (System status, the Activity log).
+ * system is running (the System page: its status and the activity log).
  */
-export const ROLES = ['admin', 'member'] as const;
+const ROLES = ['admin', 'member'] as const;
 export type Role = (typeof ROLES)[number];
 
 export function isRole(value: string): value is Role {

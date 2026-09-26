@@ -15,7 +15,7 @@ import type { NewLogEvent } from './store.ts';
 
 /**
  * Every event the app records, built in one place so their wording and details stay consistent.
- * Messages are written for the Logs page: one plain sentence, naming the file. `data` carries the
+ * Messages are written for the activity log: one plain sentence, naming the file. `data` carries the
  * same facts in structured form (and the file name, so it's still known after an upload is deleted).
  */
 

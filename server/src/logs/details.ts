@@ -48,7 +48,7 @@ function recordedChanges(recorded: unknown): FieldChange[] {
 }
 
 /** The fields whose values differ between two saved results. */
-export function changesBetween(before: unknown, after: unknown): FieldChange[] {
+function changesBetween(before: unknown, after: unknown): FieldChange[] {
   const from = isObject(before) ? before : {};
   const to = isObject(after) ? after : {};
   return LABEL_FIELDS.filter((field) => JSON.stringify(from[field] ?? null) !== JSON.stringify(to[field] ?? null)).map(

@@ -8,9 +8,10 @@ import { MAX_UPLOADS_PER_REQUEST, UPLOAD_VIEW_IDS, type UploadView } from './upl
 /**
  * Zod schemas for request bodies and query strings, which the API validates.
  *
- * Kept apart from uploads.ts on purpose: the web app imports that file for small runtime helpers
- * (statuses, filters), and a module that builds Zod schemas at load time can't be tree-shaken, so
- * having them there shipped all of Zod to every browser. The web only needs these as types.
+ * Kept apart from the other modules on purpose: the web app imports those for small runtime
+ * helpers (statuses, what can be submitted or retried), and a module that builds Zod schemas at
+ * load time can't be tree-shaken, so having them there shipped all of Zod to every browser. The web
+ * only needs these as types.
  */
 
 /** POST /api/uploads — ask for a signed URL to upload one file to. */
@@ -168,4 +169,3 @@ export type RevertRequest = z.infer<typeof revertRequestSchema>;
 export const uploadIdsRequestSchema = z.object({
   ids: z.array(z.uuid()).min(1).max(MAX_UPLOADS_PER_REQUEST),
 });
-export type UploadIdsRequest = z.infer<typeof uploadIdsRequestSchema>;

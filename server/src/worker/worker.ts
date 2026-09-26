@@ -100,7 +100,7 @@ export interface HousekeepingDeps {
 }
 
 /**
- * Once a minute: records that a worker is running (the System status page's worker card), and
+ * Once a minute: records that a worker is running (the System page's workers check), and
  * keeps the activity log pruned.
  */
 export async function startHousekeeping({ boss, ops, events, logger }: HousekeepingDeps): Promise<void> {

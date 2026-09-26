@@ -67,16 +67,16 @@ uploading ─(browser confirms)─► queued ─(worker claims)─► processing
 Each of these moves is declared once, in `shared/src/lifecycle.ts`; the database only makes a move
 from a status that table allows.
 
-- **Three stages: Upload, Review, Products.** A file dropped under *Upload* is sent and read under the *Uploading* tab, then waits under the *Review* tab until its uploader submits it to *Products*, which everyone shares. Until it's submitted it's the uploader's alone: nobody else can list it, open it, edit it or read its history (the API answers 404). Each person can pick up to 50 files at a time and have up to 200 under way.
+- **Three stages: Upload, Review, Products.** A file dropped under *Upload* is sent and read under the *Uploading* tab, then waits under the *Review* tab until its uploader submits it to *Products*, which everyone shares. Until it's submitted it's the uploader's alone: nobody else can list it, open it, edit it, read its history, act on it or be sent its live changes (every route that names it answers 404, admins included). Each person can pick up to 50 files at a time and have up to 200 under way.
 - **Finding and acting on products.** Products can be searched (product name, brand or file name) and filtered by the days they were added (a common span, or any range on a calendar), by the server. Tick products (a row's box shows on hover) to export or delete them together; with none ticked, Export takes every product the search and filter match. Review can be ticked too ("Select all" ticks every one), so "Mark as checked" and "Submit" act on just those.
-- **Nothing unsure goes into Products unchecked.** A product can only be submitted once every field the model scored under 85 has been checked or corrected by a person. The server enforces it, not just the buttons. Review offers "Mark all as checked" (after a confirmation) and "Submit all ready"; the detail panel offers the same for one product. Reading a product again takes it back out of Products, to be reviewed again.
+- **Nothing unsure goes into Products unchecked.** A product can only be submitted once every field the model scored under 85 has been checked or corrected by a person. The server enforces it, not just the buttons. Review offers "Mark all as checked" (after a confirmation) and "Submit all ready"; the detail panel offers the same for one product. Reading a product again takes it back out of Products, to be reviewed again, so only its uploader or an admin can ask for that.
 - **Every upload finishes.** Creating an upload schedules a *finalise* job for just after its signed URL expires. It confirms a file the browser never confirmed, or discards an upload whose file never arrived. When the browser does confirm, the job is cancelled in the same transaction.
 - **Rejected files aren't kept.** Content that isn't really a JPEG, PNG, WebP or PDF is deleted with its upload; the browser shows why, with "Try again".
-- **Duplicates are recognised.** An identical file (same SHA-256) points to the existing upload instead of being processed again.
+- **Duplicates are recognised.** An identical file (same SHA-256) that's already in Products, or among the person's own uploads being read or reviewed, is pointed to instead of being processed again. Someone else's upload that isn't in Products doesn't count: it's theirs alone.
 
 ### Confidence scores
 
-Every field gets a score out of 100 for how sure the extraction is, with the reasons for any doubt. The model scores each field in the same call, and those scores are stored as given. Plain checks cap a score at 60 when a product name, brand, net weight or ingredient list wasn't found (every product needs them, so a person must fill it in or confirm it's absent), or when the data contradicts itself (the net amount missing from its printed text, a declared allergen no ingredient contains, percentages over 100%); they run whenever the upload is read, so they describe the data as it is now, edits included. The detail panel shows each field's score, fine (85+), check (60–84) or low, and the card's footer gives the upload's overall confidence (its least certain unchecked field): green when high, amber or red when a field is worth checking. A completed upload below 85 shows "Check (72%)" in place of "Completed", in the list and the detail. How it works and its limits: [DECISIONS.md](DECISIONS.md#trade-offs).
+Every field gets a score out of 100 for how sure the extraction is, with the reasons for any doubt. The model scores each field in the same call, and those scores are stored as given. Plain checks cap a score at 60 when a product name, brand, net weight or ingredient list wasn't found (every product needs them, so a person must fill it in or confirm it's absent), or when the data contradicts itself (the net amount missing from its printed text, a declared allergen no ingredient contains, percentages over 100%); they run whenever the upload is read, so they describe the data as it is now, edits included. The detail panel shows each field's score, fine (85+), check (60–84) or low, and the card's footer gives the upload's overall confidence (its least certain unchecked field): green when high, amber or red when a field is worth checking. A completed upload below 85 shows "Check (72%)" in place of "Completed", in the list and the detail. A reading with no scores (from before scoring, or saved in a shape that can't be read) has every field at 60, "Not scored: check it against the label.", so each is checked before it can be submitted. How it works and its limits: [DECISIONS.md](DECISIONS.md#trade-offs).
 
 ### Reviewing and editing
 
@@ -84,11 +84,11 @@ Any field can be corrected in place in the detail panel: the product name, brand
 
 ### Deleting
 
-Whoever uploaded a product, or any admin, can delete it from the detail panel (or several at once from Products), after confirming; its file goes with it. Both go for good, but the activity log keeps what happened to it, who deleted it, and the product's data (name, brand, ingredients and so on) in the event's details. Uploads from before sign-in have no uploader, so only admins can delete those. It works mid-extraction too: that attempt stands down once the upload is gone.
+Whoever uploaded a product, or any admin, can delete it from the detail panel (or several at once from Products), after confirming; its file goes with it. Both go for good, but the activity log keeps what happened to it, who deleted it, and the product's data (name, brand, ingredients and so on) in the event's details; that event is written in the same transaction as the delete, so neither happens without the other. Uploads from before sign-in have no uploader, so only admins can delete those. It works mid-extraction too: that attempt stands down once the upload is gone.
 
 ### Monitoring
 
-- **System page** (`/system` in the app, admins only), with two parts:
+- **System page** ("Status & activity" in the sidebar, `/system`, admins only), with two parts:
   - **Status strip** (from `GET /api/ops`): uploads waiting, retrying and processing; the last 24 hours; and the system's checks (database, queue, and whether a worker has checked in within the last 3 minutes), as "All OK" with each one's detail on hover, or which failed and why ("Database and workers down").
   - **Activity log** (from `GET /api/logs`), underneath: every step of every upload (created, queued, each extraction attempt, retries, failures and why), plus rate-limit pauses and process starts. Search its messages, narrow it to any mix of event types (with shortcuts for warnings and errors), or to a span of days, or to one upload with `?upload=<id>` in the address, and it updates live. It loads a page at a time, and each event's details only when opened. A product's events are kept for as long as it exists, and for 30 days after it's deleted; the system's own, for 30 days.
 - **`GET /api/health`** on the API (database, queue) and on the worker (plus its job loop) answers 200 or 503, naming which check failed but not the error's details (the System page shows those). Railway uses it on deploy.
@@ -139,21 +139,23 @@ The LLM is never called from tests. The worker depends on a `LabelExtractor` int
 
 ```
 shared/          Types and rules used by all three: file rules, upload lifecycle, label fields, confidence
-                 bands and checks, units, roles, the event catalogue, the HTTP contract. Its Zod schemas
+                 bands and checks, units, roles and who may do what, the event catalogue, list limits,
+                 the HTTP contract. Its Zod schemas
                  (extraction.ts, requests.ts) are only loaded by the server; the web build fails if
                  Zod gets bundled
 server/
-  src/api/       HTTP API process (Fastify): routes that turn use-case outcomes into responses, errors,
-                 the sign-in check and the admin-only guard
+  src/api/       HTTP API process (Fastify): routes that turn use-case outcomes into responses, paging
+                 and route parameters, errors, the sign-in check and the admin-only guard
   src/auth/      Who a request is from: access-token check and the members table (roles)
   src/worker/    Worker process: the extraction job, a handler per queue, and once-a-minute
                  housekeeping (the worker heartbeat and pruning the activity log)
   src/extraction/ LLM integration: interface, errors, retry policy, OpenAI implementation and its
                  error mapping, prompt, shared rate limiter
-  src/uploads/   The uploads domain: the table's guarded transitions, the use cases (intake, finalise,
-                 edit, retry, detail), its queues, exports and response mapping
+  src/uploads/   The uploads domain: the table's guarded transitions, who may reach which upload
+                 (access), the use cases (intake, finalise, detail, edit, check, submit, retry,
+                 revert, delete, history), its queues, exports and response mapping
   src/logs/      The activity log: the events table, the catalogue of events (wording in one place)
-  src/ops/       Health checks, the worker heartbeat and the status page's data
+  src/ops/       Health checks, the worker heartbeat and the System page's status
   src/infra/     Config, database, queue connection, storage, stdout logging, file-type sniffing, and the
                  live change feed (Postgres NOTIFY → server-sent events)
   scripts/       create-user.ts (accounts and roles), and one-off data changes, committed so they're
@@ -164,7 +166,8 @@ web/src/
   auth/          Supabase Auth in the browser, the sign-in page, and the route guards
   api/           API client, React Query hooks and cache refreshing, live updates (polling as fallback)
   features/      upload (dropzone + upload manager), uploads-list (Uploading and Review tabs, Products),
-                 upload-detail (side panel), system (the System page), logs (its activity log)
+                 upload-detail (side panel), system (the System page), logs (its activity log),
+                 activity (what the activity log and each product's history share: filters, details)
   components/    Small shared pieces (status pill, file-type tile, row layout, segmented tabs, errors)
   components/ui/ shadcn/ui components, generated by the shadcn CLI and lightly adapted
   lib/           Plain helpers: formatting, what an upload's state means, status colours, quantities
@@ -177,30 +180,32 @@ supabase/        Local config and the SQL migrations
 
 Every route needs `Authorization: Bearer <access token>` from Supabase Auth, except `/api/health` and
 `/api/config`. Without it: 401. Signed in but not a member: 403. If Supabase Auth can't be reached to
-check the token: 503 `AUTH_UNAVAILABLE`, so an Auth outage doesn't sign everyone out.
+check the token: 503 `AUTH_UNAVAILABLE`, so an Auth outage doesn't sign everyone out. Every route
+that names an upload (`/api/uploads/:id…`) answers 404 to someone who can't see it, before anything
+else, so nobody learns of someone else's unsubmitted upload by being refused it.
 
 | Method | Path | |
 |---|---|---|
 | `GET` | `/api/config` | Public: the Supabase URL and publishable key the browser signs in with |
 | `GET` | `/api/me` | The signed-in member: `{ id, email, role }` |
-| `POST` | `/api/uploads` | Validate `{ fileName, mimeType, sizeBytes, sha256? }`; return `{ kind: 'created', upload, uploadUrl }`, or `{ kind: 'duplicate', upload }` for a file already processed |
+| `POST` | `/api/uploads` | Validate `{ fileName, mimeType, sizeBytes, sha256? }`; return `{ kind: 'created', upload, uploadUrl }`, or `{ kind: 'duplicate', upload }` for an identical file already in Products or among the asker's own |
 | `POST` | `/api/uploads/:id/complete` | Check the uploaded bytes and queue the upload (idempotent); 422 and nothing kept if the content isn't a supported type |
-| `GET` | `/api/uploads?view=&q=&from=&to=&cursor=&limit=` | One page of a list, newest first, with `nextCursor`: `products` (everyone's submitted products, the default), `upload` (the asker's own uploads being read, or failed) or `review` (the asker's own read uploads waiting to be submitted). `q` searches product name, brand and file name; `from` and `to` (ISO date-times, `to` exclusive) keep products added between them |
-| `POST` | `/api/uploads/delete` | Delete `{ ids }` (up to 100): answers `{ deleted }`, skipping any the asker may not delete |
+| `GET` | `/api/uploads?view=&q=&from=&to=&cursor=&limit=` | One page of a list, newest first, with `nextCursor`: `products` (everyone's submitted products, the default), `upload` (the asker's own uploads being read, or failed) or `review` (the asker's own read uploads waiting to be submitted). `q` searches product name, brand and file name; `from` and `to` (ISO date-times, `to` exclusive, `products` only) keep products added between them |
+| `POST` | `/api/uploads/delete` | Delete `{ ids }` (up to 100): answers `{ deleted }`, skipping any the asker may not delete or can't see. All the files go in one storage request before any row; if storage can't be reached, nothing is deleted (503) |
 | `POST` | `/api/uploads/submit` | Submit `{ ids }` (up to 100) to Products: answers `{ submitted }`, those that went in. Only the asker's own, with nothing left to check |
 | `POST` | `/api/uploads/check` | Mark every flagged field of `{ ids }` (up to 100) as checked: answers `{ checked }`. Each is recorded like any other check |
 | `GET` | `/api/uploads/:id` | One upload with its extracted data and a preview URL |
-| `POST` | `/api/uploads/:id/retry` | Run extraction again, for failures that could succeed and results that can't be read |
+| `POST` | `/api/uploads/:id/retry` | Run extraction again, for any failure but a missing file, and for results that can't be read. Only its uploader or an admin (403 otherwise) |
 | `GET` | `/api/uploads/:id/history?q=&type=&from=&to=&cursor=&limit=` | One page of what happened to one upload, newest first, with `nextCursor`: its upload, each attempt to read it, and who edited, checked or reverted it. Searched and filtered like the activity log. Anyone who can see the upload |
-| `GET` | `/api/uploads/:id/history/:eventId` | One entry's details, fetched when it's opened: the data as it was read, or what an edit or revert changed. Anyone who can see the upload |
-| `POST` | `/api/uploads/:id/revert` | Admins only. Puts a completed upload's data back to a version from its history (`{ revision, versionId }`); the revert is itself recorded and can be undone |
+| `GET` | `/api/uploads/:id/history/:eventId` | One entry's details, fetched when it's opened: the data as it was read, or what an edit or revert changed (404 for an entry the history offers no details for). Anyone who can see the upload |
+| `POST` | `/api/uploads/:id/revert` | Admins only (403 otherwise). Puts a completed upload's data back to a version from its history (`{ revision, versionId }`); the revert is itself recorded and can be undone. A product stays in Products, even if the version has fields nobody had checked |
 | `PATCH` | `/api/uploads/:id/result` | Correct fields (`changes`) or confirm them (`checked`), made against `revision`. 422 for an invalid value, 409 if someone saved since |
 | `DELETE` | `/api/uploads/:id` | Delete the upload and its file: 204. Only its uploader or an admin (403 otherwise); the detail says which as `canDelete` |
-| `GET` | `/api/events` | Server-sent events announcing upload changes and new activity-log events. Ends when the access token runs out (or after 15 minutes), and the browser reconnects with its current token |
+| `GET` | `/api/events` | Server-sent events announcing upload changes (only those the person may see) and new activity-log events. Ends when the access token runs out (or after 15 minutes), and the browser reconnects with its current token |
 | `GET` | `/api/logs?q=&type=&type=&from=&to=&upload=&cursor=&limit=` | Admins only. One page of the activity log, newest first, with `nextCursor`, each event without its details. `q` searches messages; one `type` per type of event wanted (none means every type); `from` and `to` are ISO date-times (`to` exclusive) |
 | `GET` | `/api/logs/:id/details` | Admins only. One event's details, fetched when it's opened: the data as read, what a change did, or the codes and numbers its message leaves out |
 | `GET` | `/api/health` | Public. Health checks: 200 or 503 |
-| `GET` | `/api/ops` | Admins only. Everything on the System status page |
+| `GET` | `/api/ops` | Admins only. Everything in the System page's status strip |
 | `GET` | `/api/exports/uploads.csv` | Products as CSV, one row per product (streamed): those named with `id=` (repeated, up to 100), or else every one matching `q`, `from` and `to` |
 | `GET` | `/api/exports/uploads.json` | The same, as JSON with the full structured data |
 
@@ -210,6 +215,6 @@ Errors are always `{ "error": { "code", "message" } }`, with a message written f
 
 Deliberately left out to stay within the time box. The reasoning is in [DECISIONS.md](DECISIONS.md#trade-offs).
 
-- **Team management and per-user data:** one shared workspace. Accounts come from a script; there are no invites, sign-up or password-reset emails.
+- **Team management:** one shared workspace. Accounts come from a script; there are no invites, sign-up or password-reset emails.
 - **HEIC conversion** and a **PDF page-count limit**.
 - **CI/CD.** Deploys are run by hand with `railway up`. Next steps would be tests on every push and Railway deploying from GitHub.

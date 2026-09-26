@@ -2,12 +2,12 @@ import type { LabelExtraction } from './extraction.ts';
 import type { LabelField } from './fields.ts';
 
 /**
- * The activity log's contract: event types, levels and the GET /api/logs response. Zod-free, so
- * the web app can import it (its query schema lives in requests.ts; extraction.ts is imported for
- * types only).
+ * The activity log's contract: event types, levels and groups, and the responses of GET /api/logs
+ * and of each upload's history (GET /api/uploads/:id/history). Zod-free, so the web app can import
+ * it (the query schemas live in requests.ts; extraction.ts is imported for types only).
  *
  * An event is one thing that happened — an upload arriving, an extraction attempt finishing, a
- * worker starting — written by the API or the worker to the `events` table.
+ * process starting — written by the API or the worker to the `events` table.
  */
 
 /** GET /api/logs?q=…&type=…&type=…&upload=…&from=…&to=…&cursor=…&limit=… — newest first, one page at a time. */
@@ -67,10 +67,6 @@ export const LOG_EVENT_TYPES = {
 export type LogEventType = keyof typeof LOG_EVENT_TYPES;
 export const LOG_EVENT_TYPE_IDS = Object.keys(LOG_EVENT_TYPES) as LogEventType[];
 
-export function isLogEventType(value: string): value is LogEventType {
-  return Object.hasOwn(LOG_EVENT_TYPES, value);
-}
-
 /**
  * Events whose upload no longer exists once they've happened (its row is deleted), so there's
  * nothing to open. Earlier events of the same upload may still point at it.
@@ -100,7 +96,7 @@ export interface LogEvent {
   level: LogLevel;
   type: LogEventType;
   uploadId: string | null;
-  /** One readable sentence, e.g. "Attempt 2 of 5 failed: The AI service is rate-limiting requests." */
+  /** One readable sentence, e.g. "granola.png failed on attempt 2 of 5: The AI service is rate-limiting requests. It will be retried." */
   message: string;
   /** The file it's about, if any: still known once its upload is deleted. */
   fileName: string | null;

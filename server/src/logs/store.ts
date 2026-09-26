@@ -13,8 +13,8 @@ import { containsPattern } from '../infra/search.ts';
 
 /**
  * The activity log: the `events` table (see its migration). Not to be confused with the processes'
- * own stdout logs (infra/logger.ts): this is the history people browse on the Logs page — what
- * happened to each upload and to the system — not debugging output.
+ * own stdout logs (infra/logger.ts): this is the history people browse, on the System page and in
+ * each product's history — what happened to each upload and to the system — not debugging output.
  *
  * Writing is best-effort by design. Events are recorded after the change they describe, not in
  * its transaction, and a failed write is reported to stdout and swallowed: losing a log line is

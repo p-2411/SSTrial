@@ -97,7 +97,7 @@ export const MAX_UPLOADS_PER_REQUEST = 100;
  * the message users see comes from UPLOAD_ERROR_MESSAGES, so rewording a message is a code change
  * that applies to every upload at once — never a data migration.
  */
-export const UPLOAD_ERROR_MESSAGES = {
+const UPLOAD_ERROR_MESSAGES = {
   // LLM problems (see server/src/extraction/errors.ts for which are retried)
   LLM_TIMEOUT: 'The AI service took too long to respond.',
   LLM_RATE_LIMITED: 'The AI service is rate-limiting requests.',

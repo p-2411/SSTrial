@@ -45,7 +45,7 @@ export function healthStatusCode(report: HealthReport): 200 | 503 {
 
 /**
  * The report for anyone who asks (the public GET /api/health): which checks failed, but not the
- * error text, which can name hosts or internals. Admins see it in full on the status page.
+ * error text, which can name hosts or internals. Admins see it in full on the System page.
  */
 export function publicHealthReport(report: HealthReport): HealthReport {
   return {

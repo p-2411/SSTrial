@@ -2,9 +2,10 @@ import type { LogEvent } from '@label-extractor/shared';
 import type { LogEventRecord, LogEventSummary } from './store.ts';
 
 /**
- * Where an event is listed: the Logs page, for admins, or a product's history, for anyone who can
- * see the product. Changes to its data have details in both (what was read, or what changed); other
- * events' facts, the codes and numbers their message leaves out, are only for the Logs page.
+ * Where an event is listed: the activity log (on the System page), for admins, or a product's
+ * history, for anyone who can see the product. Changes to its data have details in both (what was
+ * read, or what changed); other events' facts, the codes and numbers their message leaves out, are
+ * only for the activity log.
  */
 export type EventListing = 'log' | 'history';
 
