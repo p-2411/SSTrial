@@ -62,6 +62,8 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
   /** Per-file scripts for the fake LLM, keyed by file name. */
   const scripts = new Map<string, { steps: Step[]; calls: number }>();
   const createdIds: string[] = [];
+  /** A signed-up person, for what needs one (asking for a re-read, submitting). */
+  const person = crypto.randomUUID();
   let releaseHungCalls: () => void = () => {};
   const hung = new Promise<never>((_, reject) => {
     releaseHungCalls = () => reject(new Error('released'));
@@ -81,6 +83,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
 
   beforeAll(async () => {
     sql = createDb(DATABASE_URL!, { max: 3 });
+    await sql`insert into auth.users (id, email) values (${person}, ${`${person}@example.test`})`;
     boss = await startQueue({
       connectionString: DATABASE_URL!,
       role: 'worker',
@@ -111,6 +114,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
     if (sql) {
       await sql`delete from uploads where id = any(${createdIds})`;
       await sql`delete from events where upload_id = any(${createdIds})`;
+      await sql`delete from auth.users where id = ${person}`;
       // Tests use their own 'test-…' keys for rate limits; don't leave them in the app's data.
       await sql`delete from llm_rate_limits where key like 'test-%'`;
       await sql.unsafe(`drop schema if exists ${TEST_SCHEMA} cascade`);
@@ -372,7 +376,8 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       const upload = await uploads.findById(id);
       expect(upload).toMatchObject({ status: 'completed', result: null, resultUnreadable: true });
 
-      expect(await uploads.requeue(id, 'completed')).toMatchObject({ status: 'queued', result: null });
+      // It was from before sign-in, so the person asking for the re-read reviews it.
+      expect(await uploads.requeue(id, 'completed', person)).toMatchObject({ status: 'queued', result: null, uploadedBy: person });
       await expect(waitForStatus(id, 'completed')).resolves.toMatchObject({ resultUnreadable: false, result: SAMPLE_EXTRACTION });
     }, 30_000);
   });
@@ -432,6 +437,31 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
 
       await expect.poll(() => seen, { timeout: 5000 }).toContain('queued');
       expect(seen[0]).toBe('queued'); // the 'uploading' insert was not announced
+      unsubscribe();
+    });
+
+    it("says whose upload changed, and whether it's in Products before or after, so only they are told", async () => {
+      const feed = await listenForChanges(sql, silentLogger);
+      const audiences: unknown[] = [];
+      const id = crypto.randomUUID();
+      const unsubscribe = feed.subscribe((change) => {
+        if (change.type === 'upload' && change.id === id) audiences.push(change.audience);
+      });
+
+      createdIds.push(id);
+      await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png`, contentSha256: null, uploadedBy: person });
+      await sql`update uploads set status = 'completed', result = ${sql.json(SAMPLE_EXTRACTION)} where id = ${id}`; // read: theirs alone
+      await sql`update uploads set submitted_at = now() where id = ${id}`; // into Products
+      await sql`update uploads set status = 'queued', result = null, submitted_at = null where id = ${id}`; // read again: leaving it
+      await sql`update uploads set status = 'processing' where id = ${id}`; // theirs alone again
+
+      await expect.poll(() => audiences, { timeout: 5000 }).toHaveLength(4);
+      expect(audiences).toEqual([
+        { product: false, uploaderId: person },
+        { product: true, uploaderId: person },
+        { product: true, uploaderId: person },
+        { product: false, uploaderId: person },
+      ]);
       unsubscribe();
     });
 
@@ -627,7 +657,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       review: async (id) => (await uploads.saveReview(id, 0, SAMPLE_EXTRACTION, {}))?.upload ?? null,
       delete: (id) => uploads.remove(id),
       // requeue takes the status the caller saw; pass the real one, so only the guard decides.
-      rerun: (id, _claim, status) => uploads.requeue(id, status as 'failed' | 'completed'),
+      rerun: (id, _claim, status) => uploads.requeue(id, status as 'failed' | 'completed', person),
     };
 
     /**
@@ -777,8 +807,8 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
         expect(row!.submitted_by).toBe(person);
 
         // Reading it again takes it back out, to be reviewed again.
-        const requeued = await uploads.requeue(id, 'completed');
-        expect(requeued).toMatchObject({ status: 'queued', submittedAt: null });
+        const requeued = await uploads.requeue(id, 'completed', crypto.randomUUID());
+        expect(requeued).toMatchObject({ status: 'queued', submittedAt: null, uploadedBy: person }); // still theirs
       } finally {
         await sql`delete from uploads where uploaded_by = ${person}`;
         await sql`delete from auth.users where id = ${person}`;

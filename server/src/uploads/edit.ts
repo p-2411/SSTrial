@@ -12,6 +12,7 @@ import {
 } from '@label-extractor/shared';
 import { logEvents } from '../logs/events.ts';
 import type { EventLog } from '../logs/store.ts';
+import { findVisible } from './access.ts';
 import type { StoredFieldReviews, UploadQueries, UploadRecord, UploadReviews } from './store.ts';
 
 /**
@@ -35,19 +36,27 @@ export type EditOutcome =
   | { outcome: 'not-found' };
 
 export interface EditDeps {
-  uploads: Pick<UploadQueries, 'findById'> & UploadReviews;
+  uploads: Pick<UploadQueries, 'findById'> & Pick<UploadReviews, 'saveReview'>;
   events: EventLog;
   now?: () => Date;
 }
 
-export async function editResult(
+type Editor = Pick<CurrentMember, 'id' | 'email' | 'role'>;
+
+/** An edit to the upload with this ID, by anyone who can see it (see uploads/access.ts). */
+export async function editResult(deps: EditDeps, id: string, request: EditResultRequest, editor: Editor): Promise<EditOutcome> {
+  const upload = await findVisible(deps.uploads, id, editor);
+  return upload ? applyEdit(deps, upload, request, editor) : { outcome: 'not-found' };
+}
+
+/** An edit to an upload already read, and found to be one the editor can see. */
+export async function applyEdit(
   deps: EditDeps,
-  id: string,
+  upload: UploadRecord,
   request: EditResultRequest,
-  editor: Pick<CurrentMember, 'id' | 'email'>,
+  editor: Editor,
 ): Promise<EditOutcome> {
-  const upload = await deps.uploads.findById(id);
-  if (!upload) return { outcome: 'not-found' };
+  const { id } = upload;
   if (!canTransition('review', upload.status) || !upload.result) return { outcome: 'not-editable' };
   if (upload.resultRevision !== request.revision) return { outcome: 'conflict' };
   const current = upload.result;
@@ -69,7 +78,7 @@ export async function editResult(
   for (const field of checked) fieldReviews[field] = { kind: 'checked', by: editor.id, at };
 
   const saved = await deps.uploads.saveReview(id, request.revision, edited.length > 0 ? result : current, fieldReviews);
-  // Someone saved between our read and our write. (Completed uploads are never deleted.)
+  // Someone saved between our read and our write (or deleted it, which reloading will show).
   if (!saved) return { outcome: 'conflict' };
   await deps.events.record(
     logEvents.resultEdited(saved.upload, {

@@ -9,25 +9,38 @@ export function isRole(value: string): value is Role {
   return (ROLES as readonly string[]).includes(value);
 }
 
-/**
- * Whether this person may delete an upload: whoever uploaded it, or any admin. Uploads from before
- * sign-in existed have no uploader, so only admins can delete those.
- */
-export function canDeleteUpload(uploaderId: string | null, person: { id: string; role: Role }): boolean {
-  return person.role === 'admin' || (uploaderId !== null && uploaderId === person.id);
+/** What the rules below need to know about an upload: whose it is, and whether it's in Products. */
+export interface UploadOwnership {
+  /** In Products (see isProduct), so everyone's. */
+  product: boolean;
+  /** Who uploaded it (a user ID); null for uploads from before sign-in existed. */
+  uploaderId: string | null;
 }
 
 /**
  * Whether this person may see an upload at all. A submitted product is everyone's. Until then (being
  * read, failed, or waiting for review) it's its uploader's alone: nobody else can open it or even
  * list it. (Uploads from before sign-in existed have no uploader, so admins see those, to tidy up.)
+ * The API answers as if an upload someone can't see doesn't exist, whatever they asked to do with it.
  */
-export function canViewUpload(
-  upload: { status: string; submitted: boolean; uploaderId: string | null },
-  person: { id: string; role: Role },
-): boolean {
-  if (upload.status === 'completed' && upload.submitted) return true;
+export function canViewUpload(upload: UploadOwnership, person: Pick<CurrentMember, 'id' | 'role'>): boolean {
+  if (upload.product) return true;
   return upload.uploaderId === null ? person.role === 'admin' : upload.uploaderId === person.id;
+}
+
+/**
+ * Whether this person may delete an upload: one they can see, that they uploaded, or any admin.
+ * Uploads from before sign-in existed have no uploader, so only admins can delete those. The same
+ * people may have one read again, which takes a product out of Products just as surely.
+ */
+export function canDeleteUpload(upload: UploadOwnership, person: Pick<CurrentMember, 'id' | 'role'>): boolean {
+  if (!canViewUpload(upload, person)) return false;
+  return person.role === 'admin' || (upload.uploaderId !== null && upload.uploaderId === person.id);
+}
+
+/** Whether this person may put an upload's data back to an earlier version: admins, on one they can see. */
+export function canRevertUpload(upload: UploadOwnership, person: Pick<CurrentMember, 'id' | 'role'>): boolean {
+  return person.role === 'admin' && canViewUpload(upload, person);
 }
 
 /** GET /api/me — the signed-in person. */

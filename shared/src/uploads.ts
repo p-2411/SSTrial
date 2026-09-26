@@ -36,6 +36,17 @@ export const UPLOAD_VIEWS = {
 export type UploadView = keyof typeof UPLOAD_VIEWS;
 export const UPLOAD_VIEW_IDS = Object.keys(UPLOAD_VIEWS) as UploadView[];
 
+/** An upload as the API sends it (dates as strings) or the server keeps it (as Dates): enough to say which stage it's at. */
+interface Staged {
+  status: UploadStatus;
+  submittedAt: string | Date | null;
+}
+
+/** Whether an upload is in Products: read, and submitted by its uploader (the `products` view). */
+export function isProduct(upload: Staged): boolean {
+  return upload.status === 'completed' && upload.submittedAt !== null;
+}
+
 /** Statuses still being worked on: worth watching for changes, and not ready to open. */
 const ACTIVE_STATUSES: readonly UploadStatus[] = ['queued', 'processing'];
 

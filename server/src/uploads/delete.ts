@@ -2,6 +2,7 @@ import { canDeleteUpload, canTransition, type CurrentMember } from '@label-extra
 import type { FileStorage } from '../infra/storage.ts';
 import { logEvents } from '../logs/events.ts';
 import type { EventLog } from '../logs/store.ts';
+import { findVisible, ownershipOf } from './access.ts';
 import type { UploadQueries, UploadRecord, UploadRemoval } from './store.ts';
 
 /**
@@ -14,7 +15,7 @@ import type { UploadQueries, UploadRecord, UploadRemoval } from './store.ts';
 
 export type DeleteOutcome =
   | { outcome: 'deleted'; upload: UploadRecord }
-  /** Only whoever uploaded it, or an admin, may delete it. */
+  /** Only whoever uploaded it, or an admin, may delete it (see canDeleteUpload). */
   | { outcome: 'forbidden' }
   | { outcome: 'not-found' };
 
@@ -29,10 +30,10 @@ export async function deleteUpload(
   id: string,
   person: Pick<CurrentMember, 'id' | 'email' | 'role'>,
 ): Promise<DeleteOutcome> {
-  const upload = await deps.uploads.findById(id);
+  const upload = await findVisible(deps.uploads, id, person);
   // One still being uploaded isn't listed anywhere, so there's nothing anyone could have asked to delete.
   if (!upload || !canTransition('delete', upload.status)) return { outcome: 'not-found' };
-  if (!canDeleteUpload(upload.uploadedBy, person)) return { outcome: 'forbidden' };
+  if (!canDeleteUpload(ownershipOf(upload), person)) return { outcome: 'forbidden' };
 
   // The file first: if deleting the row then fails, asking again finds the row and deletes the
   // already-missing file without complaint. The other way round could leave a file with no upload.

@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { CurrentMember } from '@label-extractor/shared';
 import { buildApp, type App } from '../../src/api/app.ts';
 import type { Authenticator } from '../../src/auth/authenticator.ts';
-import { ADMIN, FakeChangeFeed, testAppDeps } from '../fakes.ts';
+import { ADMIN, FakeChangeFeed, MEMBER, testAppDeps } from '../fakes.ts';
 
 // Server-sent events need a real socket (inject() waits for a response that never ends), so these
 // tests listen on a random port and read the stream with fetch.
@@ -11,11 +12,14 @@ let changes: FakeChangeFeed;
 let baseUrl: string;
 /** When the fake sign-in's token runs out; null means it doesn't say. */
 let expiresAt: Date | null;
+/** Who the stream is opened by. */
+let member: CurrentMember;
 
 beforeEach(async () => {
   changes = new FakeChangeFeed();
   expiresAt = null;
-  const authenticator: Authenticator = { authenticate: async () => ({ outcome: 'signed-in', member: ADMIN, expiresAt }) };
+  member = ADMIN;
+  const authenticator: Authenticator = { authenticate: async () => ({ outcome: 'signed-in', member, expiresAt }) };
   app = await buildApp(testAppDeps({ changes, authenticator }));
   baseUrl = await app.listen({ host: '127.0.0.1', port: 0 });
 });
@@ -48,9 +52,43 @@ describe('GET /api/events', () => {
     expect(stream.response.headers.get('content-type')).toBe('text/event-stream');
     await stream.readUntil('retry: 3000');
 
-    changes.publish({ type: 'upload', id: 'abc', status: 'completed' });
+    changes.publish({ type: 'upload', id: 'abc', status: 'completed', audience: { product: true, uploaderId: MEMBER.id } });
 
+    // Just what changed: who it's for stays on the server.
     expect(await stream.readUntil('completed')).toContain('event: upload\ndata: {"type":"upload","id":"abc","status":"completed"}\n\n');
+    stream.close();
+  });
+
+  it("sends a member changes to their own uploads and to products, never to someone else's private upload", async () => {
+    member = MEMBER;
+    const stream = await openStream();
+    await stream.readUntil('retry:');
+
+    changes.publish({ type: 'upload', id: 'theirs', status: 'processing', audience: { product: false, uploaderId: ADMIN.id } });
+    changes.publish({ type: 'upload', id: 'legacy', status: 'failed', audience: { product: false, uploaderId: null } });
+    changes.publish({ type: 'upload', id: 'mine', status: 'processing', audience: { product: false, uploaderId: MEMBER.id } });
+    changes.publish({ type: 'upload', id: 'shared', status: 'queued', audience: { product: true, uploaderId: ADMIN.id } }); // read again
+    changes.publish({ type: 'log' });
+
+    const received = await stream.readUntil('"log"');
+    expect(received).toContain('"id":"mine"');
+    expect(received).toContain('"id":"shared"');
+    expect(received).not.toContain('"id":"theirs"');
+    expect(received).not.toContain('"id":"legacy"');
+    stream.close();
+  });
+
+  it("sends an admin changes to uploads from before sign-in, but not to someone else's private upload", async () => {
+    const stream = await openStream();
+    await stream.readUntil('retry:');
+
+    changes.publish({ type: 'upload', id: 'theirs', status: 'completed', audience: { product: false, uploaderId: MEMBER.id } });
+    changes.publish({ type: 'upload', id: 'legacy', status: 'failed', audience: { product: false, uploaderId: null } });
+    changes.publish({ type: 'log' });
+
+    const received = await stream.readUntil('"log"');
+    expect(received).toContain('"id":"legacy"');
+    expect(received).not.toContain('"id":"theirs"');
     stream.close();
   });
 

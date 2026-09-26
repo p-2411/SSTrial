@@ -1,6 +1,6 @@
 import type { ServerResponse } from 'node:http';
 import type { FastifyInstance } from 'fastify';
-import { LIVE_EVENTS_PATH } from '@label-extractor/shared';
+import { canViewUpload, LIVE_EVENTS_PATH, type LiveChange } from '@label-extractor/shared';
 import type { ChangeFeed } from '../../infra/change-feed.ts';
 
 export interface EventRoutesDeps {
@@ -20,7 +20,9 @@ const REAUTHORISE_MS = 15 * 60_000;
  *   event: log      data: {"type":"log"}        (new activity-log events: refetch the log)
  *   event: resync   data: {"type":"resync"}     (the server may have missed changes: refetch all)
  *
- * Like every /api route it needs a signed-in member (the browser sends its token in a header).
+ * Like every /api route it needs a signed-in member (the browser sends its token in a header), and
+ * an upload's changes only go to those who may see it (see canViewUpload): one being read, or
+ * waiting for review, is its uploader's alone.
  */
 export async function eventRoutes(app: FastifyInstance, { changes }: EventRoutesDeps) {
   const open = new Set<ServerResponse>();
@@ -44,8 +46,11 @@ export async function eventRoutes(app: FastifyInstance, { changes }: EventRoutes
     response.write('retry: 3000\n\n');
     open.add(response);
 
+    const send = (change: LiveChange) => response.write(`event: ${change.type}\ndata: ${JSON.stringify(change)}\n\n`);
+    const member = request.member!;
     const unsubscribe = changes.subscribe((change) => {
-      response.write(`event: ${change.type}\ndata: ${JSON.stringify(change)}\n\n`);
+      if (change.type !== 'upload') send(change);
+      else if (canViewUpload(change.audience, member)) send({ type: 'upload', id: change.id, status: change.status });
     });
     const heartbeat = setInterval(() => response.write(': keep-alive\n\n'), HEARTBEAT_MS);
     // The sign-in was checked when the stream opened. End it before the token runs out (or after

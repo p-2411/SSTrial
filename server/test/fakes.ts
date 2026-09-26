@@ -1,6 +1,7 @@
 import { pino } from 'pino';
 import {
   canTransition,
+  isProduct,
   LOG_EVENT_TYPES,
   UPLOAD_GONE_EVENT_TYPES,
   UPLOAD_TRANSITIONS,
@@ -9,7 +10,6 @@ import {
   type LabelExtraction,
   type LogEventType,
   type SupportedMimeType,
-  type LiveChange,
   type UploadErrorCode,
   type CurrentMember,
   type ExtractionConfidence,
@@ -19,7 +19,7 @@ import type { AppDeps } from '../src/api/app.ts';
 import type { Authenticator } from '../src/auth/authenticator.ts';
 import { ExtractionError } from '../src/extraction/errors.ts';
 import type { RateLimiter } from '../src/extraction/rate-limiter.ts';
-import type { ChangeFeed } from '../src/infra/change-feed.ts';
+import type { ChangeFeed, FeedChange } from '../src/infra/change-feed.ts';
 import { StorageUnavailableError, type FileStorage } from '../src/infra/storage.ts';
 import type { EventFilters, EventStore, LogEventRecord, LogEventSummary, NewLogEvent } from '../src/logs/store.ts';
 import type { OpsSnapshot } from '../src/ops/store.ts';
@@ -126,8 +126,16 @@ export class InMemoryUploadStore implements UploadStore {
   async findById(id: string) {
     return this.rows.get(id) ?? null;
   }
-  async findByContentHash(sha256: string) {
-    return this.newest((row) => row.contentSha256 === sha256 && ['queued', 'processing', 'completed'].includes(row.status));
+  async findByIds(ids: readonly string[]) {
+    return ids.flatMap((id) => this.rows.get(id) ?? []);
+  }
+  async findDuplicate(sha256: string, personId: string) {
+    return this.newest(
+      (row) =>
+        row.contentSha256 === sha256 &&
+        ['queued', 'processing', 'completed'].includes(row.status) &&
+        (row.uploadedBy === personId || isProduct(row)),
+    );
   }
   async recordContentHash(id: string, sha256: string) {
     const row = this.rows.get(id);
@@ -200,10 +208,11 @@ export class InMemoryUploadStore implements UploadStore {
     if (options?.cancelFinalise) this.finaliseCancelled.push(id);
     return row;
   }
-  async requeue(id: string, from: 'failed' | 'completed') {
+  async requeue(id: string, from: 'failed' | 'completed', by: string) {
     const current = this.rows.get(id);
     if (current?.status !== from) return null;
     const row = this.transition(id, 'rerun', {
+      uploadedBy: current.uploadedBy ?? by,
       attempts: 0,
       error: null,
       result: null,
@@ -311,15 +320,15 @@ export class InMemoryUploadStore implements UploadStore {
 
 /** A change feed the test drives by hand with `publish()`. */
 export class FakeChangeFeed implements ChangeFeed {
-  private readonly listeners = new Set<(change: LiveChange) => void>();
+  private readonly listeners = new Set<(change: FeedChange) => void>();
   get subscribers() {
     return this.listeners.size;
   }
-  subscribe(listener: (change: LiveChange) => void) {
+  subscribe(listener: (change: FeedChange) => void) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
-  publish(change: LiveChange) {
+  publish(change: FeedChange) {
     this.listeners.forEach((listener) => listener(change));
   }
 }

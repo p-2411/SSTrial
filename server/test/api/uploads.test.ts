@@ -36,9 +36,9 @@ function createUpload(body: object) {
   return app.inject({ method: 'POST', url: '/api/uploads', payload: body });
 }
 
-/** Seeds an upload that the browser has "finished uploading", with the given file content. */
+/** Seeds an upload of the signed-in admin's that the browser has "finished uploading", with the given file content. */
 function seedUploaded(bytes: Uint8Array, overrides: Parameters<InMemoryUploadStore['seed']>[0] = { id: ID }) {
-  const upload = uploads.seed(overrides);
+  const upload = uploads.seed({ uploadedBy: ADMIN.id, ...overrides });
   storage.put(upload.storagePath, bytes);
   return upload;
 }
@@ -209,7 +209,7 @@ describe('POST /api/uploads/:id/complete — confirm the upload and queue it', (
   });
 
   it('returns 409 and leaves the upload pending when the file never arrived', async () => {
-    uploads.seed({ id: ID });
+    uploads.seed({ id: ID, uploadedBy: ADMIN.id });
 
     const response = await complete();
 
@@ -224,6 +224,17 @@ describe('POST /api/uploads/:id/complete — confirm the upload and queue it', (
   it('returns 404 for unknown or malformed IDs', async () => {
     expect((await complete('9b2e7f1a-0000-4000-8000-000000000999')).statusCode).toBe(404);
     expect((await complete('not-a-uuid')).statusCode).toBe(404);
+  });
+
+  it("returns 404, and shows nothing, for someone else's upload, finished or not", async () => {
+    seedUploaded(FILE_BYTES.png, { id: ID, uploadedBy: MEMBER.id });
+    expect((await complete()).statusCode).toBe(404);
+    expect(uploads.get(ID).status).toBe('uploading');
+
+    uploads.seed({ id: ID, status: 'completed', submittedAt: null, result: SAMPLE_EXTRACTION, uploadedBy: MEMBER.id }); // in their Review
+    const response = await complete();
+    expect(response.statusCode).toBe(404);
+    expect(response.body).not.toContain(SAMPLE_EXTRACTION.productName);
   });
 });
 

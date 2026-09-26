@@ -1,5 +1,5 @@
 import type { LogEvent } from '@label-extractor/shared';
-import type { LogEventSummary } from './store.ts';
+import type { LogEventRecord, LogEventSummary } from './store.ts';
 
 /**
  * Where an event is listed: the Logs page, for admins, or a product's history, for anyone who can
@@ -14,7 +14,14 @@ export function toLogEvent(event: LogEventSummary, listing: EventListing): LogEv
   return { ...shown, occurredAt: event.occurredAt.toISOString(), hasDetails: hasDetails(event, listing) };
 }
 
-function hasDetails(event: LogEventSummary, listing: EventListing): boolean {
+/** The same, for an event read with its data (see EventQueries.find): what its details are fetched from. */
+export function recordHasDetails(event: LogEventRecord, listing: EventListing): boolean {
+  const versionId = typeof event.data.versionId === 'string' ? event.data.versionId : null;
+  const hasFacts = Object.keys(event.data).some((key) => key !== 'fileName');
+  return hasDetails({ type: event.type, versionId, hasFacts }, listing);
+}
+
+function hasDetails(event: Pick<LogEventSummary, 'type' | 'versionId' | 'hasFacts'>, listing: EventListing): boolean {
   switch (event.type) {
     // An edit's details are its own record of what changed; a reading or revert needs its version.
     case 'upload.edited':

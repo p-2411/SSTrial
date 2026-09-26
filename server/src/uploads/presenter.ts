@@ -1,6 +1,7 @@
 import {
   applyConfidenceChecks,
   canDeleteUpload,
+  canRevertUpload,
   canTransition,
   type CurrentMember,
   flaggedFields,
@@ -13,6 +14,7 @@ import {
   type UploadSummary,
 } from '@label-extractor/shared';
 import { RETRY_POLICY } from '../extraction/retry-policy.ts';
+import { ownershipOf } from './access.ts';
 import type { StoredFieldReviews, UploadRecord } from './store.ts';
 
 /**
@@ -40,11 +42,6 @@ export function toUploadSummary(record: UploadRecord): UploadSummary {
     completedAt: record.completedAt?.toISOString() ?? null,
     submittedAt: record.submittedAt?.toISOString() ?? null,
   };
-}
-
-/** What canViewUpload needs to know about an upload. */
-export function visibilityOf(record: UploadRecord) {
-  return { status: record.status, submitted: record.submittedAt !== null, uploaderId: record.uploadedBy };
 }
 
 /** The fields of a read upload still worth a person's look (see flaggedFields). */
@@ -76,8 +73,8 @@ export function toUploadDetail(
     revision: record.resultRevision,
     fileUrl,
     uploadedBy: emailOf(record.uploadedBy),
-    canDelete: canDeleteUpload(record.uploadedBy, viewer),
-    canRevert: viewer.role === 'admin' && canTransition('review', record.status),
+    canDelete: canDeleteUpload(ownershipOf(record), viewer),
+    canRevert: canRevertUpload(ownershipOf(record), viewer) && canTransition('review', record.status),
   };
 }
 

@@ -127,8 +127,13 @@ export interface SettleOptions {
 /** Reading uploads, for the API. */
 export interface UploadQueries {
   findById(id: string): Promise<UploadRecord | null>;
-  /** The newest queued, processing or completed upload of a file with this hash, if any. */
-  findByContentHash(sha256: string): Promise<UploadRecord | null>;
+  /** The uploads with these IDs that exist, in no particular order. */
+  findByIds(ids: readonly string[]): Promise<UploadRecord[]>;
+  /**
+   * The newest upload of a file with this hash that `personId` could be pointed at instead of
+   * uploading it again: one in Products, or one of their own queued, being read or read.
+   */
+  findDuplicate(sha256: string, personId: string): Promise<UploadRecord | null>;
   /**
    * One page of uploads in the given statuses, newest first: only those in Products, or only those
    * not, if `submitted` says; only `uploadedBy`'s if given. `after` is the ID of the last upload on
@@ -181,8 +186,10 @@ export interface UploadIntake {
   /**
    * `failed|completed → queued` with attempts and any result cleared, and enqueue a fresh job,
    * atomically. `from` is the status the caller saw, so a concurrent change makes this a no-op.
+   * An upload from before sign-in (no uploader) becomes `by`'s, so the new reading is listed for
+   * someone to review and submit.
    */
-  requeue(id: string, from: (typeof UPLOAD_TRANSITIONS.rerun.from)[number]): Promise<UploadRecord | null>;
+  requeue(id: string, from: (typeof UPLOAD_TRANSITIONS.rerun.from)[number], by: string): Promise<UploadRecord | null>;
 }
 
 /** Processing attempts, for the worker. Every write after startAttempt needs its claim token. */
@@ -298,10 +305,19 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
       return oneRecord(sql`select * from uploads where id = ${id}`);
     },
 
-    findByContentHash(sha256) {
+    async findByIds(ids) {
+      if (ids.length === 0) return [];
+      const rows = await sql`select * from uploads where id = any(${ids as string[]}::uuid[])`;
+      return rows.map(toRecord);
+    },
+
+    findDuplicate(sha256, personId) {
+      // Someone else's upload of the same file only counts once it's in Products: until then it's
+      // theirs alone (see canViewUpload).
       return oneRecord(sql`
         select * from uploads
         where content_sha256 = ${sha256} and status in ('queued', 'processing', 'completed')
+          and (uploaded_by = ${personId} or (status = 'completed' and submitted_at is not null))
         order by created_at desc
         limit 1`);
     },
@@ -384,7 +400,7 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
       });
     },
 
-    async requeue(id, from) {
+    async requeue(id, from, by) {
       return sql.begin(async (tx) => {
         const record = await oneRecord(tx`
           update uploads
@@ -393,8 +409,8 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
               -- On, never back: an editor still open on the old result must not match the new one.
               result_revision = result_revision + 1,
               completed_at = null, claim_token = null,
-              -- Read again, it's reviewed again before it goes back into Products.
-              submitted_at = null, submitted_by = null
+              -- Read again, it's reviewed again before it goes back into Products, by its uploader.
+              submitted_at = null, submitted_by = null, uploaded_by = coalesce(uploaded_by, ${by}::uuid)
           where id = ${id} and status = ${from} and ${allowedFrom('rerun')}
           returning *`);
         if (record) await jobs.enqueueExtraction(id, tx);

@@ -1,7 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import {
-  canViewUpload,
   createUploadRequestSchema,
   editResultRequestSchema,
   listUploadsQuerySchema,
@@ -24,21 +23,20 @@ import {
 } from '@label-extractor/shared';
 import type { MemberStore } from '../../auth/members.ts';
 import type { FileStorage } from '../../infra/storage.ts';
-import { eventDetails } from '../../logs/details.ts';
 import type { EventLog, EventQueries } from '../../logs/store.ts';
+import { findVisible } from '../../uploads/access.ts';
 import { editResult } from '../../uploads/edit.ts';
 import { finaliseUpload } from '../../uploads/finalise.ts';
 import { requestUpload } from '../../uploads/intake.ts';
 import { loadUploadDetail } from '../../uploads/detail.ts';
-import { toUploadSummary, visibilityOf } from '../../uploads/presenter.ts';
+import { toUploadSummary } from '../../uploads/presenter.ts';
 import { checkFlaggedFields } from '../../uploads/check.ts';
 import { submitUploads } from '../../uploads/submit.ts';
-import { toHistoryEntries } from '../../uploads/history.ts';
+import { loadHistoryDetails, loadUploadHistory } from '../../uploads/history.ts';
 import { retryUpload } from '../../uploads/retry.ts';
 import { revertUpload } from '../../uploads/revert.ts';
 import { deleteUpload } from '../../uploads/delete.ts';
 import type { UploadIntake, UploadQueries, UploadRecord, UploadRemoval, UploadReviews } from '../../uploads/store.ts';
-import { requireRole } from '../auth.ts';
 import { ACTIVITY_QUERY_HELP, eventId } from './logs.ts';
 import { ApiError, notFound } from '../errors.ts';
 
@@ -55,8 +53,10 @@ const idParams = z.object({ id: z.uuid() });
 
 /**
  * Upload endpoints: HTTP in, HTTP out. What each step does lives in uploads/ (intake, finalise,
- * edit, retry, delete, detail); these handlers parse the request and turn the outcome into a response. The upload flow is
- * three requests from the browser:
+ * edit, check, submit, retry, revert, delete, detail, history); these handlers parse the request
+ * and turn the outcome into a response. Every route that names an upload answers 404 to anyone who
+ * can't see it, before anything else (see uploads/access.ts). The upload flow is three requests
+ * from the browser:
  *
  *   1. POST /api/uploads              → validate metadata, create row, return a signed upload URL
  *   2. PUT  <signed URL>              → browser sends the bytes straight to storage (not via us)
@@ -78,16 +78,6 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
 
   async function detailResponse(upload: UploadRecord, request: FastifyRequest): Promise<UploadResponse> {
     return { upload: await loadUploadDetail({ storage, members, log: request.log, viewer: request.member! }, upload) };
-  }
-
-  /**
-   * The upload named in the URL, if the person asking may see it (see canViewUpload); otherwise a
-   * 404, the same as for one that doesn't exist, so someone else's unfinished upload stays private.
-   */
-  async function visibleUpload(request: FastifyRequest): Promise<UploadRecord> {
-    const upload = await uploads.findById(uploadId(request.params));
-    if (!upload || !canViewUpload(visibilityOf(upload), request.member!)) throw notFound();
-    return upload;
   }
 
   // 1. Ask to upload a file ------------------------------------------------------------------
@@ -117,7 +107,10 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
 
   // 3. Confirm the upload finished ---------------------------------------------------------------
   app.post('/api/uploads/:id/complete', async (request): Promise<UploadResponse> => {
-    const result = await finaliseUpload({ uploads, storage, events }, uploadId(request.params), { caller: 'browser' });
+    const result = await finaliseUpload({ uploads, storage, events }, uploadId(request.params), {
+      caller: 'browser',
+      person: request.member!,
+    });
 
     switch (result.outcome) {
       case 'queued':
@@ -168,12 +161,14 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
   });
 
   app.get('/api/uploads/:id', async (request): Promise<UploadResponse> => {
-    return detailResponse(await visibleUpload(request), request);
+    const upload = await findVisible(uploads, uploadId(request.params), request.member!);
+    if (!upload) throw notFound();
+    return detailResponse(upload, request);
   });
 
   // People correcting or confirming the extracted data ----------------------------------------
   app.patch('/api/uploads/:id/result', async (request): Promise<UploadResponse> => {
-    const { id } = await visibleUpload(request);
+    const id = uploadId(request.params);
     const body = editResultRequestSchema.safeParse(request.body);
     if (!body.success) {
       throw new ApiError(400, 'BAD_REQUEST', 'Expected { revision, changes?, checked? } with known fields.');
@@ -219,46 +214,50 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
     return { submitted: submitted.map((upload) => upload.id) };
   });
 
-  // One upload's history, for its detail: open to anyone who can see the upload, unlike the whole
-  // activity log. Newest first, a page at a time, searched and filtered like the log.
+  // One upload's history, for its detail. Newest first, a page at a time, searched and filtered
+  // like the activity log.
   app.get('/api/uploads/:id/history', async (request): Promise<UploadHistoryResponse> => {
+    const id = uploadId(request.params);
     const query = uploadHistoryQuerySchema.safeParse(request.query);
     if (!query.success) throw new ApiError(400, 'BAD_REQUEST', `${ACTIVITY_QUERY_HELP}, and limit=1–200.`);
-    const { id } = await visibleUpload(request);
     const { q, type, from, to, cursor, limit } = query.data;
-    const [records, currentVersionId] = await Promise.all([
-      // One extra row: if it comes back, there's another page after this one.
-      events.list({
+    // One extra row: if it comes back, there's another page after this one.
+    const entries = await loadUploadHistory(
+      { uploads, events },
+      id,
+      {
         types: type,
         search: q || undefined,
         from: from ? new Date(from) : undefined,
         to: to ? new Date(to) : undefined,
-        uploadId: id,
         limit: limit + 1,
         after: cursor,
-      }),
-      uploads.latestVersionId(id),
-    ]);
-    const page = records.slice(0, limit);
-    return {
-      entries: toHistoryEntries(page, currentVersionId),
-      nextCursor: records.length > limit ? page.at(-1)!.id : null,
-    };
+      },
+      request.member!,
+    );
+    if (!entries) throw notFound();
+    const page = entries.slice(0, limit);
+    return { entries: page, nextCursor: entries.length > limit ? page.at(-1)!.id : null };
   });
 
-  // One history entry's details (what was read, or what changed), read only when someone opens it.
   app.get('/api/uploads/:id/history/:eventId', async (request): Promise<EventDetails> => {
-    const { id } = await visibleUpload(request);
-    const event = await events.find(eventId(request.params));
-    if (!event || event.uploadId !== id) throw notFound('Event');
-    return eventDetails(event, uploads);
+    const result = await loadHistoryDetails({ uploads, events }, uploadId(request.params), eventId(request.params), request.member!);
+    switch (result.outcome) {
+      case 'found':
+        return result.details;
+      case 'no-upload':
+        throw notFound();
+      case 'no-event':
+        throw notFound('Event');
+    }
   });
 
   // An admin putting a product's data back to an earlier version ------------------------------
-  app.post('/api/uploads/:id/revert', { preHandler: requireRole('admin') }, async (request): Promise<UploadResponse> => {
+  app.post('/api/uploads/:id/revert', async (request): Promise<UploadResponse> => {
+    const id = uploadId(request.params);
     const body = revertRequestSchema.safeParse(request.body);
     if (!body.success) throw new ApiError(400, 'BAD_REQUEST', 'Expected { revision, versionId }.');
-    const result = await revertUpload({ uploads, events }, uploadId(request.params), body.data, request.member!);
+    const result = await revertUpload({ uploads, events }, id, body.data, request.member!);
 
     switch (result.outcome) {
       case 'reverted':
@@ -267,6 +266,8 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
         throw new ApiError(409, 'EDIT_CONFLICT', 'Someone else changed this upload since you opened it.');
       case 'not-revertible':
         throw new ApiError(409, 'NOT_EDITABLE', 'Only a completed upload can be reverted.');
+      case 'forbidden':
+        throw new ApiError(403, 'FORBIDDEN', 'Only admins can put data back to an earlier version.');
       case 'not-found':
         throw notFound();
     }
@@ -274,12 +275,13 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
 
   // Manual retry of a failed upload ------------------------------------------------------------
   app.post('/api/uploads/:id/retry', async (request): Promise<UploadResponse> => {
-    const { id } = await visibleUpload(request);
-    const result = await retryUpload({ uploads, events }, id, request.member!);
+    const result = await retryUpload({ uploads, events }, uploadId(request.params), request.member!);
 
     switch (result.outcome) {
       case 'requeued':
         return detailResponse(result.upload, request);
+      case 'forbidden':
+        throw new ApiError(403, 'FORBIDDEN', 'Only the person who uploaded this, or an admin, can have it read again.');
       case 'not-retryable':
         throw new ApiError(
           409,

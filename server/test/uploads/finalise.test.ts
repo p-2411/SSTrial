@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { finaliseUpload } from '../../src/uploads/finalise.ts';
-import { FILE_BYTES, InMemoryEventStore, InMemoryStorage, InMemoryUploadStore } from '../fakes.ts';
+import { ADMIN, FILE_BYTES, InMemoryEventStore, InMemoryStorage, InMemoryUploadStore, MEMBER } from '../fakes.ts';
 
 const ID = '5c0ffee0-0000-4000-8000-000000000001';
 
@@ -14,11 +14,14 @@ beforeEach(() => {
   events = new InMemoryEventStore();
 });
 
-const finalise = (caller: 'browser' | 'finalise-job' = 'browser') => finaliseUpload({ uploads, storage, events }, ID, { caller });
+/** An upload MEMBER started, which their browser confirms. */
+const seed = (overrides: Parameters<InMemoryUploadStore['seed']>[0]) => uploads.seed({ uploadedBy: MEMBER.id, ...overrides });
+const finalise = (caller: 'browser' | 'finalise-job' = 'browser', person = MEMBER) =>
+  finaliseUpload({ uploads, storage, events }, ID, caller === 'browser' ? { caller, person } : { caller });
 
 describe('finaliseUpload', () => {
   it('queues extraction when a supported file has arrived', async () => {
-    const upload = uploads.seed({ id: ID });
+    const upload = seed({ id: ID });
     storage.put(upload.storagePath, FILE_BYTES.png);
 
     await expect(finalise()).resolves.toMatchObject({ outcome: 'queued', upload: { status: 'queued' } });
@@ -27,7 +30,7 @@ describe('finaliseUpload', () => {
   });
 
   it('accepts a valid file with the wrong extension under its real type', async () => {
-    const upload = uploads.seed({ id: ID, fileName: 'photo.jpg', mimeType: 'image/jpeg' });
+    const upload = seed({ id: ID, fileName: 'photo.jpg', mimeType: 'image/jpeg' });
     storage.put(upload.storagePath, FILE_BYTES.png);
 
     await expect(finalise()).resolves.toMatchObject({ upload: { mimeType: 'image/png' } });
@@ -35,7 +38,7 @@ describe('finaliseUpload', () => {
   });
 
   it('deletes both the file and the upload when the content is not a supported type', async () => {
-    const upload = uploads.seed({ id: ID, fileName: 'photo.jpg', mimeType: 'image/jpeg' });
+    const upload = seed({ id: ID, fileName: 'photo.jpg', mimeType: 'image/jpeg' });
     storage.put(upload.storagePath, FILE_BYTES.text);
 
     await expect(finalise()).resolves.toEqual({ outcome: 'rejected' });
@@ -46,7 +49,7 @@ describe('finaliseUpload', () => {
   });
 
   it('keeps the upload if deleting a rejected file fails, so the finalise job can try again', async () => {
-    const upload = uploads.seed({ id: ID });
+    const upload = seed({ id: ID });
     storage.put(upload.storagePath, FILE_BYTES.text);
     storage.unavailable = true;
 
@@ -56,7 +59,7 @@ describe('finaliseUpload', () => {
   });
 
   it('leaves the upload for the browser when its file has not arrived yet', async () => {
-    uploads.seed({ id: ID });
+    seed({ id: ID });
 
     await expect(finalise('browser')).resolves.toEqual({ outcome: 'not-uploaded' });
     expect(uploads.get(ID).status).toBe('uploading');
@@ -64,7 +67,7 @@ describe('finaliseUpload', () => {
   });
 
   it('discards the upload when the finalise job finds no file (none can arrive any more)', async () => {
-    uploads.seed({ id: ID });
+    seed({ id: ID });
 
     await expect(finalise('finalise-job')).resolves.toEqual({ outcome: 'discarded' });
     expect(uploads.rows.has(ID)).toBe(false);
@@ -73,7 +76,7 @@ describe('finaliseUpload', () => {
   });
 
   it('is a no-op for an upload that was already finalised (the other caller won)', async () => {
-    const upload = uploads.seed({ id: ID, status: 'completed' });
+    const upload = seed({ id: ID, status: 'completed' });
     storage.put(upload.storagePath, FILE_BYTES.png);
 
     await expect(finalise()).resolves.toMatchObject({ outcome: 'already-finalised' });
@@ -82,7 +85,7 @@ describe('finaliseUpload', () => {
   });
 
   it('cancels the finalise job when the browser confirms the upload', async () => {
-    const upload = uploads.seed({ id: ID });
+    const upload = seed({ id: ID });
     storage.put(upload.storagePath, FILE_BYTES.png);
 
     await finalise('browser');
@@ -90,7 +93,7 @@ describe('finaliseUpload', () => {
   });
 
   it('does not cancel the finalise job when it is the one finalising (it would cancel itself)', async () => {
-    const upload = uploads.seed({ id: ID });
+    const upload = seed({ id: ID });
     storage.put(upload.storagePath, FILE_BYTES.png);
 
     await expect(finalise('finalise-job')).resolves.toMatchObject({ outcome: 'queued' });
@@ -98,7 +101,7 @@ describe('finaliseUpload', () => {
   });
 
   it('cancels the finalise job when the browser path rejects the file', async () => {
-    const upload = uploads.seed({ id: ID });
+    const upload = seed({ id: ID });
     storage.put(upload.storagePath, FILE_BYTES.text);
 
     await finalise('browser');
@@ -107,5 +110,15 @@ describe('finaliseUpload', () => {
 
   it('reports an upload that no longer exists', async () => {
     await expect(finalise()).resolves.toEqual({ outcome: 'not-found' });
+  });
+
+  it("lets only the uploader's browser confirm it: to anyone else, admins included, there's no such upload", async () => {
+    const upload = seed({ id: ID });
+    storage.put(upload.storagePath, FILE_BYTES.png);
+    await expect(finalise('browser', ADMIN)).resolves.toEqual({ outcome: 'not-found' });
+    expect(uploads.get(ID).status).toBe('uploading');
+
+    seed({ id: ID, status: 'completed', submittedAt: new Date() }); // a product everyone can see, but not theirs
+    await expect(finalise('browser', ADMIN)).resolves.toEqual({ outcome: 'not-found' });
   });
 });

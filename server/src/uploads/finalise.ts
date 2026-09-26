@@ -2,6 +2,7 @@ import { detectFileType, SIGNATURE_BYTES } from '../infra/file-signature.ts';
 import type { FileStorage } from '../infra/storage.ts';
 import { logEvents } from '../logs/events.ts';
 import type { EventLog } from '../logs/store.ts';
+import { findVisible, type Person } from './access.ts';
 import type { UploadRecord, UploadStore } from './store.ts';
 
 /**
@@ -36,18 +37,18 @@ export interface FinaliseDeps {
   events: EventLog;
 }
 
-export interface FinaliseOptions {
-  /**
-   * The browser's confirmation cancels the finalise job (the job can't cancel its own run). The
-   * finalise job runs after the upload URL has expired, so for it, no file means none will come.
-   */
-  caller: 'browser' | 'finalise-job';
-}
+/**
+ * The browser's confirmation cancels the finalise job (the job can't cancel its own run), and only
+ * the person who uploaded the file can send it: to anyone else, there's no such upload to confirm.
+ * The finalise job runs after the upload URL has expired, so for it, no file means none will come.
+ */
+export type FinaliseOptions = { caller: 'browser'; person: Person } | { caller: 'finalise-job' };
 
-export async function finaliseUpload(deps: FinaliseDeps, id: string, { caller }: FinaliseOptions): Promise<FinaliseResult> {
+export async function finaliseUpload(deps: FinaliseDeps, id: string, options: FinaliseOptions): Promise<FinaliseResult> {
+  const { caller } = options;
   const settle = { cancelFinalise: caller === 'browser' };
-  const upload = await deps.uploads.findById(id);
-  if (!upload) return { outcome: 'not-found' };
+  const upload = caller === 'browser' ? await findVisible(deps.uploads, id, options.person) : await deps.uploads.findById(id);
+  if (!upload || (caller === 'browser' && upload.uploadedBy !== options.person.id)) return { outcome: 'not-found' };
   if (upload.status !== 'uploading') return { outcome: 'already-finalised', upload };
 
   const head = await deps.storage.readHead(upload.storagePath, SIGNATURE_BYTES);
