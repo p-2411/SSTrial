@@ -24,21 +24,39 @@ export function confidenceDotClass(score: number | null): string {
   return TONE_DOT_CLASSES[tone ?? 'success'];
 }
 
-/** A score, saying what it is: "95% confident", with what that means on hover. */
-export function ConfidenceScore({ score, className }: { score: number; className?: string }) {
+/**
+ * A score: "95%", with what it means on hover. Where scores repeat (a field each), the page says
+ * once that they're confidence; `spelledOut` says it on the score itself ("95% confident"), for
+ * where it stands alone.
+ */
+export function ConfidenceScore({
+  score,
+  spelledOut = false,
+  title = MEANING,
+  className,
+}: {
+  score: number;
+  spelledOut?: boolean;
+  title?: string;
+  className?: string;
+}) {
   const band = BANDS[confidenceBand(score)];
   return (
-    <span className={cn('shrink-0 text-xs whitespace-nowrap tabular-nums', band.text, className)} title={MEANING}>
-      {score}% confident
+    <span className={cn('shrink-0 text-xs whitespace-nowrap tabular-nums', band.text, className)} title={title}>
+      {!spelledOut && <span className="sr-only">Confidence </span>}
+      {score}%{spelledOut && ' confident'}
       {band.spoken && <span className="sr-only">{band.spoken}</span>}
     </span>
   );
 }
 
+/** How an upload's overall score is worked out, for its tooltip. */
+export const OVERALL_MEANING = `The least certain field nobody has checked yet. ${MEANING}`;
+
 /**
- * An upload's overall score in the list: its least certain field that nobody has reviewed yet.
- * Nothing when there's no score (never scored, or every field reviewed).
+ * An upload's overall score in the list, where it stands alone: "72% confident". Nothing when
+ * there's no score (never scored, or every field reviewed).
  */
 export function UploadConfidence({ score }: { score: number | null }) {
-  return score === null ? null : <ConfidenceScore score={score} />;
+  return score === null ? null : <ConfidenceScore score={score} spelledOut title={OVERALL_MEANING} />;
 }

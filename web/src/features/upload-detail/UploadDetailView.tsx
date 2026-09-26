@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import type { UploadDetail } from '@label-extractor/shared';
 import { ApiRequestError, errorMessage } from '@/api/client';
 import { useUploadDetail } from '@/api/queries';
+import { ConfidenceScore, OVERALL_MEANING } from '@/components/Confidence';
 import { InlineError } from '@/components/InlineError';
 import { RelativeTime } from '@/components/RelativeTime';
 import { StatusPill } from '@/components/StatusPill';
@@ -79,29 +80,32 @@ function Detail({ upload }: { upload: UploadDetail }) {
           <StatusPill status={upload.status} className="mt-1.5 shrink-0" />
         </div>
         {/* The facts on one row: a long file name truncates (full name in its tooltip) rather than
-            wrapping. Delete sits at the row's end; its confirmation wraps onto a line of its own. */}
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-          <dl className="flex min-w-0 flex-1 gap-x-5 text-sm">
-            <Fact label="File">
-              {/* The file name only when the heading isn't already showing it. */}
-              {productName ? (
-                <>
-                  <span className="truncate" title={upload.fileName}>
-                    {upload.fileName}
-                  </span>
-                  <span className="shrink-0 text-muted-foreground">{fileFacts}</span>
-                </>
-              ) : (
-                fileFacts
-              )}
+            wrapping. */}
+        <dl className="flex min-w-0 gap-x-5 text-sm">
+          <Fact label="File">
+            {/* The file name only when the heading isn't already showing it. */}
+            {productName ? (
+              <>
+                <span className="truncate" title={upload.fileName}>
+                  {upload.fileName}
+                </span>
+                <span className="shrink-0 text-muted-foreground">{fileFacts}</span>
+              </>
+            ) : (
+              fileFacts
+            )}
+          </Fact>
+          <Fact label="Uploaded" className="shrink-0">
+            <RelativeTime iso={upload.createdAt} now={now} />
+            {upload.uploadedBy && <span className="text-muted-foreground"> by {upload.uploadedBy}</span>}
+          </Fact>
+          {/* Named once here, so each field's score in the card below can be just a percentage. */}
+          {upload.confidence !== null && (
+            <Fact label="Confidence" className="shrink-0">
+              <ConfidenceScore score={upload.confidence} title={OVERALL_MEANING} className="text-sm" />
             </Fact>
-            <Fact label="Uploaded" className="shrink-0">
-              <RelativeTime iso={upload.createdAt} now={now} />
-              {upload.uploadedBy && <span className="text-muted-foreground"> by {upload.uploadedBy}</span>}
-            </Fact>
-          </dl>
-          {upload.canDelete && <DeleteUpload upload={upload} />}
-        </div>
+          )}
+        </dl>
       </header>
 
       <StatusNotice upload={upload} />
@@ -110,6 +114,12 @@ function Detail({ upload }: { upload: UploadDetail }) {
       {upload.result && <CoreInformationCard upload={{ ...upload, result: upload.result }} />}
       <SourceDocumentCard upload={upload} />
       {upload.result && <JsonDisclosure data={upload.result} fileName={upload.fileName} />}
+      {/* Last, on its own row: it can't be undone, so it's out of the way of everything else. */}
+      {upload.canDelete && (
+        <div className="grid border-t pt-4">
+          <DeleteUpload upload={upload} />
+        </div>
+      )}
     </>
   );
 }

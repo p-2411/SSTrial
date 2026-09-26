@@ -23,6 +23,8 @@ const uploads: Record<string, UploadDetail> = Object.fromEntries(
       result: { productName: productName ?? null, brand: null, ingredients: [], allergens: [], netWeight: null },
       // Only "mine" may be deleted by whoever is signed in here (the server decides; see canDelete).
       canDelete: id === 'mine',
+      // Only "abc" was scored.
+      confidence: id === 'abc' ? 72 : null,
     }),
   ]),
 );
@@ -124,27 +126,38 @@ describe('UploadDetailPanel', () => {
     expect(screen.getByTestId('url')).toHaveTextContent('/?status=completed');
   });
 
+  it("names the upload's overall confidence once, beside its other facts", async () => {
+    renderAt('/uploads/abc');
+    const panel = await screen.findByRole('complementary', { name: 'Maple Pecan Crunch' });
+    expect(within(panel).getByText('Confidence', { selector: 'dt' })).toBeInTheDocument();
+    expect(within(panel).getByText('72%')).toHaveClass('text-warning');
+
+    await userEvent.click(screen.getByRole('link', { name: 'Open oat milk' }));
+    const unscored = await screen.findByRole('complementary', { name: 'Barista Oat Milk' });
+    expect(within(unscored).queryByText('Confidence', { selector: 'dt' })).not.toBeInTheDocument();
+  });
+
   describe('deleting', () => {
     it('is offered only to those who may delete the upload', async () => {
       renderAt('/uploads/abc');
       await screen.findByRole('complementary', { name: 'Maple Pecan Crunch' });
-      expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Delete upload' })).not.toBeInTheDocument();
 
       await userEvent.click(screen.getByRole('link', { name: 'Open oat milk' }));
       await screen.findByRole('complementary', { name: 'Barista Oat Milk' });
-      expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Delete upload' })).not.toBeInTheDocument();
     });
 
     it('asks first, then deletes and closes the panel, keeping the status filter', async () => {
       renderAt('/uploads/mine?status=completed');
       await screen.findByRole('complementary', { name: 'My Crackers' });
 
-      await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
-      const question = screen.getByRole('group', { name: /Delete my-label.png\?/ });
-      expect(question).toHaveTextContent('removed for good');
+      await userEvent.click(screen.getByRole('button', { name: 'Delete upload' }));
+      const dialog = screen.getByRole('alertdialog', { name: 'Delete my-label.png?' });
+      expect(dialog).toHaveTextContent('removed for good');
       expect(deleteCalls()).toHaveLength(0);
 
-      await userEvent.click(within(question).getByRole('button', { name: 'Delete' }));
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
       expect(deleteCalls().map(([url]) => url)).toEqual(['/api/uploads/mine']);
       await waitFor(() => expect(screen.getByTestId('url')).toHaveTextContent('/?status=completed'));
@@ -154,11 +167,11 @@ describe('UploadDetailPanel', () => {
       renderAt('/uploads/mine');
       await screen.findByRole('complementary', { name: 'My Crackers' });
 
-      await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Delete upload' }));
       await userEvent.click(screen.getByRole('button', { name: 'Keep it' }));
 
       expect(deleteCalls()).toHaveLength(0);
-      expect(screen.queryByRole('group', { name: /Delete my-label.png/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
       expect(screen.getByTestId('url')).toHaveTextContent('/uploads/mine');
     });
 
@@ -168,11 +181,12 @@ describe('UploadDetailPanel', () => {
       renderAt('/uploads/mine');
       await screen.findByRole('complementary', { name: 'My Crackers' });
 
-      await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
-      const question = screen.getByRole('group', { name: /Delete my-label.png\?/ });
-      await userEvent.click(within(question).getByRole('button', { name: 'Delete' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Delete upload' }));
+      const dialog = screen.getByRole('alertdialog', { name: 'Delete my-label.png?' });
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
-      expect(await screen.findByRole('alert')).toHaveTextContent('Only the person who uploaded this, or an admin, can delete it.');
+      expect(await within(dialog).findByRole('alert')).toHaveTextContent('Only the person who uploaded this, or an admin, can delete it.');
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument(); // still asking
       expect(screen.getByTestId('url')).toHaveTextContent('/uploads/mine');
     });
   });
