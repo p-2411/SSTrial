@@ -14,6 +14,7 @@ import { DeleteUpload } from './DeleteUpload';
 import { JsonDisclosure } from './JsonDisclosure';
 import { SourceDocumentCard } from './SourceDocumentCard';
 import { StatusNotice } from './StatusNotice';
+import { UploadHistory } from './UploadHistory';
 
 /** The detail's heading. UploadDetailPanel points its label here, so the panel is named after the file. */
 export const DETAIL_TITLE_ID = 'upload-detail-title';
@@ -115,6 +116,7 @@ function Detail({ upload }: { upload: UploadDetail }) {
       {upload.result && <ProductInformationCard upload={{ ...upload, result: upload.result }} />}
       <SourceDocumentCard upload={upload} />
       {upload.result && <JsonDisclosure data={upload.result} fileName={upload.fileName} />}
+      <UploadHistory uploadId={upload.id} />
       {/* Last, on its own row: it can't be undone, so it's out of the way of everything else. */}
       {upload.canDelete && <DeleteUpload upload={upload} />}
     </>

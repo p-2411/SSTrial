@@ -1,7 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { MAX_FILE_SIZE_BYTES } from '@label-extractor/shared';
 import { buildApp, type App } from '../../src/api/app.ts';
-import { ADMIN, FILE_BYTES, InMemoryEventStore, InMemoryStorage, InMemoryUploadStore, SAMPLE_EXTRACTION, testAppDeps } from '../fakes.ts';
+import {
+  ADMIN,
+  FILE_BYTES,
+  InMemoryEventStore,
+  InMemoryStorage,
+  InMemoryUploadStore,
+  MEMBER,
+  SAMPLE_EXTRACTION,
+  signedInAs,
+  testAppDeps,
+} from '../fakes.ts';
 
 // HTTP-level tests: real routing, validation and error handling via Fastify's `inject()`, with
 // in-memory fakes in place of Postgres, the queue and Supabase Storage.
@@ -58,7 +68,7 @@ describe('POST /api/uploads — request a signed upload URL', () => {
     expect(row.storagePath).toMatch(new RegExp(`^\\d{4}-\\d{2}-\\d{2}/${row.id}\\.png$`));
     expect(body.upload).not.toHaveProperty('storagePath');
     expect(events.events).toMatchObject([
-      { type: 'upload.created', uploadId: row.id, message: 'label.png started uploading (PNG, 4.9 KB).' },
+      { type: 'upload.created', uploadId: row.id, message: 'admin@example.com started uploading label.png (PNG, 4.9 KB).' },
     ]);
   });
 
@@ -363,7 +373,9 @@ describe('POST /api/uploads/:id/retry — manual retry', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().upload).toMatchObject({ status: 'queued', attempts: 0, error: null });
     expect(uploads.enqueued).toEqual([ID]);
-    expect(events.events).toMatchObject([{ type: 'upload.retry_requested', uploadId: ID }]);
+    expect(events.events).toMatchObject([
+      { type: 'upload.retry_requested', uploadId: ID, message: 'admin@example.com asked for label.png to be read again.' },
+    ]);
   });
 
   it('refuses to retry a file that is itself the problem', async () => {
@@ -407,5 +419,32 @@ describe('unknown routes', () => {
     const response = await app.inject({ method: 'GET', url: '/api/nope' });
     expect(response.statusCode).toBe(404);
     expect(response.json()).toEqual({ error: { code: 'NOT_FOUND', message: 'Route not found.' } });
+  });
+});
+
+describe('GET /api/uploads/:id/history', () => {
+  const history = (id = ID) => app.inject({ method: 'GET', url: `/api/uploads/${id}/history` });
+
+  it("tells one upload's story, oldest first, leaving out other uploads", async () => {
+    uploads.seed({ id: ID, status: 'completed', result: SAMPLE_EXTRACTION });
+    events.seed({ type: 'upload.created', uploadId: ID, message: 'uploaded' });
+    events.seed({ type: 'extraction.completed', uploadId: 'someone-else', message: 'not this one' });
+    events.seed({ type: 'upload.edited', uploadId: ID, message: 'edited' });
+
+    const response = await history();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().events.map((event: { message: string }) => event.message)).toEqual(['uploaded', 'edited']);
+  });
+
+  it('is open to members, not just admins', async () => {
+    await app.close();
+    app = await buildApp(testAppDeps({ uploads, storage, events, authenticator: signedInAs(MEMBER) }));
+    uploads.seed({ id: ID, status: 'completed', result: SAMPLE_EXTRACTION });
+    expect((await history()).statusCode).toBe(200);
+  });
+
+  it('is a 404 for an upload that doesn’t exist', async () => {
+    expect((await history()).statusCode).toBe(404);
   });
 });

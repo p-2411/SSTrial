@@ -35,13 +35,13 @@ const fieldList = (fields: LabelField[]) => formatList(fields.map((field) => FIE
 export const logEvents = {
   // ---- The API, as an upload arrives -------------------------------------------------------
 
-  uploadCreated(upload: UploadRecord): NewLogEvent {
+  uploadCreated(upload: UploadRecord, by: string): NewLogEvent {
     const base = aboutUpload(upload);
     return {
       ...base,
       type: 'upload.created',
-      message: `${upload.fileName} started uploading (${fileTypeLabel(upload.mimeType)}, ${formatBytes(upload.sizeBytes)}).`,
-      data: { ...base.data, mimeType: upload.mimeType, sizeBytes: upload.sizeBytes },
+      message: `${by} started uploading ${upload.fileName} (${fileTypeLabel(upload.mimeType)}, ${formatBytes(upload.sizeBytes)}).`,
+      data: { ...base.data, by, mimeType: upload.mimeType, sizeBytes: upload.sizeBytes },
     };
   },
 
@@ -89,11 +89,13 @@ export const logEvents = {
     };
   },
 
-  retryRequested(upload: UploadRef): NewLogEvent {
+  retryRequested(upload: UploadRef, by: string): NewLogEvent {
+    const base = aboutUpload(upload);
     return {
-      ...aboutUpload(upload),
+      ...base,
       type: 'upload.retry_requested',
-      message: `Extraction of ${upload.fileName} was requested again.`,
+      message: `${by} asked for ${upload.fileName} to be read again.`,
+      data: { ...base.data, by },
     };
   },
 

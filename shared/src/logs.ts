@@ -70,6 +70,11 @@ export interface LogEvent {
   data: Record<string, unknown>;
 }
 
+/** GET /api/uploads/:id/history — everything that happened to one upload, oldest first. */
+export interface UploadHistoryResponse {
+  events: LogEvent[];
+}
+
 export interface ListLogsResponse {
   events: LogEvent[];
   /** Pass as `cursor` to get the next page; `null` on the last page. */

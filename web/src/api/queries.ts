@@ -2,7 +2,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClie
 import { isActiveStatus, type EditResultRequest, type UploadDetail, type UploadFilter } from '@label-extractor/shared';
 import { ApiRequestError } from './client.ts';
 import { isLiveConnected } from './liveConnection.ts';
-import { listLogs, type LogFilters } from './logs.ts';
+import { getUploadHistory, listLogs, type LogFilters } from './logs.ts';
 import { deleteUpload, editResult, getOpsStatus, getUpload, getUploadCounts, listUploads, retryUpload } from './uploads.ts';
 
 /**
@@ -38,6 +38,8 @@ export const opsKeys = {
 export const logKeys = {
   all: ['logs'] as const,
   list: (filters: LogFilters) => [...logKeys.all, 'list', filters] as const,
+  /** One upload's history, on its detail. Under `all`, so new events refresh it like the log. */
+  upload: (id: string) => [...logKeys.all, 'upload', id] as const,
 };
 
 /** How often the activity log polls when the live update stream is down (it's live otherwise). */
@@ -180,6 +182,15 @@ export function useLogs(filters: LogFilters) {
     queryFn: ({ pageParam }) => listLogs(filters, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    refetchInterval: () => (isLiveConnected() ? false : LOG_POLL_INTERVAL_MS),
+  });
+}
+
+/** One upload's history, oldest first. Live like the activity log; polls only without the stream. */
+export function useUploadHistory(id: string) {
+  return useQuery({
+    queryKey: logKeys.upload(id),
+    queryFn: () => getUploadHistory(id),
     refetchInterval: () => (isLiveConnected() ? false : LOG_POLL_INTERVAL_MS),
   });
 }

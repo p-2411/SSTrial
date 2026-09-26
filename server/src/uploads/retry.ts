@@ -1,4 +1,4 @@
-import { canRetryUpload } from '@label-extractor/shared';
+import { canRetryUpload, type CurrentMember } from '@label-extractor/shared';
 import { logEvents } from '../logs/events.ts';
 import type { EventLog } from '../logs/store.ts';
 import type { UploadIntake, UploadQueries, UploadRecord } from './store.ts';
@@ -15,14 +15,14 @@ export interface RetryDeps {
 }
 
 /** Runs extraction again for a failed upload, or a completed one whose result can no longer be read. */
-export async function retryUpload(deps: RetryDeps, id: string): Promise<RetryResult> {
+export async function retryUpload(deps: RetryDeps, id: string, person: Pick<CurrentMember, 'email'>): Promise<RetryResult> {
   const upload = await deps.uploads.findById(id);
   if (!upload) return { outcome: 'not-found' };
   if (!canRetryUpload(upload)) return { outcome: 'not-retryable', upload };
 
   const requeued = await deps.uploads.requeue(upload.id, upload.status === 'completed' ? 'completed' : 'failed');
   if (requeued) {
-    await deps.events.record(logEvents.retryRequested(requeued));
+    await deps.events.record(logEvents.retryRequested(requeued, person.email));
     return { outcome: 'requeued', upload: requeued };
   }
   // It changed since we read it (a retry from another tab, say): report it as it is now.

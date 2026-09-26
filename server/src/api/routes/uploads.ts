@@ -11,10 +11,12 @@ import {
   type ListUploadsResponse,
   type UploadCountsResponse,
   type UploadResponse,
+  type UploadHistoryResponse,
 } from '@label-extractor/shared';
 import type { MemberStore } from '../../auth/members.ts';
 import type { FileStorage } from '../../infra/storage.ts';
-import type { EventLog } from '../../logs/store.ts';
+import { toLogEvent } from '../../logs/presenter.ts';
+import type { EventLog, EventQueries } from '../../logs/store.ts';
 import { editResult } from '../../uploads/edit.ts';
 import { finaliseUpload } from '../../uploads/finalise.ts';
 import { requestUpload } from '../../uploads/intake.ts';
@@ -28,13 +30,16 @@ import { ApiError, notFound } from '../errors.ts';
 export interface UploadRoutesDeps {
   uploads: UploadQueries & UploadIntake & UploadReviews & UploadRemoval;
   storage: FileStorage;
-  /** The use cases record what they did to the activity log. */
-  events: EventLog;
+  /** The use cases record what they did to the activity log; each upload's history reads it back. */
+  events: EventLog & EventQueries;
   /** To name who uploaded each file, and who reviewed its fields. */
   members: Pick<MemberStore, 'emailsOf'>;
 }
 
 const idParams = z.object({ id: z.uuid() });
+
+/** More than any one upload collects: a few events per attempt, and one per review. */
+const UPLOAD_HISTORY_LIMIT = 200;
 
 /**
  * Upload endpoints: HTTP in, HTTP out. What each step does lives in uploads/ (intake, finalise,
@@ -63,7 +68,7 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
     if (!body.success) {
       throw new ApiError(400, 'BAD_REQUEST', 'Expected a JSON body with fileName, mimeType and sizeBytes.');
     }
-    const result = await requestUpload({ uploads, storage, events }, body.data, request.member!.id);
+    const result = await requestUpload({ uploads, storage, events }, body.data, request.member!);
 
     switch (result.outcome) {
       case 'invalid':
@@ -144,9 +149,18 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
     }
   });
 
+  // One upload's history, for its detail: open to anyone who can see the upload, unlike the whole
+  // activity log. Newest first from the store, turned round so the story reads in order.
+  app.get('/api/uploads/:id/history', async (request): Promise<UploadHistoryResponse> => {
+    const id = uploadId(request.params);
+    if (!(await uploads.findById(id))) throw notFound();
+    const newestFirst = await events.list({ types: [], uploadId: id, limit: UPLOAD_HISTORY_LIMIT });
+    return { events: newestFirst.map(toLogEvent).reverse() };
+  });
+
   // Manual retry of a failed upload ------------------------------------------------------------
   app.post('/api/uploads/:id/retry', async (request): Promise<UploadResponse> => {
-    const result = await retryUpload({ uploads, events }, uploadId(request.params));
+    const result = await retryUpload({ uploads, events }, uploadId(request.params), request.member!);
 
     switch (result.outcome) {
       case 'requeued':

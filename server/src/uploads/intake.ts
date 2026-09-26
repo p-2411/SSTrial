@@ -2,6 +2,7 @@ import {
   SUPPORTED_FILE_TYPES,
   validateFileMetadata,
   type CreateUploadRequest,
+  type CurrentMember,
   type FileValidationErrorCode,
   type SupportedMimeType,
 } from '@label-extractor/shared';
@@ -30,7 +31,7 @@ export interface IntakeDeps {
 export async function requestUpload(
   deps: IntakeDeps,
   request: CreateUploadRequest,
-  uploadedBy: string,
+  uploader: Pick<CurrentMember, 'id' | 'email'>,
 ): Promise<UploadRequestResult> {
   // Same rules the browser already applied — the browser can't be trusted to have done so.
   const validation = validateFileMetadata({ name: request.fileName, type: request.mimeType, size: request.sizeBytes });
@@ -56,9 +57,9 @@ export async function requestUpload(
     sizeBytes: request.sizeBytes,
     storagePath,
     contentSha256: request.sha256 ?? null,
-    uploadedBy,
+    uploadedBy: uploader.id,
   });
-  await deps.events.record(logEvents.uploadCreated(upload));
+  await deps.events.record(logEvents.uploadCreated(upload, uploader.email));
   return { outcome: 'created', upload, uploadUrl };
 }
 
