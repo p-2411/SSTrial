@@ -79,7 +79,7 @@ export function ProductList() {
               <Button
                 variant="outline"
                 size="sm"
-                className="border-danger-border text-danger hover:bg-danger-soft hover:text-danger"
+                className="border-danger-border bg-transparent text-danger hover:bg-danger-soft hover:text-danger"
                 onClick={() => setConfirmingDelete(picked)}
               >
                 Delete
