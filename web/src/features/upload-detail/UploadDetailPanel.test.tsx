@@ -25,6 +25,14 @@ const uploads: Record<string, UploadDetail> = Object.fromEntries(
       canDelete: id === 'mine',
       // Only "abc" was scored.
       confidence: id === 'abc' ? 72 : null,
+      // "def" has been reviewed: a check, then a later edit.
+      fieldReviews:
+        id === 'def'
+          ? {
+              brand: { kind: 'checked', by: 'bob@example.com', at: '2026-09-25T09:00:00.000Z' },
+              productName: { kind: 'edited', by: 'alice@example.com', at: '2026-09-25T10:00:00.000Z' },
+            }
+          : {},
     }),
   ]),
 );
@@ -126,16 +134,24 @@ describe('UploadDetailPanel', () => {
     expect(screen.getByTestId('url')).toHaveTextContent('/?status=completed');
   });
 
-  it("shows the upload's overall confidence beside its status, as just the number", async () => {
+  it('invites a check in the status pill when the upload is worth checking', async () => {
     renderAt('/uploads/abc');
     const panel = await screen.findByRole('complementary', { name: 'Maple Pecan Crunch' });
-    const score = within(panel).getByText('72%');
-    expect(score).toHaveClass('text-warning');
-    expect(score.parentElement).toContainElement(within(panel).getByText('Completed'));
+    const pill = within(panel).getByText('Check');
+    expect(pill).toHaveClass('text-warning');
+    expect(pill).toHaveTextContent('72%');
 
     await userEvent.click(screen.getByRole('link', { name: 'Open oat milk' }));
     const unscored = await screen.findByRole('complementary', { name: 'Barista Oat Milk' });
-    expect(within(unscored).queryByText(/Confidence/)).not.toBeInTheDocument();
+    expect(within(unscored).getByText('Completed')).toBeInTheDocument();
+  });
+
+  it('says who last reviewed the data, once, in the header', async () => {
+    renderAt('/uploads/def');
+    const panel = await screen.findByRole('complementary', { name: 'Barista Oat Milk' });
+    const lastEdited = within(panel).getByText('Last edited', { selector: 'dt' }).parentElement!;
+    expect(lastEdited).toHaveTextContent('by alice@example.com');
+    expect(within(panel).queryByText(/bob@example\.com/)).not.toBeInTheDocument();
   });
 
   describe('deleting', () => {

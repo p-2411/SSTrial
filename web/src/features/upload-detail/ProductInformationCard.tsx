@@ -1,41 +1,41 @@
 import type { ReactNode } from 'react';
-import { ShieldCheck } from 'lucide-react';
 import { isVolumeUnit, type Ingredient, type LabelExtraction, type LabelField, type UploadDetail } from '@label-extractor/shared';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatQuantity } from '@/lib/quantity';
 import { TONE_CLASSES } from '@/lib/tone';
-import { useNow } from '@/lib/useNow';
 import { cn } from '@/lib/utils';
+import { ConfidenceFooter, confidenceBorderClass } from './ConfidenceFooter';
 import { AllergensEditor, IngredientsEditor, NetWeightEditor, TextEditor } from './FieldEditors';
 import { ReviewableField } from './ReviewableField';
 import { useFieldReview } from './useFieldReview';
 
 /**
  * Everything extracted from the label in one card, laid out after SupplyScope's compliance
- * screens: a green-edged card with verified values in green and a validated footer. Anything the label didn't show is said explicitly, so "not found" is never mistaken for
- * "not loaded".
+ * screens: verified values in green, and a footer giving the verdict, the upload's overall
+ * confidence: green when it can be trusted as it is, amber or red (with the card's edge to match)
+ * when some field is worth checking. Anything the label didn't show is said explicitly, so "not
+ * found" is never mistaken for "not loaded".
  *
  * Every field can be corrected in place, one at a time (see useFieldReview). When the extraction
- * was scored, each field's marker takes its confidence colour and its score sits on the right, in a
- * column headed "Confidence"; a doubtful field can also be confirmed as right. Once a person has edited or confirmed a field,
- * who did it shows in place of the score.
+ * was scored, each field's marker takes its confidence colour and its score sits on the right, in
+ * a column headed "Confidence"; a doubtful field can also be confirmed as right. Once a person has
+ * edited or confirmed a field, it says so in place of its score; who did it, and when, is in the
+ * detail's header.
  */
 export function ProductInformationCard({ upload }: { upload: UploadDetail & { result: LabelExtraction } }) {
   const { productName, brand, netWeight, allergens, ingredients } = upload.result;
-  const now = useNow();
   const fields = useFieldReview(upload);
 
   const fieldProps = (field: LabelField) => ({
     field,
     confidence: upload.fieldConfidence?.[field],
     review: upload.fieldReviews[field],
-    now,
     onEdit: () => fields.edit(field),
     onCheck: () => fields.check(field),
   });
 
   return (
-    <Card role="region" aria-label="Product information" className="gap-0 overflow-hidden border-success/40 py-0 ring-0">
+    <Card role="region" aria-label="Product information" className={cn('gap-0 overflow-hidden py-0 ring-0', confidenceBorderClass(upload))}>
       <CardHeader className="flex flex-row items-center justify-between gap-3 py-4">
         <CardTitle className="text-base font-semibold">Product information</CardTitle>
         {/* Heads the scores on the right. pr-7 lines it up with them: each row's edit button sits
@@ -101,11 +101,7 @@ export function ProductInformationCard({ upload }: { upload: UploadDetail & { re
         </div>
       </CardContent>
 
-      {/* Every stored result passed schema validation, edits included; say so, like SupplyScope's "verified" footer. */}
-      <div className="flex items-center gap-2 bg-success px-6 py-3 text-sm font-medium text-white">
-        <ShieldCheck className="size-4" aria-hidden />
-        Validated against the label schema
-      </div>
+      <ConfidenceFooter upload={upload} />
     </Card>
   );
 }

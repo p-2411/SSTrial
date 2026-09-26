@@ -1,8 +1,7 @@
 import { useId, type ReactNode } from 'react';
-import { Check, Pencil } from 'lucide-react';
+import { Pencil } from 'lucide-react';
 import { FIELD_LABELS, needsChecking, type FieldConfidence, type FieldReview, type LabelField } from '@label-extractor/shared';
 import { confidenceDotClass, ConfidenceScore } from '@/components/Confidence';
-import { RelativeTime } from '@/components/RelativeTime';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -13,9 +12,9 @@ interface ReviewState {
 
 /**
  * One field of the extracted data: a marker coloured by confidence, the label, the value (or its
- * editor), and on the right its confidence ("95%"), or, once a person has reviewed it,
- * nothing: who reviewed it shows under the value instead. Edit appears on hover and focus; a field that still needs
- * checking also offers "Mark as checked".
+ * editor), and on the right its confidence ("95%"), or, once a person has reviewed it, "Edited" or
+ * "Checked" (who, and when, is in the detail's header). Edit appears on hover and focus; a field
+ * that still needs checking also offers "Mark as checked".
  *
  * As a `row` (the default) it's a term and its value, for a <dl>. As a `block` it's a section of
  * its own, headed by the label with the value at full width underneath, for long values.
@@ -27,7 +26,6 @@ export function ReviewableField({
   count,
   confidence,
   review,
-  now,
   editor,
   onEdit,
   onCheck,
@@ -39,7 +37,6 @@ export function ReviewableField({
   layout?: 'row' | 'block';
   /** How many items the value holds, shown beside a block's heading. */
   count?: number;
-  now: number;
   /** The editor while this field is being edited; anything falsy shows the value (children) instead. */
   editor: ReactNode;
   onEdit: () => void;
@@ -55,7 +52,7 @@ export function ReviewableField({
   );
   const actions = !editing && (
     <>
-      {confidence && !review && <ConfidenceScore score={confidence.score} />}
+      {review ? <ReviewedMark review={review} /> : confidence && <ConfidenceScore score={confidence.score} />}
       <EditButton name={name} onClick={onEdit} />
     </>
   );
@@ -78,7 +75,7 @@ export function ReviewableField({
             <div className="mt-2">{editor}</div>
           ) : (
             <>
-              <ReviewNotes state={state} now={now} name={name} onCheck={onCheck} />
+              <ReviewNotes state={state} name={name} onCheck={onCheck} />
               {children}
             </>
           )}
@@ -99,7 +96,7 @@ export function ReviewableField({
         ) : (
           <>
             {children}
-            <ReviewNotes state={state} now={now} name={name} onCheck={onCheck} />
+            <ReviewNotes state={state} name={name} onCheck={onCheck} />
           </>
         )}
       </dd>
@@ -108,28 +105,22 @@ export function ReviewableField({
   );
 }
 
-/** Under a value: why its score is low, who reviewed it, or the offer to confirm it. */
+/** In place of a reviewed field's score: that a person settled it. */
+function ReviewedMark({ review }: { review: FieldReview }) {
+  return <span className="shrink-0 text-xs text-muted-foreground">{review.kind === 'edited' ? 'Edited' : 'Checked'}</span>;
+}
+
+/** Under a value that nobody has reviewed yet: why its score is low, and the offer to confirm it. */
 function ReviewNotes({
   state: { confidence, review },
-  now,
   name,
   onCheck,
 }: {
   state: ReviewState;
-  now: number;
   name: string;
   onCheck: () => void;
 }) {
-  if (review) {
-    return (
-      <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-        <Check className="size-3 text-success" aria-hidden />
-        {review.kind === 'edited' ? 'Edited' : 'Checked'} by {review.by ?? 'a former member'},{' '}
-        <RelativeTime iso={review.at} now={now} />
-      </p>
-    );
-  }
-  if (!confidence) return null;
+  if (review || !confidence) return null;
   const needsCheck = needsChecking(confidence.score);
   if (confidence.reasons.length === 0 && !needsCheck) return null;
   return (

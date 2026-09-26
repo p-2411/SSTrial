@@ -1,7 +1,6 @@
 import { memo } from 'react';
 import { NavLink, useLocation } from 'react-router';
 import type { UploadSummary } from '@label-extractor/shared';
-import { UploadConfidence } from '@/components/Confidence';
 import { FileTypeTile } from '@/components/FileTypeTile';
 import { RelativeTime } from '@/components/RelativeTime';
 import { StatusPill } from '@/components/StatusPill';
@@ -50,11 +49,8 @@ export const UploadRow = memo(function UploadRow({ upload, now }: { upload: Uplo
           )}
         </div>
         <div className="flex flex-col items-end gap-1.5">
-          {/* The confidence is plain text beside the status: it qualifies it, so it doesn't compete with it. */}
-          <div className="flex items-center gap-2.5">
-            <UploadConfidence score={upload.confidence} />
-            <StatusPill status={upload.status} />
-          </div>
+          {/* A completed upload's pill also says whether it's worth checking ("Check · 72%"). */}
+          <StatusPill status={upload.status} confidence={upload.confidence} />
           <RelativeTime className="text-xs text-muted-foreground tabular-nums" iso={upload.createdAt} now={now} />
         </div>
       </NavLink>

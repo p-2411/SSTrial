@@ -1,6 +1,6 @@
 import { screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import type { ExtractionConfidence, LabelExtraction } from '@label-extractor/shared';
+import { overallConfidence, type ExtractionConfidence, type FieldReviews, type LabelExtraction } from '@label-extractor/shared';
 import { detail } from '@/test/fixtures';
 import { renderWithProviders } from '@/test/render';
 import { ProductInformationCard } from './ProductInformationCard';
@@ -19,8 +19,14 @@ const full: LabelExtraction = {
 
 const empty: LabelExtraction = { productName: null, brand: null, ingredients: [], allergens: [], netWeight: null };
 
-function renderCard(result: LabelExtraction, confidence: ExtractionConfidence | null = null) {
-  renderWithProviders(<ProductInformationCard upload={{ ...detail({ fieldConfidence: confidence }), result }} />);
+/** The card as the API would send it: the overall score is worked out from the fields', as on the server. */
+function renderCard(result: LabelExtraction, confidence: ExtractionConfidence | null = null, fieldReviews: FieldReviews = {}) {
+  const upload = detail({
+    fieldConfidence: confidence,
+    confidence: overallConfidence(confidence, Object.keys(fieldReviews) as (keyof FieldReviews)[]),
+    fieldReviews,
+  });
+  renderWithProviders(<ProductInformationCard upload={{ ...upload, result }} />);
   return screen.getByRole('region', { name: 'Product information' });
 }
 
@@ -101,6 +107,50 @@ describe('ProductInformationCard', () => {
     it('shows no scores for an extraction that was never scored', () => {
       const card = renderCard(full, null);
       expect(within(card).queryByText(/Confidence/)).not.toBeInTheDocument(); // no heading either
+    });
+  });
+
+  describe('footer: the overall confidence', () => {
+    const scored = (scores: number[]): ExtractionConfidence => {
+      const [productName, brand, netWeight, allergens, ingredients] = scores.map((score) => ({ score, reasons: [] }));
+      return { productName: productName!, brand: brand!, netWeight: netWeight!, allergens: allergens!, ingredients: ingredients! };
+    };
+    const footer = (card: HTMLElement) => within(card).getByRole('status');
+
+    it('is green when every field is confidently read', () => {
+      const card = renderCard(full, scored([97, 95, 92, 90, 88]));
+      expect(footer(card)).toHaveTextContent('High confidence · 88%');
+      expect(footer(card)).toHaveClass('bg-success');
+    });
+
+    it('is amber, and asks for a check, when a field is worth checking', () => {
+      const card = renderCard(full, scored([97, 72, 92, 90, 88]));
+      expect(footer(card)).toHaveTextContent('Medium confidence · 72%. Check the flagged fields.');
+      expect(card).toHaveClass('border-warning-border');
+    });
+
+    it('is red when a field is more likely wrong than right', () => {
+      const card = renderCard(full, scored([97, 72, 45, 90, 88]));
+      expect(footer(card)).toHaveTextContent('Low confidence · 45%. Check the flagged fields.');
+      expect(card).toHaveClass('border-danger-border');
+    });
+
+    it('is green again once people have reviewed the doubtful fields', () => {
+      const at = new Date().toISOString();
+      const card = renderCard(full, scored([97, 72, 45, 90, 88]), {
+        brand: { kind: 'checked', by: 'alice@example.com', at },
+        netWeight: { kind: 'edited', by: 'alice@example.com', at },
+      });
+      expect(footer(card)).toHaveTextContent('High confidence · 88%');
+    });
+
+    it('says so when a person has reviewed every field', () => {
+      const at = new Date().toISOString();
+      const review = { kind: 'checked' as const, by: 'alice@example.com', at };
+      const card = renderCard(full, scored([97, 72, 45, 90, 88]), {
+        productName: review, brand: review, netWeight: review, allergens: review, ingredients: review,
+      });
+      expect(footer(card)).toHaveTextContent('Every field checked by a person');
     });
   });
 });

@@ -28,22 +28,15 @@ export function confidenceDotClass(score: number | null): string {
  * A score, as just the number: "95%". What it is shows on hover, and is read out to screen readers
  * ("Confidence 95%").
  */
-export function ConfidenceScore({ score, title = MEANING, className }: { score: number; title?: string; className?: string }) {
+export function ConfidenceScore({ score }: { score: number }) {
   const band = BANDS[confidenceBand(score)];
   return (
-    <span className={cn('shrink-0 text-xs whitespace-nowrap tabular-nums', band.text, className)} title={title}>
+    <span className={cn('shrink-0 text-xs whitespace-nowrap tabular-nums', band.text)} title={MEANING}>
       <span className="sr-only">Confidence </span>
       {score}%{band.spoken && <span className="sr-only">{band.spoken}</span>}
     </span>
   );
 }
 
-/**
- * An upload's overall score, beside its status (in the list and the detail's header): its least
- * certain field nobody has checked yet. Nothing when there's no score (never scored, or every
- * field reviewed).
- */
-export function UploadConfidence({ score, className }: { score: number | null; className?: string }) {
-  if (score === null) return null;
-  return <ConfidenceScore score={score} title={`The least certain field nobody has checked yet. ${MEANING}`} className={className} />;
-}
+/** What an upload's overall score is, for the tooltips that show it. */
+export const OVERALL_CONFIDENCE_MEANING = `The upload's confidence is its least certain field that nobody has checked yet. ${MEANING}`;

@@ -180,11 +180,12 @@ describe('reviewing', () => {
     expect(sent).toEqual([{ revision: 0, checked: ['netWeight'] }]);
   });
 
-  it('shows who reviewed a field in place of its score', () => {
+  it('says a reviewed field was checked in place of its score (who did it is in the header)', () => {
     const card = renderCard(
       upload({ fieldReviews: { netWeight: { kind: 'checked', by: 'alice@example.com', at: new Date().toISOString() } } }),
     );
-    expect(within(card).getByText(/Checked by alice@example\.com/)).toBeInTheDocument();
+    expect(within(card).getByText('Checked')).toBeInTheDocument();
+    expect(within(card).queryByText(/alice@example\.com/)).not.toBeInTheDocument();
     expect(within(card).queryByText('58%')).not.toBeInTheDocument();
     expect(within(card).queryByRole('button', { name: 'Mark net weight as checked' })).not.toBeInTheDocument();
   });

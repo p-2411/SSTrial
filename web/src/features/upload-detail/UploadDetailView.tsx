@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react';
-import type { UploadDetail } from '@label-extractor/shared';
+import type { FieldReview, UploadDetail } from '@label-extractor/shared';
 import { ApiRequestError, errorMessage } from '@/api/client';
 import { useUploadDetail } from '@/api/queries';
-import { UploadConfidence } from '@/components/Confidence';
 import { InlineError } from '@/components/InlineError';
 import { RelativeTime } from '@/components/RelativeTime';
 import { StatusPill } from '@/components/StatusPill';
@@ -68,6 +67,7 @@ function Detail({ upload }: { upload: UploadDetail }) {
   // Like the list rows: the product leads once the label is read; until then, the file name.
   const productName = upload.result?.productName ?? null;
   const fileFacts = formatFileFacts(upload.mimeType, upload.sizeBytes);
+  const lastReview = latestReview(upload.fieldReviews);
 
   return (
     <>
@@ -77,11 +77,7 @@ function Detail({ upload }: { upload: UploadDetail }) {
           <h2 id={DETAIL_TITLE_ID} className="min-w-0 text-2xl font-semibold break-words">
             {productName ?? upload.fileName}
           </h2>
-          {/* The overall confidence qualifies the status, so it sits right beside it. */}
-          <div className="mt-1.5 flex shrink-0 items-center gap-2.5">
-            <StatusPill status={upload.status} />
-            <UploadConfidence score={upload.confidence} className="text-sm" />
-          </div>
+          <StatusPill status={upload.status} confidence={upload.confidence} className="mt-1.5 shrink-0" />
         </div>
         {/* The facts, wrapping onto another line rather than overlapping: no fact shrinks below
             what it must show. Only a long file name gives way, truncated (full name in its tooltip). */}
@@ -103,6 +99,13 @@ function Detail({ upload }: { upload: UploadDetail }) {
             <RelativeTime iso={upload.createdAt} now={now} />
             {upload.uploadedBy && <span className="text-muted-foreground"> by {upload.uploadedBy}</span>}
           </Fact>
+          {/* One line for the whole card, rather than a "by … at …" under every field. */}
+          {lastReview && (
+            <Fact label={lastReview.kind === 'edited' ? 'Last edited' : 'Last checked'}>
+              <RelativeTime iso={lastReview.at} now={now} />
+              <span className="text-muted-foreground"> by {lastReview.by ?? 'a former member'}</span>
+            </Fact>
+          )}
         </dl>
       </header>
 
@@ -113,11 +116,7 @@ function Detail({ upload }: { upload: UploadDetail }) {
       <SourceDocumentCard upload={upload} />
       {upload.result && <JsonDisclosure data={upload.result} fileName={upload.fileName} />}
       {/* Last, on its own row: it can't be undone, so it's out of the way of everything else. */}
-      {upload.canDelete && (
-        <div className="grid border-t pt-4">
-          <DeleteUpload upload={upload} />
-        </div>
-      )}
+      {upload.canDelete && <DeleteUpload upload={upload} />}
     </>
   );
 }
@@ -127,6 +126,11 @@ function Detail({ upload }: { upload: UploadDetail }) {
  * so it can never spill into the next one. The one exception is a `truncate` child (the file name):
  * it hides its overflow, so it can give way on its own.
  */
+/** The most recent edit or check of any field, if there's been one. */
+function latestReview(reviews: UploadDetail['fieldReviews']): FieldReview | null {
+  return Object.values(reviews).reduce<FieldReview | null>((latest, review) => (!latest || review.at > latest.at ? review : latest), null);
+}
+
 function Fact({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
   return (
     <div className={cn('flex gap-1.5', className)}>

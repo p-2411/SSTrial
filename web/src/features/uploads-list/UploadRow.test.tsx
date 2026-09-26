@@ -47,20 +47,20 @@ describe('UploadRow', () => {
     expect(lines).toEqual({ first: 'back-of-pack.pngPNG, 1 KB', second: 'No product name on label' });
   });
 
-  it('says how confident the extraction is, flagging a score that needs checking', () => {
-    renderRow(summary({ confidence: 58 }));
-    const score = screen.getByText('58%');
-    expect(score).toHaveClass('text-danger');
-    expect(score).toHaveTextContent('Confidence 58%, low'); // what a screen reader hears
+  it.each([
+    [72, 'text-warning'],
+    [58, 'text-danger'],
+  ])('invites a check of a completed upload with a confidence of %s, in place of "Completed"', (confidence, tone) => {
+    renderRow(summary({ confidence }));
+    const pill = screen.getByText('Check');
+    expect(pill).toHaveClass(tone);
+    expect(pill).toHaveTextContent(`Completed, confidence ${confidence}%: Check · ${confidence}%`); // as read aloud
+    expect(screen.queryByText('Completed')).not.toBeInTheDocument();
   });
 
-  it('keeps a confident score quiet', () => {
-    renderRow(summary({ confidence: 92 }));
-    expect(screen.getByText('92%')).toHaveClass('text-muted-foreground');
-  });
-
-  it('shows no confidence when there is none to show (never scored, or every field reviewed)', () => {
-    renderRow(summary({ confidence: null }));
-    expect(screen.queryByText(/Confidence/)).not.toBeInTheDocument();
+  it.each([92, null])('is just "Completed" with a confidence of %s (confident, or nothing to flag)', (confidence) => {
+    renderRow(summary({ confidence }));
+    expect(screen.getByText('Completed')).toBeInTheDocument();
+    expect(screen.queryByText(/%/)).not.toBeInTheDocument();
   });
 });
