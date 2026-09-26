@@ -4,6 +4,7 @@ import { exportQuerySchema, MAX_UPLOADS_PER_REQUEST } from '@label-extractor/sha
 import { toCsv, toJson } from '../../uploads/export.ts';
 import type { UploadQueries } from '../../uploads/store.ts';
 import { ApiError } from '../errors.ts';
+import { wordsAndTime } from '../paging.ts';
 
 export interface ExportRoutesDeps {
   uploads: Pick<UploadQueries, 'streamProducts'>;
@@ -21,13 +22,7 @@ export async function exportRoutes(app: FastifyInstance, { uploads }: ExportRout
     if (!query.success) {
       throw new ApiError(400, 'BAD_REQUEST', `Use id=… for up to ${MAX_UPLOADS_PER_REQUEST} products, or q=… and from= and to= as ISO date-times.`);
     }
-    const { id: ids, q, from, to } = query.data;
-    return uploads.streamProducts({
-      ids,
-      search: q || undefined,
-      addedFrom: from ? new Date(from) : undefined,
-      addedBefore: to ? new Date(to) : undefined,
-    });
+    return uploads.streamProducts({ ids: query.data.id, ...wordsAndTime(query.data) });
   }
 
   app.get('/api/exports/uploads.csv', async (request, reply) => {

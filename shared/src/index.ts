@@ -7,6 +7,7 @@ export * from './extraction.ts';
 export * from './fields.ts';
 export * from './files.ts';
 export * from './lifecycle.ts';
+export * from './lists.ts';
 export * from './logs.ts';
 export * from './ops.ts';
 export * from './requests.ts';

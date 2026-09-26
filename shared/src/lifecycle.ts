@@ -1,17 +1,17 @@
 import type { UploadStatus } from './uploads.ts';
 
 /**
- * Every way an upload's status can change: which statuses each change may start from, and where it
- * leads. The server's store enforces exactly these — every write is `update … where status =
- * any(from)` — so a change that isn't allowed from an upload's current status simply doesn't
- * happen, however many processes try at once.
+ * Every way an upload can change: which statuses each change may start from, and where it leads.
+ * The server's store guards every write to an upload with these (`… where status = any(from)`), so
+ * a change that isn't allowed from an upload's current status simply doesn't happen, however many
+ * processes try at once.
  *
- *   uploading ──confirm──► queued ──claim──► processing ──complete──► completed
- *       │                     ▲                 │    │
- *    discard                  └───retryLater────┘   fail ──► failed
+ *   uploading ──confirm──► queued ──claim──► processing ──complete──► completed ─┐
+ *       │                     ▲                 │    │                  ▲       │ review, revert,
+ *    discard                  └───retryLater────┘   fail ──► failed     └───────┘ submit
  *       ▼
  *   (deleted)       plus: abandon (queued|processing → failed), rerun (failed|completed → queued),
- *                   review (completed → completed), delete (any listed status → deleted)
+ *                   delete (any listed status → deleted)
  */
 export const UPLOAD_TRANSITIONS = {
   /** The file arrived and is a supported type: queue it for extraction. */
@@ -30,6 +30,10 @@ export const UPLOAD_TRANSITIONS = {
   abandon: { from: ['queued', 'processing'], to: 'failed' },
   /** A person corrects or confirms the extracted data. It stays completed, one revision on. */
   review: { from: ['completed'], to: 'completed' },
+  /** An admin puts the data back to a saved version (see canRevertUpload). It stays completed, one revision on. */
+  revert: { from: ['completed'], to: 'completed' },
+  /** Its uploader puts it into Products, once nothing in it is left to check (see canSubmitUpload). */
+  submit: { from: ['completed'], to: 'completed' },
   /** Someone asked to run extraction again (see canRetryUpload for when that's offered). */
   rerun: { from: ['failed', 'completed'], to: 'queued' },
   /**

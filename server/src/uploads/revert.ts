@@ -2,7 +2,7 @@ import { canRevertUpload, canTransition, type CurrentMember, type RevertRequest 
 import { logEvents } from '../logs/events.ts';
 import type { EventLog } from '../logs/store.ts';
 import { findVisible, ownershipOf } from './access.ts';
-import type { UploadQueries, UploadRecord, UploadReviews } from './store.ts';
+import type { UploadQueries, UploadRecord, UploadReviews, UploadVersions } from './store.ts';
 
 export type RevertOutcome =
   | { outcome: 'reverted'; upload: UploadRecord }
@@ -16,7 +16,7 @@ export type RevertOutcome =
   | { outcome: 'not-found' };
 
 export interface RevertDeps {
-  uploads: Pick<UploadQueries, 'findById' | 'findVersion'> & Pick<UploadReviews, 'revert'>;
+  uploads: Pick<UploadQueries, 'findById'> & Pick<UploadVersions, 'findVersion'> & Pick<UploadReviews, 'revert'>;
   events: EventLog;
 }
 
@@ -40,7 +40,7 @@ export async function revertUpload(
   const upload = await findVisible(deps.uploads, id, person);
   if (!upload) return { outcome: 'not-found' };
   if (!canRevertUpload(ownershipOf(upload), person)) return { outcome: 'forbidden' };
-  if (!canTransition('review', upload.status)) return { outcome: 'not-revertible' };
+  if (!canTransition('revert', upload.status)) return { outcome: 'not-revertible' };
   const to = await deps.uploads.findVersion(id, request.versionId);
   if (!to) return { outcome: 'not-found' };
 

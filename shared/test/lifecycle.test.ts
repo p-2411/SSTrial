@@ -22,9 +22,9 @@ describe('upload lifecycle', () => {
     expect(UPLOAD_STATUSES.filter((status) => status !== 'uploading' && !reached.has(status))).toEqual([]);
   });
 
-  it('lets people review only completed uploads, which stay completed', () => {
-    expect(UPLOAD_STATUSES.filter((status) => canTransition('review', status))).toEqual(['completed']);
-    expect(UPLOAD_TRANSITIONS.review.to).toBe('completed');
+  it.each(['review', 'revert', 'submit'] as const)('lets people %s only completed uploads, which stay completed', (transition) => {
+    expect(UPLOAD_STATUSES.filter((status) => canTransition(transition, status))).toEqual(['completed']);
+    expect(UPLOAD_TRANSITIONS[transition].to).toBe('completed');
   });
 
   it('lets a worker take over an attempt that is still processing (after a crash)', () => {

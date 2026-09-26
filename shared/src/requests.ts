@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { LABEL_FIELDS, type LabelField } from './fields.ts';
+import { MAX_SEARCH_LENGTH, PAGE_SIZES } from './lists.ts';
 import { LOG_EVENT_TYPE_IDS, type LogEventType } from './logs.ts';
 import { NET_QUANTITY_UNITS } from './units.ts';
 import { MAX_UPLOADS_PER_REQUEST, UPLOAD_VIEW_IDS, type UploadView } from './uploads.ts';
@@ -23,29 +24,41 @@ export const createUploadRequestSchema = z.object({
 export type CreateUploadRequest = z.infer<typeof createUploadRequestSchema>;
 
 /**
- * Narrowing a list of products: words in its name, brand or file name, and when it was added to
- * Products (`from` inclusive, `to` exclusive, as instants: the browser turns the days picked into
- * its own midnights).
+ * How every list is narrowed: words to find, ignoring case, and a span of time (`from` inclusive,
+ * `to` exclusive, as instants: the browser turns the days picked into its own midnights). For
+ * products, the words are in the name, brand or file name, and the time is when each was added to
+ * Products; for events, the words are in the message, and the time is when it happened.
  */
-const productFilterSchema = z.object({
-  q: z.string().trim().max(200).optional(),
+const wordsAndTime = {
+  q: z.string().trim().max(MAX_SEARCH_LENGTH).optional(),
   from: z.iso.datetime({ offset: true }).optional(),
   to: z.iso.datetime({ offset: true }).optional(),
-});
+};
+
+/** How many rows a page holds: the list's default, unless the request asks for 1 to its most (see PAGE_SIZES). */
+const pageSize = ({ default: size, max }: { default: number; max: number }) => z.coerce.number().int().min(1).max(max).default(size);
+
+/**
+ * An event's ID, which is also the activity log's cursor: the database counts them in 64-bit
+ * integers, sent as strings. A saved version's ID (`versionId`) is the same kind of number.
+ */
+export const eventIdSchema = z.string().regex(/^\d{1,19}$/);
 
 /** GET /api/uploads?view=…&q=…&from=…&to=…&cursor=…&limit=… — newest first, one page at a time. */
-export const listUploadsQuerySchema = productFilterSchema.extend({
+export const listUploadsQuerySchema = z.object({
   view: z.enum(UPLOAD_VIEW_IDS as [UploadView, ...UploadView[]]).default('products'),
+  ...wordsAndTime,
   /** The `nextCursor` of the previous page. */
   cursor: z.uuid().optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
+  limit: pageSize(PAGE_SIZES.uploads),
 });
 
 /**
  * GET /api/exports/uploads.csv|json?id=…&id=… or ?q=…&from=…&to=… — the products picked (one `id`
  * each), or else every product matching the filter.
  */
-export const exportQuerySchema = productFilterSchema.extend({
+export const exportQuerySchema = z.object({
+  ...wordsAndTime,
   id: z
     .union([z.uuid(), z.array(z.uuid()).max(MAX_UPLOADS_PER_REQUEST)])
     .optional()
@@ -54,25 +67,16 @@ export const exportQuerySchema = productFilterSchema.extend({
 
 const logEventType = z.enum(LOG_EVENT_TYPE_IDS as [LogEventType, ...LogEventType[]]);
 
-/**
- * What the activity log, or one upload's history, is narrowed to: words in the messages, types of
- * event, and a span of time (`from` inclusive, `to` exclusive, as instants: the browser turns the
- * days picked into its own midnights).
- */
+/** What the activity log, or one upload's history, is narrowed to: words and time, and types of event. */
 const activityFilters = {
-  /** Words to find in the events' messages, ignoring case. */
-  q: z.string().trim().max(200).optional(),
+  ...wordsAndTime,
   /** One `type` parameter per type of event wanted; none means every type. */
   type: z
     .union([logEventType, z.array(logEventType)])
     .optional()
     .transform((value) => [...new Set(value === undefined ? [] : [value].flat())]),
-  /** Only events at or after this instant. */
-  from: z.iso.datetime({ offset: true }).optional(),
-  /** Only events before this instant. */
-  to: z.iso.datetime({ offset: true }).optional(),
   /** The `nextCursor` of the previous page: an event ID. */
-  cursor: z.string().regex(/^\d{1,19}$/).optional(),
+  cursor: eventIdSchema.optional(),
 };
 
 /** GET /api/logs?q=…&type=…&type=…&upload=…&from=…&to=…&cursor=…&limit=… — newest first, one page at a time. */
@@ -80,13 +84,13 @@ export const listLogsQuerySchema = z.object({
   ...activityFilters,
   /** Only this upload's events. */
   upload: z.uuid().optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(50),
+  limit: pageSize(PAGE_SIZES.logs),
 });
 
 /** GET /api/uploads/:id/history?q=…&type=…&from=…&to=…&cursor=…&limit=… — newest first, one page at a time. */
 export const uploadHistoryQuerySchema = z.object({
   ...activityFilters,
-  limit: z.coerce.number().int().min(1).max(200).default(20),
+  limit: pageSize(PAGE_SIZES.history),
 });
 
 /**
@@ -130,7 +134,7 @@ export type ResultChanges = NonNullable<EditResultRequest['changes']>;
 export const revertRequestSchema = z.object({
   revision: z.number().int().min(0),
   /** A version's ID, from the upload's history (`revertTo`). */
-  versionId: z.string().regex(/^\d{1,19}$/),
+  versionId: eventIdSchema,
 });
 export type RevertRequest = z.infer<typeof revertRequestSchema>;
 

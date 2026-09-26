@@ -3,7 +3,7 @@ import { eventDetails } from '../logs/details.ts';
 import { recordHasDetails, toLogEvent } from '../logs/presenter.ts';
 import type { EventFilters, EventQueries, LogEventSummary } from '../logs/store.ts';
 import { findVisible, type Person } from './access.ts';
-import type { UploadQueries } from './store.ts';
+import type { UploadQueries, UploadVersions } from './store.ts';
 
 /**
  * One upload's history, for anyone who can see the upload (see uploads/access.ts), unlike the whole
@@ -11,7 +11,7 @@ import type { UploadQueries } from './store.ts';
  */
 
 export interface HistoryDeps {
-  uploads: Pick<UploadQueries, 'findById' | 'latestVersionId' | 'readVersion'>;
+  uploads: Pick<UploadQueries, 'findById'> & Pick<UploadVersions, 'latestVersionId' | 'readVersion'>;
   events: Pick<EventQueries, 'list' | 'find'>;
 }
 

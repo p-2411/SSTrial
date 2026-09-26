@@ -75,7 +75,7 @@ export function toUploadDetail(
     fileUrl,
     uploadedBy: emailOf(record.uploadedBy),
     canDelete: canDeleteUpload(ownershipOf(record), viewer),
-    canRevert: canRevertUpload(ownershipOf(record), viewer) && canTransition('review', record.status),
+    canRevert: canRevertUpload(ownershipOf(record), viewer) && canTransition('revert', record.status),
   };
 }
 

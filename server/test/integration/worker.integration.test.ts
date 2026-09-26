@@ -24,7 +24,7 @@ import {
   FINALISE_DELAY_SECONDS,
   FINALISE_QUEUE,
 } from '../../src/uploads/jobs.ts';
-import { createUploadStore, type UploadFilter, type UploadRecord, type UploadStore } from '../../src/uploads/store.ts';
+import { createUploadStore, type ProductFilter, type UploadRecord, type UploadStore } from '../../src/uploads/store.ts';
 import { createPostgresRateLimiter } from '../../src/extraction/rate-limiter.ts';
 import { createEventStore, type EventStore } from '../../src/logs/store.ts';
 import { createOpsStore } from '../../src/ops/store.ts';
@@ -655,6 +655,14 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       fail: (id, claim) => uploads.fail(id, claim, 'LLM_REFUSED'),
       abandon: (id) => uploads.failAbandoned(id, 'PROCESSING_TIMEOUT'),
       review: async (id) => (await uploads.saveReview(id, 0, SAMPLE_EXTRACTION, {}))?.upload ?? null,
+      revert: async (id) => {
+        // A version of its own to go back to, so only the guard decides.
+        const [version] = await sql`
+          insert into upload_versions (upload_id, source, result) values (${id}, 'extraction', ${sql.json(SAMPLE_EXTRACTION)})
+          returning id`;
+        return (await uploads.revert(id, 0, String(version!.id)))?.upload ?? null;
+      },
+      submit: (id) => uploads.submit(id, 0, person),
       delete: (id) => uploads.remove(id),
       // requeue takes the status the caller saw; pass the real one, so only the guard decides.
       rerun: (id, _claim, status) => uploads.requeue(id, status as 'failed' | 'completed', person),
@@ -830,7 +838,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       };
       const fresh = await product('granola.png', 'Maple Pecan Crunch', 1);
       const older = await product('milk.png', 'Barista Oat Milk', 20);
-      const names = async (filter: UploadFilter) =>
+      const names = async (filter: ProductFilter) =>
         (await uploads.list({ statuses: ['completed'], submitted: true, limit: 100, ...filter }))
           .filter((upload) => upload.fileName.startsWith(tag))
           .map((upload) => upload.fileName.slice(tag.length + 1));
@@ -840,8 +848,8 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       expect(await names({ search: 'brand_50%' })).toEqual(['milk.png', 'granola.png']); // wildcards taken literally, newest first
       expect(await names({ search: 'brand_5_%' })).toEqual([]);
       const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-      expect(await names({ addedFrom: daysAgo(7) })).toEqual(['granola.png']);
-      expect(await names({ addedFrom: daysAgo(30), addedBefore: daysAgo(7) })).toEqual(['milk.png']);
+      expect(await names({ from: daysAgo(7) })).toEqual(['granola.png']);
+      expect(await names({ from: daysAgo(30), to: daysAgo(7) })).toEqual(['milk.png']);
 
       const exported: string[] = [];
       for await (const upload of uploads.streamProducts({ ids: [older, crypto.randomUUID()] })) exported.push(upload.id);

@@ -1,5 +1,4 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { z } from 'zod';
 import {
   createUploadRequestSchema,
   editResultRequestSchema,
@@ -8,7 +7,9 @@ import {
   revertRequestSchema,
   uploadIdsRequestSchema,
   MAX_OPEN_UPLOADS_PER_PERSON,
+  MAX_SEARCH_LENGTH,
   MAX_UPLOADS_PER_REQUEST,
+  PAGE_SIZES,
   SUPPORTED_TYPES_LABEL,
   UPLOAD_VIEW_IDS,
   UPLOAD_VIEWS,
@@ -36,20 +37,19 @@ import { loadHistoryDetails, loadUploadHistory } from '../../uploads/history.ts'
 import { retryUpload } from '../../uploads/retry.ts';
 import { revertUpload } from '../../uploads/revert.ts';
 import { deleteUpload } from '../../uploads/delete.ts';
-import type { UploadIntake, UploadQueries, UploadRecord, UploadRemoval, UploadReviews } from '../../uploads/store.ts';
-import { ACTIVITY_QUERY_HELP, eventId } from './logs.ts';
+import type { UploadIntake, UploadQueries, UploadRecord, UploadRemoval, UploadReviews, UploadVersions } from '../../uploads/store.ts';
 import { ApiError, notFound } from '../errors.ts';
+import { ACTIVITY_QUERY_HELP, pageOf, wordsAndTime } from '../paging.ts';
+import { eventIdParam, uploadIdParam } from '../params.ts';
 
 export interface UploadRoutesDeps {
-  uploads: UploadQueries & UploadIntake & UploadReviews & UploadRemoval;
+  uploads: UploadQueries & UploadVersions & UploadIntake & UploadReviews & UploadRemoval;
   storage: FileStorage;
   /** The use cases record what they did to the activity log; each upload's history reads it back. */
   events: EventLog & EventQueries;
   /** To name who uploaded each file, and who reviewed its fields. */
   members: Pick<MemberStore, 'emailsOf'>;
 }
-
-const idParams = z.object({ id: z.uuid() });
 
 /**
  * Upload endpoints: HTTP in, HTTP out. What each step does lives in uploads/ (intake, finalise,
@@ -63,13 +63,6 @@ const idParams = z.object({ id: z.uuid() });
  *   3. POST /api/uploads/:id/complete → verify the bytes, then queue the extraction job
  */
 export async function uploadRoutes(app: FastifyInstance, { uploads, storage, events, members }: UploadRoutesDeps) {
-  /** The `:id` route param, or a 404 for a malformed ID (it can't name an upload). */
-  function uploadId(params: unknown): string {
-    const parsed = idParams.safeParse(params);
-    if (!parsed.success) throw notFound();
-    return parsed.data.id;
-  }
-
   function uploadIds(body: unknown) {
     const parsed = uploadIdsRequestSchema.safeParse(body);
     if (!parsed.success) throw new ApiError(400, 'BAD_REQUEST', `Expected { ids } with 1–${MAX_UPLOADS_PER_REQUEST} upload IDs.`);
@@ -107,7 +100,7 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
 
   // 3. Confirm the upload finished ---------------------------------------------------------------
   app.post('/api/uploads/:id/complete', async (request): Promise<UploadResponse> => {
-    const result = await finaliseUpload({ uploads, storage, events }, uploadId(request.params), {
+    const result = await finaliseUpload({ uploads, storage, events }, uploadIdParam(request.params), {
       caller: 'browser',
       person: request.member!,
     });
@@ -137,38 +130,32 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
       throw new ApiError(
         400,
         'BAD_REQUEST',
-        `Use view=${UPLOAD_VIEW_IDS.join('|')}, q=words (up to 200 characters), from= and to= as ISO date-times, a cursor from a previous page, and limit=1–100.`,
+        `Use view=${UPLOAD_VIEW_IDS.join('|')}, q=words (up to ${MAX_SEARCH_LENGTH} characters), from= and to= as ISO date-times, a cursor from a previous page, and limit=1–${PAGE_SIZES.uploads.max}.`,
       );
     }
-    const { view, q, from, to, cursor, limit } = query.data;
+    const { view, cursor, limit } = query.data;
     const { statuses, submitted, own } = UPLOAD_VIEWS[view];
-    // Ask for one extra row: if it comes back, there's another page after this one.
     const records = await uploads.list({
       statuses,
       submitted: submitted ?? undefined,
       uploadedBy: own ? request.member!.id : undefined,
-      search: q || undefined,
-      addedFrom: from ? new Date(from) : undefined,
-      addedBefore: to ? new Date(to) : undefined,
+      ...wordsAndTime(query.data),
       limit: limit + 1,
       after: cursor,
     });
-    const page = records.slice(0, limit);
-    return {
-      uploads: page.map(toUploadSummary),
-      nextCursor: records.length > limit ? page.at(-1)!.id : null,
-    };
+    const { page, nextCursor } = pageOf(records, limit, (upload) => upload.id);
+    return { uploads: page.map(toUploadSummary), nextCursor };
   });
 
   app.get('/api/uploads/:id', async (request): Promise<UploadResponse> => {
-    const upload = await findVisible(uploads, uploadId(request.params), request.member!);
+    const upload = await findVisible(uploads, uploadIdParam(request.params), request.member!);
     if (!upload) throw notFound();
     return detailResponse(upload, request);
   });
 
   // People correcting or confirming the extracted data ----------------------------------------
   app.patch('/api/uploads/:id/result', async (request): Promise<UploadResponse> => {
-    const id = uploadId(request.params);
+    const id = uploadIdParam(request.params);
     const body = editResultRequestSchema.safeParse(request.body);
     if (!body.success) {
       throw new ApiError(400, 'BAD_REQUEST', 'Expected { revision, changes?, checked? } with known fields.');
@@ -217,31 +204,19 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
   // One upload's history, for its detail. Newest first, a page at a time, searched and filtered
   // like the activity log.
   app.get('/api/uploads/:id/history', async (request): Promise<UploadHistoryResponse> => {
-    const id = uploadId(request.params);
+    const id = uploadIdParam(request.params);
     const query = uploadHistoryQuerySchema.safeParse(request.query);
-    if (!query.success) throw new ApiError(400, 'BAD_REQUEST', `${ACTIVITY_QUERY_HELP}, and limit=1–200.`);
-    const { q, type, from, to, cursor, limit } = query.data;
-    // One extra row: if it comes back, there's another page after this one.
-    const entries = await loadUploadHistory(
-      { uploads, events },
-      id,
-      {
-        types: type,
-        search: q || undefined,
-        from: from ? new Date(from) : undefined,
-        to: to ? new Date(to) : undefined,
-        limit: limit + 1,
-        after: cursor,
-      },
-      request.member!,
-    );
+    if (!query.success) throw new ApiError(400, 'BAD_REQUEST', `${ACTIVITY_QUERY_HELP}, and limit=1–${PAGE_SIZES.history.max}.`);
+    const { type, cursor, limit } = query.data;
+    const filters = { types: type, ...wordsAndTime(query.data), limit: limit + 1, after: cursor };
+    const entries = await loadUploadHistory({ uploads, events }, id, filters, request.member!);
     if (!entries) throw notFound();
-    const page = entries.slice(0, limit);
-    return { entries: page, nextCursor: entries.length > limit ? page.at(-1)!.id : null };
+    const { page, nextCursor } = pageOf(entries, limit, (entry) => entry.id);
+    return { entries: page, nextCursor };
   });
 
   app.get('/api/uploads/:id/history/:eventId', async (request): Promise<EventDetails> => {
-    const result = await loadHistoryDetails({ uploads, events }, uploadId(request.params), eventId(request.params), request.member!);
+    const result = await loadHistoryDetails({ uploads, events }, uploadIdParam(request.params), eventIdParam(request.params), request.member!);
     switch (result.outcome) {
       case 'found':
         return result.details;
@@ -254,7 +229,7 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
 
   // An admin putting a product's data back to an earlier version ------------------------------
   app.post('/api/uploads/:id/revert', async (request): Promise<UploadResponse> => {
-    const id = uploadId(request.params);
+    const id = uploadIdParam(request.params);
     const body = revertRequestSchema.safeParse(request.body);
     if (!body.success) throw new ApiError(400, 'BAD_REQUEST', 'Expected { revision, versionId }.');
     const result = await revertUpload({ uploads, events }, id, body.data, request.member!);
@@ -275,7 +250,7 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
 
   // Manual retry of a failed upload ------------------------------------------------------------
   app.post('/api/uploads/:id/retry', async (request): Promise<UploadResponse> => {
-    const result = await retryUpload({ uploads, events }, uploadId(request.params), request.member!);
+    const result = await retryUpload({ uploads, events }, uploadIdParam(request.params), request.member!);
 
     switch (result.outcome) {
       case 'requeued':
@@ -297,7 +272,7 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
 
   // Deleting an upload -------------------------------------------------------------------------
   app.delete('/api/uploads/:id', async (request, reply) => {
-    const result = await deleteUpload({ uploads, storage, events }, uploadId(request.params), request.member!);
+    const result = await deleteUpload({ uploads, storage, events }, uploadIdParam(request.params), request.member!);
 
     switch (result.outcome) {
       case 'deleted':

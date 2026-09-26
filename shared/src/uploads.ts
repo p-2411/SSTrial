@@ -47,6 +47,25 @@ export function isProduct(upload: Staged): boolean {
   return upload.status === 'completed' && upload.submittedAt !== null;
 }
 
+/** Whether an upload is waiting in its uploader's Review list: read, readable, and not submitted yet. */
+export function isInReview(upload: Staged & { resultUnreadable: boolean }): boolean {
+  return upload.status === 'completed' && upload.submittedAt === null && !upload.resultUnreadable;
+}
+
+/**
+ * Whether an upload can go into Products: it's in Review (see isInReview) and nothing in it is left
+ * to check. Every field is confident, or a person has checked (or corrected) the ones that weren't,
+ * so its overall score (its least certain field, a reviewed one counting as 100) is confident.
+ */
+export function canSubmitUpload(upload: Pick<UploadSummary, 'status' | 'submittedAt' | 'resultUnreadable' | 'confidence'>): boolean {
+  return isInReview(upload) && !stillToCheck(upload);
+}
+
+/** Whether a read upload has fields that must be checked before it can be submitted. */
+export function stillToCheck(upload: Pick<UploadSummary, 'status' | 'confidence'>): boolean {
+  return upload.status === 'completed' && upload.confidence !== null && needsChecking(upload.confidence);
+}
+
 /** Statuses still being worked on: worth watching for changes, and not ready to open. */
 const ACTIVE_STATUSES: readonly UploadStatus[] = ['queued', 'processing'];
 
@@ -66,6 +85,12 @@ export const MAX_FILES_PER_BATCH = 50;
  * when an upload is requested, so nobody can fill the queue for everyone else.
  */
 export const MAX_OPEN_UPLOADS_PER_PERSON = 200;
+
+/**
+ * Most uploads one request can name, to submit, mark as checked, delete or export at once: a page or
+ * two of a list, which keeps a request short.
+ */
+export const MAX_UPLOADS_PER_REQUEST = 100;
 
 /**
  * Why an upload failed (or, while `queued`, why its last attempt failed). Only the code is stored;
@@ -103,14 +128,15 @@ export function uploadErrorMessage(code: UploadErrorCode): string {
   return UPLOAD_ERROR_MESSAGES[code];
 }
 
-/** Failures caused by the file itself: running it through the pipeline again can't help. */
+/** Failures where the file is gone: running it through the pipeline again can't help. */
 const FILE_PROBLEMS: readonly UploadErrorCode[] = ['FILE_MISSING'];
 
 /**
- * Whether the user may run extraction again. Used by the UI (to show the button) and the API (to
- * enforce it). Allowed for failures the file itself didn't cause — including permanent LLM
- * failures like a refusal, since the cause may have been fixed (credit topped up, key rotated…) —
- * and for completed uploads whose saved result can no longer be read.
+ * Whether an upload may be read again, as far as its state goes (who may ask: see canDeleteUpload).
+ * Used by the UI (to show the button) and the API (to enforce it). Allowed for every failure but a
+ * missing file — permanent ones too, like a refusal or no label found, since the cause may have
+ * been fixed (credit topped up, key rotated…) or a second reading may differ — and for completed
+ * uploads whose saved result can no longer be read.
  */
 export function canRetryUpload(upload: {
   status: UploadStatus;
@@ -119,26 +145,6 @@ export function canRetryUpload(upload: {
 }): boolean {
   if (upload.status === 'completed') return upload.resultUnreadable;
   return upload.status === 'failed' && upload.error !== null && !FILE_PROBLEMS.includes(upload.error.code);
-}
-
-/**
- * Most uploads one request can submit, or mark as checked, at once: a page or two of the Review
- * list. Each is its own guarded write, so this keeps a request short.
- */
-export const MAX_UPLOADS_PER_REQUEST = 100;
-
-/**
- * Whether an upload can go into Products: it's been read, isn't there already, and nothing in it
- * is left to check. Every field is confident, or a person has checked (or corrected) the ones that
- * weren't, so its overall score (its least certain field nobody's reviewed) is confident or gone.
- */
-export function canSubmitUpload(upload: Pick<UploadSummary, 'status' | 'submittedAt' | 'resultUnreadable' | 'confidence'>): boolean {
-  return upload.status === 'completed' && upload.submittedAt === null && !upload.resultUnreadable && !stillToCheck(upload);
-}
-
-/** Whether a read upload has fields that must be checked before it can be submitted. */
-export function stillToCheck(upload: Pick<UploadSummary, 'status' | 'confidence'>): boolean {
-  return upload.status === 'completed' && upload.confidence !== null && needsChecking(upload.confidence);
 }
 
 /** One upload as shown in the list. Dates are ISO-8601 strings (JSON has no Date type). */

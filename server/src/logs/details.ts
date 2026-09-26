@@ -1,5 +1,5 @@
 import { LABEL_FIELDS, type EventDetails, type FieldChange, type LabelExtraction, type LabelField } from '@label-extractor/shared';
-import type { UploadQueries } from '../uploads/store.ts';
+import type { UploadVersions } from '../uploads/store.ts';
 import type { LogEventRecord } from './store.ts';
 
 /**
@@ -11,7 +11,7 @@ import type { LogEventRecord } from './store.ts';
  *   - A revert: what it changed, comparing the version it saved with the one before.
  *   - Anything else: its facts, the codes and numbers its message leaves out.
  */
-export async function eventDetails(event: LogEventRecord, uploads: Pick<UploadQueries, 'readVersion'>): Promise<EventDetails> {
+export async function eventDetails(event: LogEventRecord, uploads: Pick<UploadVersions, 'readVersion'>): Promise<EventDetails> {
   const { data } = event;
   switch (event.type) {
     case 'upload.edited':

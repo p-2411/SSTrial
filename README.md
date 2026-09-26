@@ -55,12 +55,13 @@ flowchart LR
 ### Upload lifecycle
 
 ```
-uploading ─(browser confirms)─► queued ─(worker claims)─► processing ─► completed ─(people review)─┐
-  (hidden)                        ▲                            │            ▲                     │
-  │ rejected or                   └──(transient error; retry)──┤            └─────────────────────┘
+uploading ─(browser confirms)─► queued ─(worker claims)─► processing ─► completed ─(review, revert, submit)─┐
+  (hidden)                        ▲                            │            ▲                              │
+  │ rejected or                   └──(transient error; retry)──┤            └──────────────────────────────┘
   ▼ never arrived                                              └──► failed (reason shown)
 (deleted)          Also: failed, or completed with an unreadable result ─(run again)─► queued;
-                   queued|processing ─(every attempt died: dead-letter safety net)─► failed
+                   queued|processing ─(every attempt died: dead-letter safety net)─► failed;
+                   queued|processing|completed|failed ─(its uploader or an admin deletes it)─► (deleted)
 ```
 
 Each of these moves is declared once, in `shared/src/lifecycle.ts`; the database only makes a move

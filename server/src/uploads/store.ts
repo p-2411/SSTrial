@@ -109,13 +109,13 @@ export interface NewUpload {
 }
 
 /**
- * Narrowing a list: words found in the product name, brand or file name (ignoring case), and, for
- * products, when they were added to Products (at or after `addedFrom`, before `addedBefore`).
+ * Narrowing products: words found in the product name, brand or file name (ignoring case), and
+ * when they were added to Products (at or after `from`, before `to`).
  */
-export interface UploadFilter {
+export interface ProductFilter {
   search?: string;
-  addedFrom?: Date;
-  addedBefore?: Date;
+  from?: Date;
+  to?: Date;
 }
 
 /** Options for the two ways an upload leaves `uploading`. */
@@ -146,7 +146,7 @@ export interface UploadQueries {
       uploadedBy?: string;
       limit: number;
       after?: string;
-    } & UploadFilter,
+    } & ProductFilter,
   ): Promise<UploadRecord[]>;
   /** How many uploads this person has under way (uploading, waiting or being read). */
   countUnderWay(uploadedBy: string): Promise<number>;
@@ -154,7 +154,15 @@ export interface UploadQueries {
    * Every product (submitted upload) matching the filter, or only those in `ids`, newest first,
    * read in batches so an export of any size can stream.
    */
-  streamProducts(filter?: UploadFilter & { ids?: readonly string[] }): AsyncIterable<UploadRecord>;
+  streamProducts(filter?: ProductFilter & { ids?: readonly string[] }): AsyncIterable<UploadRecord>;
+}
+
+/**
+ * The saved states of each upload's data (the `upload_versions` table), for its history and for
+ * reverting. Each change to the data saves one in the same statement (see UploadAttempts.complete
+ * and UploadReviews), so none can go missing.
+ */
+export interface UploadVersions {
   /** One saved state of an upload's data, if it's one of this upload's. */
   findVersion(id: string, versionId: string): Promise<UploadVersion | null>;
   /** The state the upload's data is in now: its newest version, if it has any. */
@@ -257,7 +265,7 @@ export interface UploadRemoval {
 }
 
 /** The uploads table. Each consumer depends on the role it needs. */
-export type UploadStore = UploadQueries & UploadIntake & UploadAttempts & UploadReviews & UploadRemoval;
+export type UploadStore = UploadQueries & UploadVersions & UploadIntake & UploadAttempts & UploadReviews & UploadRemoval;
 
 export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadStore {
   /**
@@ -269,9 +277,20 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
     return row ? toRecord(row) : null;
   }
 
-  /** The same, for a write that also saved a version (its ID comes back as `version_id`). */
-  async function oneVersioned(query: Promise<postgres.Row[]>): Promise<Versioned | null> {
-    const [row] = await query;
+  /**
+   * A guarded write to one upload (`write`: an `update … returning uploads.*`) that also saves its
+   * data, as it is after the write, as a version from `source`, in the same statement: a
+   * data-modifying CTE always runs, so a change can never land without the version that lets it be
+   * undone. Null if the guard didn't match, and then nothing is saved.
+   */
+  async function savingVersion(source: UploadVersion['source'], write: postgres.PendingQuery<postgres.Row[]>): Promise<Versioned | null> {
+    const [row] = await sql`
+      with saved as (${write}), version as (
+        insert into upload_versions (upload_id, source, result, confidence, field_reviews)
+        select id, ${source}, result, confidence, field_reviews from saved
+        returning id
+      )
+      select saved.*, (select id from version) as version_id from saved`;
     return row ? { upload: toRecord(row), versionId: String(row.version_id) } : null;
   }
 
@@ -281,10 +300,10 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
   /** The status a lifecycle transition leads to. */
   const statusAfter = (transition: UploadTransitionKeepingRow) => UPLOAD_TRANSITIONS[transition].to;
   /** SQL conditions for a filter (each `and …`), nothing for what it leaves out. A scan: uploads are few enough. */
-  const matching = ({ search, addedFrom, addedBefore }: UploadFilter) => sql`
+  const matching = ({ search, from, to }: ProductFilter) => sql`
     ${search ? sql`and (file_name ilike ${containsPattern(search)} or result->>'productName' ilike ${containsPattern(search)} or result->>'brand' ilike ${containsPattern(search)})` : sql``}
-    ${addedFrom ? sql`and submitted_at >= ${addedFrom}` : sql``}
-    ${addedBefore ? sql`and submitted_at < ${addedBefore}` : sql``}`;
+    ${from ? sql`and submitted_at >= ${from}` : sql``}
+    ${to ? sql`and submitted_at < ${to}` : sql``}`;
 
   return {
     async create(upload) {
@@ -426,11 +445,10 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
         returning *`);
     },
 
-    // Each of these saves the new state as a version in the same statement (a data-modifying CTE
-    // always runs), so a change can never land without the version that lets it be undone.
     saveReview(id, revision, result, fieldReviews) {
-      return oneVersioned(sql`
-        with saved as (
+      return savingVersion(
+        'review',
+        sql`
           update uploads
           set status = ${statusAfter('review')},
               original_result = coalesce(original_result, result),
@@ -438,57 +456,44 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
               field_reviews = ${sql.json(toStoredReviews(fieldReviews))},
               result_revision = result_revision + 1
           where id = ${id} and ${allowedFrom('review')} and result_revision = ${revision}
-          returning *
-        ), version as (
-          insert into upload_versions (upload_id, source, result, confidence, field_reviews)
-          select id, 'review', result, confidence, field_reviews from saved
-          returning id
-        )
-        select saved.*, (select id from version) as version_id from saved`);
+          returning *`,
+      );
     },
 
     revert(id, revision, versionId) {
-      return oneVersioned(sql`
-        with target as (
-          select result, confidence, field_reviews from upload_versions where id = ${versionId}::bigint and upload_id = ${id}
-        ), reverted as (
+      return savingVersion(
+        'revert',
+        sql`
           update uploads
-          set original_result = coalesce(original_result, uploads.result),
+          set status = ${statusAfter('revert')},
+              original_result = coalesce(original_result, uploads.result),
               result = target.result, confidence = target.confidence, field_reviews = target.field_reviews,
               result_revision = result_revision + 1
-          from target
-          where uploads.id = ${id} and ${allowedFrom('review')} and result_revision = ${revision}
-          returning uploads.*
-        ), version as (
-          insert into upload_versions (upload_id, source, result, confidence, field_reviews)
-          select id, 'revert', result, confidence, field_reviews from reverted
-          returning id
-        )
-        select reverted.*, (select id from version) as version_id from reverted`);
+          from upload_versions target
+          where uploads.id = ${id} and ${allowedFrom('revert')} and result_revision = ${revision}
+            and target.id = ${versionId}::bigint and target.upload_id = uploads.id
+          returning uploads.*`,
+      );
     },
 
     submit(id, revision, by) {
       return oneRecord(sql`
-        update uploads set submitted_at = now(), submitted_by = ${by}
-        where id = ${id} and status = 'completed' and submitted_at is null and result_revision = ${revision}
+        update uploads set status = ${statusAfter('submit')}, submitted_at = now(), submitted_by = ${by}
+        where id = ${id} and ${allowedFrom('submit')} and submitted_at is null and result_revision = ${revision}
         returning *`);
     },
 
     complete(id, claimToken, result, confidence) {
-      return oneVersioned(sql`
-        with done as (
+      return savingVersion(
+        'extraction',
+        sql`
           update uploads
           set status = ${statusAfter('complete')}, result = ${sql.json(result as postgres.JSONValue)},
               confidence = ${confidence ? sql.json(confidence as unknown as postgres.JSONValue) : null},
               completed_at = now(), error_code = null, claim_token = null
           where id = ${id} and ${allowedFrom('complete')} and claim_token = ${claimToken}
-          returning *
-        ), version as (
-          insert into upload_versions (upload_id, source, result, confidence)
-          select id, 'extraction', result, confidence from done
-          returning id
-        )
-        select done.*, (select id from version) as version_id from done`);
+          returning *`,
+      );
     },
 
     async findVersion(id, versionId) {

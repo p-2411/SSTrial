@@ -1,9 +1,10 @@
 import type postgres from 'postgres';
+import type { OpsStatusResponse } from '@label-extractor/shared';
 
-/** Everything the System status page shows, as stored. ops/presenter.ts shapes it for the API. */
+/** Everything the System page's status shows, as stored. ops/presenter.ts shapes it for the API. */
 export interface OpsSnapshot {
   worker: { lastSeenAt: Date | null; healthy: boolean };
-  queue: { waiting: number; retrying: number; processing: number };
+  queue: OpsStatusResponse['queue'];
   /** Over the last STATUS_WINDOW_HOURS. */
   recent: { completed: number; failed: number; medianSecondsToResult: number | null };
 }

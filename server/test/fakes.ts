@@ -27,7 +27,7 @@ import type {
   NewUpload,
   SettleOptions,
   StoredFieldReviews,
-  UploadFilter,
+  ProductFilter,
   UploadRecord,
   UploadStore,
   UploadVersion,
@@ -148,11 +148,11 @@ export class InMemoryUploadStore implements UploadStore {
     return [...this.rows.values()].filter(predicate).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
   }
   /** Whether a row matches a list's search and date filter, as the real store's SQL decides. */
-  private matches(row: UploadRecord, { search, addedFrom, addedBefore }: UploadFilter) {
+  private matches(row: UploadRecord, { search, from, to }: ProductFilter) {
     const words = search?.toLowerCase();
     const found = [row.fileName, row.result?.productName, row.result?.brand].some((text) => text?.toLowerCase().includes(words ?? ''));
     const added = row.submittedAt;
-    const inRange = (!addedFrom || (added !== null && added >= addedFrom)) && (!addedBefore || (added !== null && added < addedBefore));
+    const inRange = (!from || (added !== null && added >= from)) && (!to || (added !== null && added < to));
     return (!words || found) && inRange;
   }
   async list({
@@ -168,7 +168,7 @@ export class InMemoryUploadStore implements UploadStore {
     uploadedBy?: string;
     limit: number;
     after?: string;
-  } & UploadFilter) {
+  } & ProductFilter) {
     const newestFirst = [...this.rows.values()]
       .filter((row) => statuses.includes(row.status) && (!uploadedBy || row.uploadedBy === uploadedBy))
       .filter((row) => submitted === undefined || (row.submittedAt !== null) === submitted)
@@ -181,7 +181,7 @@ export class InMemoryUploadStore implements UploadStore {
     const underWay: readonly UploadRecord['status'][] = ['uploading', 'queued', 'processing'];
     return [...this.rows.values()].filter((row) => row.uploadedBy === uploadedBy && underWay.includes(row.status)).length;
   }
-  async *streamProducts({ ids, ...filter }: UploadFilter & { ids?: readonly string[] } = {}) {
+  async *streamProducts({ ids, ...filter }: ProductFilter & { ids?: readonly string[] } = {}) {
     const completed = [...this.rows.values()]
       .filter((row) => row.status === 'completed' && row.submittedAt !== null)
       .filter((row) => (ids ? ids.includes(row.id) : this.matches(row, filter)))
@@ -253,7 +253,7 @@ export class InMemoryUploadStore implements UploadStore {
   async revert(id: string, revision: number, versionId: string) {
     const row = this.rows.get(id);
     const version = this.versions.find((v) => v.id === versionId && v.uploadId === id);
-    if (!row || !version || !canTransition('review', row.status) || row.resultRevision !== revision) return null;
+    if (!row || !version || !canTransition('revert', row.status) || row.resultRevision !== revision) return null;
     const reverted = {
       ...row,
       ...version.state,
@@ -268,7 +268,7 @@ export class InMemoryUploadStore implements UploadStore {
   readonly submittedBy = new Map<string, string>();
   async submit(id: string, revision: number, by: string) {
     const row = this.rows.get(id);
-    if (!row || row.status !== 'completed' || row.submittedAt !== null || row.resultRevision !== revision) return null;
+    if (!row || !canTransition('submit', row.status) || row.submittedAt !== null || row.resultRevision !== revision) return null;
     const submitted = { ...row, submittedAt: new Date(), updatedAt: new Date() };
     this.rows.set(id, submitted);
     this.submittedBy.set(id, by);

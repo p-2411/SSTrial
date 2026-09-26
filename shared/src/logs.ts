@@ -31,32 +31,38 @@ export const LOG_RETENTION_DAYS = 30;
 export type LogSource = 'api' | 'worker';
 
 /**
- * Every kind of event: the label the Logs page shows for it, and its level. A type always has the
- * same level ("Extraction failed" is always an error), so filtering by level is filtering by type.
- * Types are dotted by area (upload, extraction, …) so related ones sort and read together.
+ * What each event is about, which the lists group them by:
+ *   upload      an upload arriving, and what people do with it (the API)
+ *   extraction  reading it (the worker)
+ *   system      the processes themselves: no upload's history holds these
+ */
+export type LogEventGroup = 'upload' | 'extraction' | 'system';
+
+/**
+ * Every kind of event: the label the activity log shows for it, its level, and its group. A type
+ * always has the same level ("Extraction failed" is always an error), so filtering by level is
+ * filtering by type. Types are dotted by area (upload, extraction, …) so related ones sort and read
+ * together.
  */
 export const LOG_EVENT_TYPES = {
-  // The API, as an upload arrives
-  'upload.created': { label: 'Upload started', level: 'info' },
-  'upload.duplicate': { label: 'Identical file already uploaded', level: 'info' },
-  'upload.queued': { label: 'Queued for extraction', level: 'info' },
-  'upload.rejected': { label: 'File rejected', level: 'warn' },
-  'upload.discarded': { label: 'Unfinished upload discarded', level: 'info' },
-  'upload.retry_requested': { label: 'Retry requested', level: 'info' },
-  'upload.edited': { label: 'Extracted data reviewed', level: 'info' },
-  'upload.reverted': { label: 'Data reverted', level: 'info' },
-  'upload.submitted': { label: 'Submitted to Products', level: 'info' },
-  'upload.deleted': { label: 'Upload deleted', level: 'info' },
-  // The worker, extracting
-  'extraction.started': { label: 'Extraction started', level: 'info' },
-  'extraction.completed': { label: 'Extraction completed', level: 'info' },
-  'extraction.retry_scheduled': { label: 'Retry scheduled', level: 'warn' },
-  'extraction.failed': { label: 'Extraction failed', level: 'error' },
-  'extraction.abandoned': { label: 'Extraction abandoned', level: 'error' },
-  'ratelimit.paused': { label: 'AI requests paused', level: 'warn' },
-  // Either process
-  'process.started': { label: 'Process started', level: 'info' },
-} as const satisfies Record<string, { label: string; level: LogLevel }>;
+  'upload.created': { label: 'Upload started', level: 'info', group: 'upload' },
+  'upload.duplicate': { label: 'Identical file already uploaded', level: 'info', group: 'upload' },
+  'upload.queued': { label: 'Queued for extraction', level: 'info', group: 'upload' },
+  'upload.rejected': { label: 'File rejected', level: 'warn', group: 'upload' },
+  'upload.discarded': { label: 'Unfinished upload discarded', level: 'info', group: 'upload' },
+  'upload.retry_requested': { label: 'Retry requested', level: 'info', group: 'upload' },
+  'upload.edited': { label: 'Extracted data reviewed', level: 'info', group: 'upload' },
+  'upload.reverted': { label: 'Data reverted', level: 'info', group: 'upload' },
+  'upload.submitted': { label: 'Submitted to Products', level: 'info', group: 'upload' },
+  'upload.deleted': { label: 'Upload deleted', level: 'info', group: 'upload' },
+  'extraction.started': { label: 'Extraction started', level: 'info', group: 'extraction' },
+  'extraction.completed': { label: 'Extraction completed', level: 'info', group: 'extraction' },
+  'extraction.retry_scheduled': { label: 'Retry scheduled', level: 'warn', group: 'extraction' },
+  'extraction.failed': { label: 'Extraction failed', level: 'error', group: 'extraction' },
+  'extraction.abandoned': { label: 'Extraction abandoned', level: 'error', group: 'extraction' },
+  'ratelimit.paused': { label: 'AI requests paused', level: 'warn', group: 'extraction' },
+  'process.started': { label: 'Process started', level: 'info', group: 'system' },
+} as const satisfies Record<string, { label: string; level: LogLevel; group: LogEventGroup }>;
 
 export type LogEventType = keyof typeof LOG_EVENT_TYPES;
 export const LOG_EVENT_TYPE_IDS = Object.keys(LOG_EVENT_TYPES) as LogEventType[];
@@ -75,7 +81,12 @@ export const UPLOAD_GONE_EVENT_TYPES: readonly LogEventType[] = ['upload.rejecte
 export const DATA_CHANGE_EVENT_TYPES: readonly LogEventType[] = ['extraction.completed', 'upload.edited', 'upload.reverted'];
 
 /** The types of event an upload's history can hold: all but the system's own. */
-export const UPLOAD_EVENT_TYPE_IDS: readonly LogEventType[] = LOG_EVENT_TYPE_IDS.filter((type) => type !== 'process.started');
+export const UPLOAD_HISTORY_EVENT_TYPES: readonly LogEventType[] = LOG_EVENT_TYPE_IDS.filter(
+  (type) => LOG_EVENT_TYPES[type].group !== 'system',
+);
+
+/** The old name for UPLOAD_HISTORY_EVENT_TYPES, which the web app still imports. */
+export const UPLOAD_EVENT_TYPE_IDS = UPLOAD_HISTORY_EVENT_TYPES;
 
 /**
  * An event as a list shows it. Its details are left out, and fetched only when someone opens them
