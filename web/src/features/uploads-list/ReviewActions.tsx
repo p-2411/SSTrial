@@ -3,15 +3,7 @@ import { toast } from 'sonner';
 import { canSubmitUpload, stillToCheck, type UploadSummary } from '@label-extractor/shared';
 import { errorMessage } from '@/api/client';
 import { useCheckUploads, useSubmitUploads } from '@/api/queries';
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { productCount } from '@/lib/format';
 import type { Selection } from '@/lib/useSelection';
@@ -75,11 +67,10 @@ export function ReviewActions({ uploads, selection }: { uploads: UploadSummary[]
 
 /**
  * Asks before marking every flagged field as checked: it's the person vouching for fields the model
- * wasn't sure of. Stays open until it's done, or says why it couldn't be.
+ * wasn't sure of.
  */
 function CheckAllDialog({ uploads, onClose }: { uploads: UploadSummary[] | null; onClose: () => void }) {
   const check = useCheckUploads();
-  const count = uploads?.length ?? 0;
 
   const confirm = () => {
     if (!uploads) return;
@@ -93,35 +84,16 @@ function CheckAllDialog({ uploads, onClose }: { uploads: UploadSummary[] | null;
       },
     );
   };
-  const onOpenChange = (open: boolean) => {
-    if (open || check.isPending) return; // no walking away mid-save
-    check.reset();
-    onClose();
-  };
 
   return (
-    <AlertDialog open={uploads !== null} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Mark {productCount(count)} as checked?</AlertDialogTitle>
-          <AlertDialogDescription>Their flagged fields are marked as checked by you, and can then be submitted.</AlertDialogDescription>
-        </AlertDialogHeader>
-        {check.isError && (
-          <p role="alert" className="text-danger">
-            {errorMessage(check.error)}
-          </p>
-        )}
-        <AlertDialogFooter>
-          <AlertDialogCancel asChild>
-            <Button variant="outline" disabled={check.isPending}>
-              Cancel
-            </Button>
-          </AlertDialogCancel>
-          <Button loading={check.isPending} onClick={confirm}>
-            Mark as checked
-          </Button>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <ConfirmDialog
+      open={uploads !== null}
+      title={`Mark ${productCount(uploads?.length ?? 0)} as checked?`}
+      description="Their flagged fields are marked as checked by you, and can then be submitted."
+      confirmLabel="Mark as checked"
+      request={check}
+      onConfirm={confirm}
+      onClose={onClose}
+    />
   );
 }

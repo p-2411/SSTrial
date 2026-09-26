@@ -2,83 +2,60 @@ import { useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { UploadDetail } from '@label-extractor/shared';
-import { errorMessage } from '@/api/client';
 import { useDeleteUpload } from '@/api/queries';
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { useCloseDetail } from './UploadDetailPanel';
 
 /**
  * Deleting the product, its file with it (or, for an upload that was never read, just the file),
  * offered to whoever may (its uploader or an admin: the server says, as `canDelete`). It can't be
- * undone, so it asks first, in a dialog that stays open until the delete is done, or says why it
- * was refused. Then the panel closes.
+ * undone, so it asks first (see ConfirmDialog). Then the panel closes.
  */
 export function DeleteUpload({ upload }: { upload: Pick<UploadDetail, 'id' | 'fileName' | 'result'> }) {
   const remove = useDeleteUpload();
   const close = useCloseDetail();
   const [open, setOpen] = useState(false);
-  const product = upload.result?.productName ?? null;
+  const name = upload.result?.productName ?? upload.fileName;
   const isProduct = upload.result !== null;
 
   const confirm = () =>
     remove.mutate(upload.id, {
       onSuccess: () => {
         setOpen(false);
-        toast(`Deleted ${product ?? upload.fileName}`);
+        toast.success(`${name} deleted`);
         close();
       },
     });
-  const onOpenChange = (next: boolean) => {
-    if (remove.isPending) return; // no walking away mid-delete
-    if (!next) remove.reset(); // a refusal shouldn't greet the next attempt
-    setOpen(next);
-  };
 
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogTrigger asChild>
-        {/* Full width, outlined in red with no fill: plainly destructive, without shouting. A pale
-            red fill on hover and focus says it's live. */}
-        <Button variant="outline" className="w-full border-danger bg-transparent text-danger hover:bg-danger-soft hover:text-danger focus-visible:bg-danger-soft">
-          <Trash2 data-icon="inline-start" aria-hidden />
-          {isProduct ? 'Delete product' : 'Delete upload'}
-        </Button>
-      </AlertDialogTrigger>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Delete {product ?? upload.fileName}?</AlertDialogTitle>
-          <AlertDialogDescription>
-            {isProduct
-              ? `Its data and its file, ${upload.fileName}, are removed for good. The activity log keeps its history.`
-              : 'Its file is removed for good. The activity log keeps its history.'}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        {remove.isError && (
-          <p role="alert" className="text-danger">
-            {errorMessage(remove.error)}
-          </p>
-        )}
-        <AlertDialogFooter>
-          <AlertDialogCancel asChild>
-            <Button variant="outline" disabled={remove.isPending}>
-              Keep it
-            </Button>
-          </AlertDialogCancel>
-          <Button variant="destructive" loading={remove.isPending} onClick={confirm}>
-            Delete
-          </Button>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <>
+      {/* Full width, outlined in red with no fill: plainly destructive, without shouting. A pale
+          red fill on hover and focus says it's live. */}
+      <Button
+        variant="outline"
+        aria-haspopup="dialog"
+        className="w-full border-danger bg-transparent text-danger hover:bg-danger-soft hover:text-danger focus-visible:bg-danger-soft"
+        onClick={() => setOpen(true)}
+      >
+        <Trash2 data-icon="inline-start" aria-hidden />
+        {isProduct ? 'Delete product' : 'Delete upload'}
+      </Button>
+      <ConfirmDialog
+        open={open}
+        title={`Delete ${name}?`}
+        description={
+          isProduct
+            ? `Its data and its file, ${upload.fileName}, are removed for good. The activity log keeps its history.`
+            : 'Its file is removed for good. The activity log keeps its history.'
+        }
+        confirmLabel="Delete"
+        cancelLabel="Keep it"
+        variant="destructive"
+        request={remove}
+        onConfirm={confirm}
+        onClose={() => setOpen(false)}
+      />
+    </>
   );
 }

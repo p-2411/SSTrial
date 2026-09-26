@@ -1,31 +1,19 @@
 import { useMemo, useState } from 'react';
-import { useMatch } from 'react-router';
-import { toast } from 'sonner';
 import { Inbox, SearchX } from 'lucide-react';
 import { errorMessage } from '@/api/client';
-import { useDeleteUploads, useUploadList } from '@/api/queries';
+import { useUploadList } from '@/api/queries';
 import { NO_PRODUCT_FILTER, type ProductFilter } from '@/api/uploads';
 import { DayRangeMenu } from '@/components/DayRangeMenu';
 import { EmptyState } from '@/components/EmptyState';
 import { InlineError } from '@/components/InlineError';
 import { SearchInput } from '@/components/SearchInput';
 import { StaleDataNotice } from '@/components/StaleDataNotice';
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardHeader, CardTitle } from '@/components/ui/card';
-import { useCloseDetail } from '@/features/upload-detail/UploadDetailPanel';
 import { productCount } from '@/lib/format';
 import { useNow } from '@/lib/useNow';
 import { useSelection } from '@/lib/useSelection';
-import { UPLOAD_PATH_PATTERN } from '@/routes';
+import { DeleteProductsDialog } from './DeleteProductsDialog';
 import { ExportMenu } from './ExportMenu';
 import { ListSkeleton } from './listParts';
 import { UploadRow } from './UploadRow';
@@ -132,65 +120,7 @@ export function ProductList() {
           <EmptyState icon={Inbox} title="No products yet" hint="Upload a label photo or PDF above." />
         ))}
 
-      <DeleteDialog ids={confirmingDelete} onClose={() => setConfirmingDelete(null)} />
+      <DeleteProductsDialog ids={confirmingDelete} onClose={() => setConfirmingDelete(null)} />
     </Card>
-  );
-}
-
-/**
- * Asks before deleting the picked products, which can't be undone, and stays open until it's done
- * or says why it couldn't be. The server skips any the person may not delete, and the toast says so.
- * If the open product is among those deleted, its panel closes.
- */
-function DeleteDialog({ ids, onClose }: { ids: string[] | null; onClose: () => void }) {
-  const remove = useDeleteUploads();
-  const openId = useMatch(UPLOAD_PATH_PATTERN)?.params.id;
-  const closeDetail = useCloseDetail();
-  const count = ids?.length ?? 0;
-
-  const confirm = () => {
-    if (!ids) return;
-    remove.mutate(ids, {
-      onSuccess: (deleted) => {
-        if (deleted.length > 0) toast.success(`${productCount(deleted.length)} deleted`);
-        const skipped = ids.length - deleted.length;
-        if (skipped > 0) {
-          toast.warning(`${productCount(skipped)} not deleted`, { description: 'Only whoever uploaded a product, or an admin, can delete it.' });
-        }
-        if (openId && deleted.includes(openId)) closeDetail();
-        onClose();
-      },
-    });
-  };
-  const onOpenChange = (open: boolean) => {
-    if (open || remove.isPending) return; // no walking away mid-delete
-    remove.reset();
-    onClose();
-  };
-
-  return (
-    <AlertDialog open={ids !== null} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Delete {productCount(count)}?</AlertDialogTitle>
-          <AlertDialogDescription>Their files and extracted data are removed for good. The activity log keeps their history.</AlertDialogDescription>
-        </AlertDialogHeader>
-        {remove.isError && (
-          <p role="alert" className="text-danger">
-            {errorMessage(remove.error)}
-          </p>
-        )}
-        <AlertDialogFooter>
-          <AlertDialogCancel asChild>
-            <Button variant="outline" disabled={remove.isPending}>
-              Keep them
-            </Button>
-          </AlertDialogCancel>
-          <Button variant="destructive" loading={remove.isPending} onClick={confirm}>
-            Delete
-          </Button>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
   );
 }

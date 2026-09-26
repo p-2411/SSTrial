@@ -2,21 +2,13 @@ import { useMemo, useState } from 'react';
 import { ChevronRight, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { UPLOAD_EVENT_TYPE_IDS, type LogLevel, type UploadDetail, type UploadHistoryEntry } from '@label-extractor/shared';
-import { ApiRequestError, errorMessage } from '@/api/client';
+import { errorMessage } from '@/api/client';
 import { isFiltered, NO_ACTIVITY_FILTERS, type ActivityFilters } from '@/api/logs';
-import { useRevertUpload, useUploadHistory } from '@/api/queries';
+import { isEditConflict, useRevertUpload, useUploadHistory } from '@/api/queries';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { EmptyState } from '@/components/EmptyState';
 import { ActivityFilterBar } from '@/features/activity/ActivityFilterBar';
 import { EVENT_ACTION_CLASS, EventDetails, EventDetailsTrigger } from '@/features/activity/EventDetails';
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -167,9 +159,9 @@ function HistoryEntry({ uploadId, entry, onRevert }: { uploadId: string; entry: 
 }
 
 /**
- * Asks before reverting, since it undoes later edits and checks, and stays open until it's done or
- * says why it couldn't be. Made against the revision on screen, so it can't undo a change the admin
- * hasn't seen: if someone saved meanwhile, it's refused, and they can look again.
+ * Asks before reverting, since it undoes later edits and checks. Made against the revision on
+ * screen, so it can't undo a change the admin hasn't seen: if someone saved meanwhile, it's
+ * refused, and they can look again.
  */
 function RevertDialog({ upload, entry, onClose }: { upload: Upload; entry: UploadHistoryEntry | null; onClose: () => void }) {
   const revert = useRevertUpload(upload.id);
@@ -186,39 +178,26 @@ function RevertDialog({ upload, entry, onClose }: { upload: Upload; entry: Uploa
       },
     );
   };
-  const onOpenChange = (open: boolean) => {
-    if (open || revert.isPending) return; // no walking away mid-revert
-    revert.reset();
-    onClose();
-  };
-  const conflict = revert.error instanceof ApiRequestError && revert.error.code === 'EDIT_CONFLICT';
 
   return (
-    <AlertDialog open={entry !== null} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Revert to this point?</AlertDialogTitle>
-          <AlertDialogDescription>
-            The data goes back to how it was on {entry && formatDateAndTime(entry.occurredAt)}, and checks made since are undone.
-            The revert is recorded in the history, so it can be undone too.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        {revert.isError && (
-          <p role="alert" className="text-danger">
-            {conflict ? 'Someone changed this upload since you opened it. Close this and look again.' : errorMessage(revert.error)}
-          </p>
-        )}
-        <AlertDialogFooter>
-          <AlertDialogCancel asChild>
-            <Button variant="outline" disabled={revert.isPending}>
-              Keep it
-            </Button>
-          </AlertDialogCancel>
-          <Button loading={revert.isPending} disabled={conflict} onClick={confirm}>
-            Revert
-          </Button>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <ConfirmDialog
+      open={entry !== null}
+      title="Revert to this point?"
+      description={
+        <>
+          The data goes back to how it was on {entry && formatDateAndTime(entry.occurredAt)}, and checks made since are undone. The
+          revert is recorded in the history, so it can be undone too.
+        </>
+      }
+      confirmLabel="Revert"
+      cancelLabel="Keep it"
+      request={revert}
+      describeError={(error) =>
+        isEditConflict(error) ? 'Someone changed this upload since you opened it. Close this and look again.' : errorMessage(error)
+      }
+      confirmDisabled={isEditConflict(revert.error)}
+      onConfirm={confirm}
+      onClose={onClose}
+    />
   );
 }
