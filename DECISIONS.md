@@ -1,96 +1,36 @@
 # Decisions
 
-## Architecture overview
+**In short:** the browser uploads each file straight to storage; the API records the upload and, in the same Postgres transaction, queues a job. A separate worker calls the LLM, validates the answer against our schema and stores it. Browsers see each change live.
 
-The browser asks the API for a signed URL, uploads the file **straight to storage**, then tells the API it's done. The API checks the file's real type from its first bytes and, in one Postgres transaction, marks the upload `queued` and inserts a job. A separate worker process pulls jobs, calls the LLM, validates the answer against our schema and stores it. A database trigger announces each change, and the API pushes it to browsers over server-sent events. Each step is also recorded in an activity log that admins can browse.
+## 50,000 uploads arriving at once
 
-## Why a Postgres queue (pg-boss) rather than Redis or SQS
+- **Ingest never touches our servers.** Files go straight to Supabase Storage with signed URLs; the API only handles two small, stateless requests per file, so it scales horizontally.
+- **The queue absorbs the burst.** 50,000 jobs is a small Postgres table. They wait durably, and nothing is lost if workers are busy or restarting.
+- **Throughput is set by the LLM's rate limit, not by us.** At 500 requests a minute, 50,000 labels take about 100 minutes however many workers run. A token bucket shared by all workers paces them to that limit. Identical files are recognised by their SHA-256 and read once.
+- **For bulk imports** I'd use OpenAI's Batch API (about half the cost, a separate quota), with queue priorities so people's own uploads skip the backlog.
 
-Main reason here is **YAGNI**: assuming our scale is 50,000 uploads at a given moment, Postgres is enough for thousands per second, and going with Postgres provides the least technical friction since we're already running Postgres on Supabase so it becomes convenient to also store the queue there. Redis or other would add a service we'd have to manage, and although it is faster, it is optimising for a scale that is outside the scope of the product. 
+## Why a Postgres queue (pg-boss)
 
-**The trade-off:** a Postgres queue tops out at thousands of jobs a second, polls (2 s latency) rather than pushes, and shares load with the primary database. Our bottleneck is the LLM at tens of jobs a second, so that ceiling is pretty far away. Past roughly 1k jobs/s, or if queue traffic started to contend with app queries, I'd move to SQS or Redis and add an outbox.
+Mainly **YAGNI**. We already run Postgres on Supabase, and a Postgres queue handles thousands of jobs a second, far more than the LLM lets us process (tens a second). Redis or SQS would add a service to run and secure, optimising for a scale this product doesn't have.
 
-Using Postgres also provides the following benefits:
-**Transactional enqueue.** The queue lives in the same database as the `uploads` table, so "mark queued" and "create job" commit or roll back together. Without that we'd need an outbox table to avoid the two failure cases: a row stuck in `queued` with no job, or a job for a row that never got updated.
-**Everything we need is built in:** `SKIP LOCKED` job claiming (any number of workers, each job to one worker), retry limits, exponential back-off with jitter, job expiry for crashed workers, and a dead-letter queue.
+It also gives us, for free:
+- **Transactional enqueue.** Marking an upload `queued` and creating its job commit together, so there's never a queued upload without a job. Redis or SQS would need an outbox table for that.
+- **The hard parts:** `SKIP LOCKED` claiming (each job to exactly one worker), retries with back-off, expiry for crashed workers, and a dead-letter queue.
 
-## How LLM failures are handled
+**Trade-off:** it polls (about 2 s latency) and shares load with the main database. Past roughly 1,000 jobs a second, I'd move to SQS with an outbox.
 
-The LLM sits behind a `LabelExtractor` interface. Every failure becomes an `ExtractionError` carrying a code, and the code decides whether it's **retryable** (see `server/src/extraction/errors.ts`). Provider-specific errors are mapped in the OpenAI implementation, so the worker never sees the SDK. Only the code is stored; the message users see comes from one catalogue in `shared`, so rewording never touches data.
+## LLM failures and retries
 
-| Retried (transient) | Not retried (permanent) |
-|---|---|
-| Timeout (90 s client timeout; the job's abort signal also cancels it) | Bad API key, no access or unknown model (401/403/404) |
-| Rate limited (429) | Out of credit (429 `insufficient_quota`) |
-| 5xx, network errors | File rejected by the model (400) |
-| Malformed JSON, truncated output, schema mismatch | Refusal or content filter |
-| Unknown errors (retrying is safe) | Valid answer with nothing label-like in it; file missing |
+- **Every failure becomes a code, and the code decides.** Timeouts, rate limits, 5xx and malformed output are retried. A bad key, no credit, a refusal, an unreadable file, or no label in the image are not: retrying can't help. Users see a plain message for the code.
+- **The queue owns retries, not the SDK.** One policy: 5 attempts, backing off about 15 s, 30 s, 60 s and 120 s with jitter. The upload shows "Retrying" and why.
+- **Rate limits are respected together.** On a 429 with `Retry-After`, the shared bucket pauses every worker for that long.
+- **Output is never trusted.** Every answer is validated with Zod before it's stored: valid data or nothing.
+- **Crashed or hung workers.** If a job's heartbeats stop, another worker takes it within about a minute. A claim token stops the replaced worker overwriting its successor, and if the last attempt dies, a dead-letter handler marks the upload failed, so nothing stays "processing" forever.
+- **Manual retry** is offered for failures the file didn't cause, such as after credit is topped up.
 
-- **The queue owns retries, not the SDK** (`maxRetries: 0`). That gives one retry policy: 5 attempts, backing off about 15 s, 30 s, 60 s and 120 s with jitter. The policy, which failures are worth retrying, and the retry-or-stop decision are plain rules in `server/src/extraction/retry-policy.ts`; the pg-boss settings are derived from them. It survives restarts, and the user can see it. Between attempts the upload goes back to `queued` with the reason ("The AI service is rate-limiting requests. Retrying automatically."). Attempt counts stay in the logs; users only see the reason.
-- **Rate limits are shared and honoured.** All workers draw from one token bucket in Postgres (`OPENAI_REQUESTS_PER_MINUTE`). When OpenAI answers 429 with `Retry-After` / `retry-after-ms`, the bucket pauses for that long, so every worker backs off together.
-- **Output is never trusted.** Structured outputs constrain the model, and every response is still parsed with Zod. We store normalised, validated data or nothing.
-- **Crashes and hangs.** Workers heartbeat every 15 s while processing. If the heartbeats stop (the worker died or lost the database), pg-boss hands the job to another worker within about a minute; a job still active after 180 s is expired regardless. If the *final* attempt dies, the job lands in the dead-letter queue, whose handler marks the upload failed, so nothing sits in `processing` forever.
-- **One writer per upload.** Each attempt gets a fresh claim token, and saving a result, scheduling a retry or failing the upload only succeed with the current one. A worker whose job was handed on can't overwrite anything when it eventually finishes; it stands down.
-- **Idempotency.** Every status change is a guarded `UPDATE … WHERE status = any(…)`, so duplicate deliveries, double clicks and races are no-ops. The allowed changes are declared once, in `shared/src/lifecycle.ts`; the store builds its guards from that table, and an integration test tries every change from every status against real Postgres.
-- **Manual retry.** Users can retry failures that aren't caused by the file itself (e.g. after credit is topped up), and completed uploads whose saved result can no longer be read.
+## Trade-offs
 
-## Confidence scores
-
-- **From the model, in the same call.** It scores each field 0–100 and gives a reason for anything below 85 ("partly hidden by a fold"). That costs a few output tokens rather than a second call. Alternatives considered: extracting twice and comparing (a real measure of disagreement, but double the cost and time), and a separate verifier model (TypeSafe's Jev returns calibrated probabilities, but takes text only, and our input is images).
-- **Plain checks correct it.** A model's own score ranks fields well but isn't a calibrated or necessarily accurate probability, and models can be overconfident even where they're wrong. We counter this with deterministic checks on the LLMs confiden scores. `applyConfidenceChecks` (`shared/src/confidence.ts`) caps a field at 60 where the data contradicts itself: the net amount isn't in its own printed text, a declared allergen is in no ingredient, or the percentages add up to more than 100%. Checks only lower scores and add their own reason.
-- **Checked when read, not when stored.** The model's scores are stored as it gave them, and the checks run each time an upload is read. Stored once at extraction, a cap would outlive an edit that fixed the contradiction, and miss one an edit introduced (removing the only ingredient that contains a declared allergen). The checks are a few comparisons, so running them per read costs nothing measurable.
-- **Reusing an identical file's result reuses the model's answer.** When a file's bytes match a completed upload, its extraction is copied instead of asking the model again: the model's original output and scores, not a person's corrections to the other upload, which belong to that upload and the person who made them.
-- **Bands, not decimals.** The UI works in three bands (85+ fine, 60–84 check, below 60 low) since precise details are essentially meaningless since the probability is a semantic indicator rather than a calculated probability. An upload's score is its least certain field.
-- **Advisory, so lenient.** The label data is validated strictly and retried if malformed; the scores aren't worth a retry. Missing or malformed scores are stored as "not scored", and uploads from before scoring existed simply show none. Scores live in their own column, apart from the result that's exported.
-
-Low confidence scores prompt a "Check" status which invite the user to check the fields and edit them if needed, and if they are content they are able to "Mark as checked".
-
-## Reviewing and editing extracted data
-
-- **Edits are validated like model output.** A correction is merged into the result and the whole thing goes through the same schema the model's answer does, so edited data is held to the same rules (lengths, positive amounts, allergen links). Removing a declared allergen still drops the ingredients' links to it.
-- **Sub-ingredients and per-ingredient allergen links aren't editable.** Ingredients are edited as rows of name and percentage; everything else about a row is kept as extracted, and new rows start with none. That covers the corrections labels usually need without a nested editor.
-- **No lost updates.** Every save names the revision it was made against, and the update is guarded on it (`… where result_revision = $revision`). If someone saved first, nothing is written and the API answers 409. The editor keeps the draft: if that field didn't change, the save is retried against the new revision; if it did, the editor shows their value and lets the person keep theirs or take it. Running extraction again moves the revision on too, so an editor still open on the old result can't save over the new one. It's a counter rather than `updated_at` because JavaScript dates drop Postgres's microseconds, so a timestamp comparison would never match.
-- **The model's output is kept.** On the first edit it's copied to `original_result`, and every save goes to the activity log with the before and after values. `result` is what people see and export.
-- **A reviewed field is settled.** Editing a field, or confirming it as right, records who and when, and the field stops counting towards the upload's confidence score: the "check this" flag is for fields nobody has looked at yet. Without "mark as checked", a correct but low-scoring field would stay flagged for ever.
-
-## Deleting uploads
-
-- **Gone for good, history kept.** Deleting removes the file and the row; there's no trash or undo, which would mean another state, hidden rows everywhere, and a job to empty it. The activity log isn't tied to the row (no foreign key), so an upload's history stays, ending with who deleted it.
-- **Whoever uploaded it, or an admin.** People can remove their own mistakes, admins can clean up anything, and nobody deletes a colleague's work by accident. The rule is one function (`canDeleteUpload` in shared); the API enforces it and sends `canDelete` with the detail, so the button only shows to people it would work for.
-- **The file first, then the row.** If deleting the row fails, asking again finds it and deletes the already-missing file without complaint. The other order could leave a file with no upload, which nothing would ever clean up.
-- **Any time, even mid-extraction.** Deletion is a lifecycle transition like any other (`delete`, from any listed status), so the database guard applies. An attempt in progress needs no stopping: its writes are refused once the row is gone, exactly as when another attempt takes an upload over.
-- **Only from the detail panel.** There's no delete on list rows, where one misplaced click on a dense list would cost an upload; the detail asks for confirmation in place.
-
-## 50,000 uploads at once
-
-1. **Ingest.** Bytes never pass through our servers; storage absorbs them. The API does two small JSON requests per file and is stateless, so it scales horizontally. At that volume I'd add a batch endpoint that signs many URLs per request.
-2. **Queueing.** 50k rows is a small table for Postgres. Jobs wait durably, and nothing is lost if workers are busy or down.
-3. **Processing is bounded by the LLM's rate limit, not by us.** At 500 requests/minute, 50k files take about 100 minutes however many workers we run. The shared token bucket paces all workers to that rate, so adding workers beyond it gains nothing but doesn't cause 429 storms either. Identical files are recognised by their SHA-256 and processed once.
-4. **For bulk imports,** I'd route through OpenAI's Batch API (about half the cost, a separate higher quota, results within 24 h) and keep the realtime path for interactive uploads, using pg-boss priorities so interactive uploads jump the backlog.
-5. **Supporting pieces:** per-process DB pools stay small behind Supabase's pooler. The list is filtered, counted and paginated by the server (keyset cursor), and status changes are pushed to browsers rather than polled. The System status page shows a backlog building before users notice.
-6. 
-
-## Storage
-
-We first considered S3, then preferred **Cloudflare R2**, which has a free tier and is S3-compatible, so the code is the same. Once we chose a Postgres queue on **Supabase**, we switched to **Supabase Storage**: one platform, one account and one set of keys for database, queue and files. Supabase also enforces the bucket's size and type limits itself, so a signed upload URL can't be used to push anything else. Storage sits behind a small `FileStorage` interface, so moving to S3/R2 later is one new file.
-
-## Frontend
-
-The UI uses the same stack as SupplyScope's app: Tailwind v4 and shadcn/ui on Radix, with Lucide icons and Sonner toasts. I found this by inspecting app.supplyscope.io's public login page and its assets. Anyone on their team can read and extend it without learning a new component library.
-
-It's also styled with their brand, taken from supplyscope.io and their product screenshots:
-- **Colours:** warm off-white `#F6F5F3` background, near-black `#1B1B1B` buttons, indigo `#5048E5` reserved for AI features ("BETA" pill, "Retry extraction", AI sparkles) and green `#027A48` for validated data.
-- **Layout:** a dark sidebar shell. The sidebar holds destinations only (Uploads, and for admins System status and the Activity log), then who is signed in; the status filter is a tab row in the list's own header, because it narrows one panel rather than taking you somewhere new.
-- **Detail view:** opens as a panel that slides in beside the list and narrows it, rather than covering it, so the main page is just "add files, see results" and you can move between uploads by clicking the next row. The URL (`/uploads/:id`) still drives it, so links, refresh and the back button work. Inside, it's modelled on their compliance screen: a "Core information" card with verified values in green, then the source document to check them against.
-- **Not copied:** their logo or product name (the deployed app is public, and it shouldn't pass as an official SupplyScope product) and their display typeface (Labil Grotesk is commercially licensed). Inter, which their app itself uses, stands in with tight heading tracking.
-- **Desktop only:** there's no mobile layout. It's a desktop operations tool, and supporting phones would have added complexity for little benefit.
-- 
-## Other trade-offs and things deliberately left out
-
-- **One workspace, no team management:** everyone signed in shares one list, and accounts come from a script. Before real use: invites through an email provider, password reset, per-user quotas, and separate workspaces if several companies share it.
-- **A double LLM call is still possible, just rarer.** If a worker loses the database mid-call, its job is handed on and the label is read twice. The claim token makes the second read harmless, and heartbeats make the handover prompt, but an in-flight LLM call can't be taken back.
-- **Migrations only go forward.** There are no down scripts; one-off data changes are committed scripts (`server/scripts/`, beside `create-user.ts`), not ad-hoc SQL.
-- **No CI.** Tests and deploys are run by hand.
-- **Not supported:** HEIC photos (they'd need converting first), and PDFs are limited by size, not page count.
-- **Allergens:** declared allergens only. "May contain" warnings are deliberately excluded.
-- **No build step on the server:** Node runs the TypeScript directly (type stripping). Only the web app is bundled.
+- **Supabase Storage over S3 or R2.** One platform for database, queue and files was simpler. Storage sits behind an interface, so switching is one file.
+- **Confidence from the model, checked by code.** The model scores each field in the same call; extracting twice and comparing would measure doubt better, at double the cost. Its scores aren't calibrated, so plain checks lower any field the rest of the data contradicts, and people can mark fields as checked.
+- **SupplyScope's own UI stack** (Tailwind v4, shadcn/ui), so their team could extend it. Desktop only.
+- **Left out for now:** team management (accounts come from a script), CI, HEIC photos and rollback migrations. A label can occasionally be read twice if a worker loses the database mid-call; the claim token makes the second read harmless.

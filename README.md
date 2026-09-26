@@ -5,7 +5,7 @@ Upload photos or PDFs of product labels; a background worker reads each one with
 ![The app: upload list on the left, extracted label data on the right](docs/screenshot.png)
 
 - **Stack:** TypeScript end to end. React + Vite with Tailwind v4 and shadcn/ui (web), Fastify (API), pg-boss (Postgres-backed queue), Supabase (Postgres, Storage, Auth), OpenAI Responses API with structured outputs.
-- **Look and feel:** built on the same UI stack as the SupplyScope app (Tailwind v4, shadcn/ui on Radix, Lucide icons, Sonner toasts) and styled with SupplyScope's brand. See [DECISIONS.md](DECISIONS.md#frontend).
+- **Look and feel:** built on the same UI stack as the SupplyScope app (Tailwind v4, shadcn/ui on Radix, Lucide icons, Sonner toasts) and styled with SupplyScope's brand. See [DECISIONS.md](DECISIONS.md#trade-offs).
 - **Design decisions** (queue choice, failure handling, 50k uploads, trade-offs): [DECISIONS.md](DECISIONS.md)
 
 ## Topology
@@ -72,7 +72,7 @@ from a status that table allows.
 
 ### Confidence scores
 
-Every field gets a score out of 100 for how sure the extraction is, with the reasons for any doubt. The model scores each field in the same call, and those scores are stored as given. Plain checks cap a score at 60 when the data contradicts itself (the net amount missing from its printed text, a declared allergen no ingredient contains, percentages over 100%); they run whenever the upload is read, so they describe the data as it is now, edits included. The detail panel shows each field's score, fine (85+), check (60–84) or low; the list flags uploads whose least certain field is below 85. How it works and its limits: [DECISIONS.md](DECISIONS.md#confidence-scores).
+Every field gets a score out of 100 for how sure the extraction is, with the reasons for any doubt. The model scores each field in the same call, and those scores are stored as given. Plain checks cap a score at 60 when the data contradicts itself (the net amount missing from its printed text, a declared allergen no ingredient contains, percentages over 100%); they run whenever the upload is read, so they describe the data as it is now, edits included. The detail panel shows each field's score, fine (85+), check (60–84) or low; the list flags uploads whose least certain field is below 85. How it works and its limits: [DECISIONS.md](DECISIONS.md#trade-offs).
 
 ### Reviewing and editing
 
@@ -199,7 +199,7 @@ Errors are always `{ "error": { "code", "message" } }`, with a message written f
 
 ## Scope cuts
 
-Deliberately left out to stay within the time box. The reasoning is in [DECISIONS.md](DECISIONS.md#other-trade-offs-and-things-deliberately-left-out).
+Deliberately left out to stay within the time box. The reasoning is in [DECISIONS.md](DECISIONS.md#trade-offs).
 
 - **Team management and per-user data:** one shared workspace. Accounts come from a script; there are no invites, sign-up or password-reset emails.
 - **HEIC conversion** and a **PDF page-count limit**.
