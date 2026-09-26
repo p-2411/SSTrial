@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyConfidenceChecks, type ExtractionConfidence } from '../src/confidence.ts';
 import type { LabelExtraction } from '../src/extraction.ts';
+import type { LabelField } from '../src/fields.ts';
 
 const SAMPLE_EXTRACTION: LabelExtraction = {
   productName: 'Maple Pecan Crunch',
@@ -41,6 +42,23 @@ describe('applyConfidenceChecks', () => {
         score: 60,
         reasons: ["The amount isn't in the printed net quantity."],
       });
+    });
+  });
+
+  describe('required fields', () => {
+    it.each<[LabelField, Partial<LabelExtraction>, string]>([
+      ['productName', { productName: null }, 'No product name was found, and every product needs one.'],
+      ['brand', { brand: null }, 'No brand was found, and every product needs one.'],
+      ['netWeight', { netWeight: null }, 'No net quantity was found, and every product needs one.'],
+      ['ingredients', { ingredients: [], allergens: [] }, 'No ingredients were found, and every product needs them.'],
+    ])('flags a missing %s for a person to look at, however sure the model was', (field, changes, reason) => {
+      expect(check(changes)[field]).toEqual({ score: 60, reasons: [reason] });
+    });
+
+    it("doesn't ask for allergens: plenty of products declare none", () => {
+      expect(check({ allergens: [], ingredients: SAMPLE_EXTRACTION.ingredients.map((i) => ({ ...i, allergens: [] })) }).allergens).toEqual(
+        SURE.allergens,
+      );
     });
   });
 

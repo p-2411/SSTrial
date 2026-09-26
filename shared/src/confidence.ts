@@ -1,5 +1,5 @@
 import type { LabelExtraction } from './extraction.ts';
-import { LABEL_FIELDS, type LabelField } from './fields.ts';
+import { LABEL_FIELDS, REQUIRED_FIELDS, type LabelField } from './fields.ts';
 import { formatList } from './text.ts';
 import { textShowsAmount } from './units.ts';
 
@@ -64,10 +64,20 @@ export function flaggedFields(confidence: ExtractionConfidence | null, reviewed:
   return LABEL_FIELDS.filter((field) => !reviewed.includes(field) && needsChecking(confidence[field].score));
 }
 
+/** Why a required field that's missing is flagged. */
+const MISSING: Record<(typeof REQUIRED_FIELDS)[number], string> = {
+  productName: 'No product name was found, and every product needs one.',
+  brand: 'No brand was found, and every product needs one.',
+  netWeight: 'No net quantity was found, and every product needs one.',
+  ingredients: 'No ingredients were found, and every product needs them.',
+};
+
 /**
- * Checks that catch the model being confidently wrong: where the data contradicts itself, that
- * field's score is capped at DOUBTFUL_SCORE and the reason added. Checks only ever lower a score,
- * and the model's own reason for a low score is kept. Safe to apply more than once.
+ * Checks that catch what the model's own score can't be trusted with: a required field it didn't
+ * find (see REQUIRED_FIELDS), and data that contradicts itself. That field's score is capped at
+ * DOUBTFUL_SCORE and the reason added, so a person has to look at it before the upload can go into
+ * Products. Checks only ever lower a score, and the model's own reason for a low score is kept.
+ * Safe to apply more than once.
  */
 export function applyConfidenceChecks(result: LabelExtraction, confidence: ExtractionConfidence): ExtractionConfidence {
   const checked = Object.fromEntries(
@@ -77,6 +87,14 @@ export function applyConfidenceChecks(result: LabelExtraction, confidence: Extra
     checked[field].score = Math.min(checked[field].score, DOUBTFUL_SCORE);
     if (!checked[field].reasons.includes(reason)) checked[field].reasons.push(reason);
   };
+
+  const missing = {
+    productName: !result.productName,
+    brand: !result.brand,
+    netWeight: !result.netWeight,
+    ingredients: result.ingredients.length === 0,
+  };
+  for (const field of REQUIRED_FIELDS) if (missing[field]) flag(field, MISSING[field]);
 
   // The amount is copied from the printed statement, so it should appear in it.
   if (result.netWeight && !textShowsAmount(result.netWeight.text, result.netWeight.value)) {
