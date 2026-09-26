@@ -211,10 +211,7 @@ function EmptyState() {
         <Inbox className="size-5" aria-hidden />
       </span>
       <p className="font-semibold">No products yet</p>
-      <p className="max-w-sm text-sm text-muted-foreground">
-        Upload a label photo or PDF above. Once it's been read and you've submitted it, its product name, brand,
-        ingredients, allergens and net weight appear here.
-      </p>
+      <p className="max-w-sm text-sm text-muted-foreground">Upload a label photo or PDF above.</p>
     </div>
   );
 }
