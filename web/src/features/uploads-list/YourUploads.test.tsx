@@ -67,7 +67,7 @@ describe('YourUploads', () => {
   it("shows files still being sent, then the server's, under Uploading", async () => {
     uploading = [
       summary({ id: 'q', fileName: 'waiting.png', status: 'queued', productName: null }),
-      summary({ id: 'f', fileName: 'broken.png', status: 'failed', productName: null, error: { code: 'LLM_TIMEOUT', message: 'The AI service took too long to respond.' } }),
+      summary({ id: 'f', fileName: 'broken.png', status: 'failed', productName: null, error: { code: 'LLM_TIMEOUT', message: 'Reading the label took too long.' } }),
     ];
     review = [inReview('r', 'Maple Pecan Crunch', 92)];
     stubApi();

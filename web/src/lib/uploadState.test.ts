@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { summary } from '@/test/fixtures';
 import { progressLine, uploadState } from './uploadState';
 
-const rateLimited = { code: 'LLM_RATE_LIMITED', message: 'The AI service is rate-limiting requests.' } as const;
+const rateLimited = { code: 'LLM_RATE_LIMITED', message: 'Too many labels were being read at once.' } as const;
 
 describe('uploadState', () => {
   it('tells a first wait apart from a retry after a failed attempt', () => {
@@ -30,7 +30,7 @@ describe('progressLine', () => {
   it('says what is happening while an upload is worked on, and why one failed', () => {
     expect(progressLine(uploadState(summary({ status: 'processing' })))).toEqual({ text: 'Reading label', tone: 'brand' });
     expect(progressLine(uploadState(summary({ status: 'queued', error: rateLimited })))).toEqual({
-      text: 'The AI service is rate-limiting requests. Retrying automatically.',
+      text: 'Too many labels were being read at once. Retrying automatically.',
       tone: 'warning',
     });
     expect(progressLine(uploadState(summary({ status: 'failed', error: null })))).toEqual({ text: 'Processing failed.', tone: 'danger' });

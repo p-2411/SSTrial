@@ -60,7 +60,7 @@ export const LOG_EVENT_TYPES = {
   'extraction.retry_scheduled': { label: 'Retry scheduled', level: 'warn', group: 'extraction' },
   'extraction.failed': { label: 'Extraction failed', level: 'error', group: 'extraction' },
   'extraction.abandoned': { label: 'Extraction abandoned', level: 'error', group: 'extraction' },
-  'ratelimit.paused': { label: 'AI requests paused', level: 'warn', group: 'extraction' },
+  'ratelimit.paused': { label: 'Label reading paused', level: 'warn', group: 'extraction' },
   'process.started': { label: 'Process started', level: 'info', group: 'system' },
 } as const satisfies Record<string, { label: string; level: LogLevel; group: LogEventGroup }>;
 
@@ -96,7 +96,7 @@ export interface LogEvent {
   level: LogLevel;
   type: LogEventType;
   uploadId: string | null;
-  /** One readable sentence, e.g. "granola.png failed on attempt 2 of 5: The AI service is rate-limiting requests. It will be retried." */
+  /** One readable sentence, e.g. "granola.png failed on attempt 2 of 5: Too many labels were being read at once. It will be retried." */
   message: string;
   /** The file it's about, if any: still known once its upload is deleted. */
   fileName: string | null;

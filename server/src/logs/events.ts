@@ -238,7 +238,7 @@ export const logEvents = {
     return {
       ...base,
       type: 'ratelimit.paused',
-      message: `The AI service asked us to slow down while reading ${upload.fileName}. All AI requests paused for ${seconds(pauseMs)}.`,
+      message: `Too many labels were being read at once, so reading paused for ${seconds(pauseMs)} (at ${upload.fileName}). It carries on by itself.`,
       data: { ...base.data, pauseMs },
     };
   },

@@ -22,7 +22,7 @@ describe('ActivityLog', () => {
   it('shows events newest first under their day, with warnings and errors marked', async () => {
     stubPages({
       events: [
-        logEvent({ id: '3', level: 'error', type: 'extraction.failed', message: 'oat-milk.png failed: The AI service took too long.', hasDetails: true }),
+        logEvent({ id: '3', level: 'error', type: 'extraction.failed', message: 'oat-milk.png failed: Reading the label took too long.', hasDetails: true }),
         logEvent({ id: '2', level: 'warn', type: 'extraction.retry_scheduled', message: 'oat-milk.png failed on attempt 1 of 5.' }),
         logEvent({ id: '1', source: 'api', type: 'upload.created', message: 'oat-milk.png started uploading.' }),
       ],
@@ -34,7 +34,7 @@ describe('ActivityLog', () => {
     const today = await screen.findByRole('region', { name: 'Today' });
     const rows = within(today).getAllByRole('listitem');
     expect(rows.map((row) => within(row).getByText(/oat-milk\.png/).textContent)).toEqual([
-      'oat-milk.png failed: The AI service took too long.',
+      'oat-milk.png failed: Reading the label took too long.',
       'oat-milk.png failed on attempt 1 of 5.',
       'oat-milk.png started uploading.',
     ]);
@@ -46,7 +46,7 @@ describe('ActivityLog', () => {
     expect(within(rows[2]!).queryByText('API')).not.toBeInTheDocument();
     expect(within(rows[0]!).getByRole('link', { name: 'View upload' })).toHaveAttribute('href', `/uploads/${EVENT_UPLOAD_ID}`);
     // After the message, on its right: View upload, then Details at the edge.
-    const message = within(rows[0]!).getByText(/The AI service took too long/);
+    const message = within(rows[0]!).getByText(/Reading the label took too long/);
     const viewUpload = within(rows[0]!).getByRole('link', { name: 'View upload' });
     const details = within(rows[0]!).getByRole('button', { name: 'Details' });
     expect(message.compareDocumentPosition(viewUpload) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

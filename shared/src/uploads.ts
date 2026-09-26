@@ -99,14 +99,14 @@ export const MAX_UPLOADS_PER_REQUEST = 100;
  */
 const UPLOAD_ERROR_MESSAGES = {
   // LLM problems (see server/src/extraction/errors.ts for which are retried)
-  LLM_TIMEOUT: 'The AI service took too long to respond.',
-  LLM_RATE_LIMITED: 'The AI service is rate-limiting requests.',
-  LLM_UNAVAILABLE: 'The AI service is temporarily unavailable.',
-  LLM_INVALID_RESPONSE: "The AI service returned data that didn't match the expected format.",
-  LLM_REFUSED: 'The AI service declined to process this file.',
-  LLM_REJECTED_INPUT: "The AI service couldn't read this file.",
-  LLM_QUOTA_EXCEEDED: 'The AI service account has run out of credit.',
-  LLM_MISCONFIGURED: 'The AI service rejected our request because of a configuration problem.',
+  LLM_TIMEOUT: 'Reading the label took too long.',
+  LLM_RATE_LIMITED: 'Too many labels were being read at once.',
+  LLM_UNAVAILABLE: 'Label reading is unavailable for the moment.',
+  LLM_INVALID_RESPONSE: 'The label was read, but the result came back incomplete.',
+  LLM_REFUSED: 'Label reading declined this file.',
+  LLM_REJECTED_INPUT: "This file couldn't be read.",
+  LLM_QUOTA_EXCEEDED: 'Label reading has run out of credit.',
+  LLM_MISCONFIGURED: "Label reading isn't set up correctly.",
   // Everything else
   NO_LABEL_DATA: "Couldn't find any product label information in this file.", // answered, but nothing label-like
   FILE_MISSING: 'The uploaded file could not be found.', // object gone from storage before the worker read it

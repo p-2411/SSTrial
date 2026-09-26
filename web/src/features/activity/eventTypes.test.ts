@@ -27,7 +27,7 @@ describe('the type menu', () => {
     expect(describeFilter(['extraction.failed', 'extraction.abandoned'])).toBe('errors only');
     expect(describeFilter(['upload.edited', 'upload.reverted', 'extraction.completed'])).toBe('changes to the data');
     expect(describeFilter(['extraction.failed'])).toBe('extraction failed');
-    expect(describeFilter(['ratelimit.paused'])).toBe('AI requests paused'); // an acronym keeps its capitals
+    expect(describeFilter(['ratelimit.paused'])).toBe('label reading paused');
     expect(describeFilter(['upload.created', 'upload.queued'])).toBe('2 types of event');
   });
 });
