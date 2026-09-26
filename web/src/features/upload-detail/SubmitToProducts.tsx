@@ -26,17 +26,16 @@ export function SubmitToProducts({ upload }: { upload: UploadDetail }) {
     });
 
   return (
-    // bottom-0: sticky keeps clear of the panel's padding, and that 20px (pb-5) is the gap, the
-    // same as between the detail's cards.
+    // bottom-0: sticky keeps clear of the panel's padding, and that 12px (pb-3) is the gap.
     <div className="sticky bottom-0 z-10">
       {/* It sits over the content, so everything is solid: the border takes the fill's colour (a
           button's is otherwise transparent, and showed what's behind it), hovering lightens both
-          rather than fading them, and not ready is plain grey rather than faded. h-11 is the
-          Product information card's footer's height. */}
+          rather than fading them, and not ready is plain grey rather than faded. A soft shadow below
+          lifts it off the page. */}
       <Button
         size="lg"
         className={cn(
-          'h-11 w-full shadow-lg',
+          'h-12 w-full shadow-[0_8px_24px_-6px_rgb(0_0_0/0.35),0_2px_6px_rgb(0_0_0/0.12)]',
           ready
             ? 'border-primary hover:border-[color-mix(in_oklch,var(--primary),white_18%)] hover:bg-[color-mix(in_oklch,var(--primary),white_18%)]'
             : 'disabled:border-muted disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100',
