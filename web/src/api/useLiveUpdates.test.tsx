@@ -60,7 +60,7 @@ describe('useLiveUpdates', () => {
     expect(isLiveConnected()).toBe(true);
   });
 
-  it('refreshes the lists, counts and the changed upload, batching a burst into one refresh', () => {
+  it('refreshes the lists and the changed upload, batching a burst into one refresh', () => {
     const { source, invalidate } = setup();
     act(() => source.onopen?.());
     invalidate.mockClear();
@@ -72,7 +72,7 @@ describe('useLiveUpdates', () => {
     expect(invalidate).not.toHaveBeenCalled(); // waits for the burst to finish
     act(() => vi.advanceTimersByTime(300));
 
-    expect(invalidatedKeys(invalidate)).toEqual([uploadKeys.lists(), uploadKeys.counts(), uploadKeys.detail('a'), uploadKeys.detail('b')]);
+    expect(invalidatedKeys(invalidate)).toEqual([uploadKeys.lists(), uploadKeys.detail('a'), uploadKeys.detail('b')]);
   });
 
   it('refreshes only the activity log when it has new events', () => {

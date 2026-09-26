@@ -8,7 +8,7 @@ import { refreshUploadLists, uploadKeys } from './queries';
 function watchedList(client: QueryClient) {
   const fetches: Array<(page: ListUploadsResponse) => void> = [];
   const observer = new InfiniteQueryObserver(client, {
-    queryKey: uploadKeys.list('all'),
+    queryKey: uploadKeys.list('mine'), // where a handed-over upload arrives
     queryFn: () => new Promise<ListUploadsResponse>((resolve) => fetches.push(resolve)),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: () => undefined,

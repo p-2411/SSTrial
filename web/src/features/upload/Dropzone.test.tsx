@@ -3,6 +3,9 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { Dropzone } from './Dropzone.tsx';
 
+const { toastWarning } = vi.hoisted(() => ({ toastWarning: vi.fn() }));
+vi.mock('sonner', () => ({ toast: { warning: toastWarning } }));
+
 const png = (name = 'label.png') => new File([new Uint8Array(2048)], name, { type: 'image/png' });
 const text = () => new File(['not a label'], 'notes.txt', { type: 'text/plain' });
 
@@ -77,6 +80,18 @@ describe('Dropzone', () => {
 
     await user.click(screen.getByRole('button', { name: 'Remove back.png' }));
     expect(screen.getByText('Drop label photos or PDFs here')).toBeInTheDocument();
+  });
+
+  it('takes up to 50 files at a time, and says so when some don’t fit', async () => {
+    const { pick, cards } = setup();
+    const files = Array.from({ length: 52 }, (_, i) => png(`label-${i}.png`));
+
+    await pick(...files);
+
+    expect(cards()).toHaveLength(50);
+    expect(toastWarning).toHaveBeenCalledWith('You can add up to 50 files at a time', {
+      description: "2 files weren't added. Submit these first, then add the rest.",
+    });
   });
 
   it('lists a file only once, however often it is added, and takes more by drop', async () => {

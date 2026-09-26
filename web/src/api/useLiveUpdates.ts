@@ -11,7 +11,7 @@ const BATCH_MS = 250;
 
 /**
  * Subscribes to the server's live update stream (LIVE_EVENTS_PATH) and refreshes exactly what
- * changed: the lists and counts, plus the detail of each changed upload if it's cached, and the
+ * changed: both lists, plus the detail of each changed upload if it's cached, and the
  * activity log when it has new events. The stream reconnects by itself if it drops (see eventStream.ts);
  * anything missed meanwhile is refetched on reconnect.
  */

@@ -1,9 +1,9 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { isActiveStatus, type EditResultRequest, type UploadDetail, type UploadFilter } from '@label-extractor/shared';
+import { isActiveStatus, type EditResultRequest, type UploadDetail, type UploadView } from '@label-extractor/shared';
 import { ApiRequestError } from './client.ts';
 import { isLiveConnected } from './liveConnection.ts';
 import { getUploadHistory, listLogs, type LogFilters } from './logs.ts';
-import { deleteUpload, editResult, getOpsStatus, getUpload, getUploadCounts, listUploads, retryUpload } from './uploads.ts';
+import { deleteUpload, editResult, getOpsStatus, getUpload, listUploads, retryUpload } from './uploads.ts';
 
 /**
  * Server state lives in React Query: caching, polling and retries are handled here so
@@ -24,10 +24,9 @@ function pollWhile(active: boolean): number | false {
 
 export const uploadKeys = {
   all: ['uploads'] as const,
-  /** Every filtered list; pass a filter for one of them. */
+  /** Both lists; pass a view for one of them. */
   lists: () => [...uploadKeys.all, 'list'] as const,
-  list: (filter: UploadFilter) => [...uploadKeys.lists(), filter] as const,
-  counts: () => [...uploadKeys.all, 'counts'] as const,
+  list: (view: UploadView) => [...uploadKeys.lists(), view] as const,
   detail: (id: string) => [...uploadKeys.all, 'detail', id] as const,
 };
 
@@ -48,23 +47,14 @@ const LOG_POLL_INTERVAL_MS = 10_000;
 /** How often the System status page refreshes. */
 export const OPS_REFRESH_MS = 15_000;
 
-/** Refetches every upload query: lists, counts and details. For when changes may have been missed. */
+/** Refetches every upload query: lists and details. For when changes may have been missed. */
 export function refreshAllUploads(queryClient: QueryClient): Promise<void> {
   return queryClient.invalidateQueries({ queryKey: uploadKeys.all });
 }
 
-/** Refetches the list views and their counts: anything that moves an upload between views. */
-export async function refreshUploadLists(queryClient: QueryClient): Promise<void> {
-  // Independent refetches: run them side by side rather than one after the other.
-  await Promise.all([
-    queryClient.invalidateQueries({ queryKey: uploadKeys.lists() }),
-    queryClient.invalidateQueries({ queryKey: uploadKeys.counts() }),
-  ]);
-}
-
-/** Refetches just the per-view counts, e.g. the tab numbers beside a list that's being switched. */
-export function refreshUploadCounts(queryClient: QueryClient): Promise<void> {
-  return queryClient.invalidateQueries({ queryKey: uploadKeys.counts() });
+/** Refetches both lists: anything that moves an upload between them, or into one. */
+export function refreshUploadLists(queryClient: QueryClient): Promise<void> {
+  return queryClient.invalidateQueries({ queryKey: uploadKeys.lists() });
 }
 
 /** Refetches the activity log, in whichever views of it are cached. */
@@ -83,26 +73,17 @@ export function storeUpload(queryClient: QueryClient, upload: UploadDetail): voi
 }
 
 /**
- * One view of the upload list, filtered and paginated by the server ("Load more" fetches the next
+ * One of the two upload lists, filtered and paginated by the server ("Load more" fetches the next
  * page). Polls only while something on screen is still in progress.
  */
-export function useUploadList(filter: UploadFilter) {
+export function useUploadList(view: UploadView) {
   return useInfiniteQuery({
-    queryKey: uploadKeys.list(filter),
-    queryFn: ({ pageParam }) => listUploads(filter, pageParam),
+    queryKey: uploadKeys.list(view),
+    queryFn: ({ pageParam }) => listUploads(view, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     refetchInterval: (query) =>
       pollWhile(query.state.data?.pages.some((page) => page.uploads.some((upload) => isActiveStatus(upload.status))) ?? false),
-  });
-}
-
-/** How many uploads each view holds, counted by the server. Polls while anything is in progress. */
-export function useUploadCounts() {
-  return useQuery({
-    queryKey: uploadKeys.counts(),
-    queryFn: getUploadCounts,
-    refetchInterval: (query) => pollWhile((query.state.data?.['in-progress'] ?? 0) > 0),
   });
 }
 

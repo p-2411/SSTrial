@@ -5,24 +5,22 @@ import type {
   CreateUploadRequest,
   CreateUploadResponse,
   ListUploadsResponse,
-  UploadCountsResponse,
   UploadDetail,
-  UploadFilter,
+  UploadView,
   UploadResponse,
 } from '@label-extractor/shared';
 import { apiFetch, apiRequest } from './client.ts';
 
 /** Plain functions for each API endpoint. React Query hooks wrap these in queries.ts. */
 
-/** One page of the list, filtered and ordered by the server. */
-export function listUploads(status: UploadFilter, cursor?: string): Promise<ListUploadsResponse> {
-  const params = new URLSearchParams({ status });
+/**
+ * One page of a list, newest first: everyone's finished `products`, or the signed-in person's own
+ * uploads still under way or failed (`mine`).
+ */
+export function listUploads(view: UploadView, cursor?: string): Promise<ListUploadsResponse> {
+  const params = new URLSearchParams({ view });
   if (cursor) params.set('cursor', cursor);
   return apiRequest<ListUploadsResponse>(`/api/uploads?${params}`);
-}
-
-export async function getUploadCounts(): Promise<UploadCountsResponse['counts']> {
-  return (await apiRequest<UploadCountsResponse>('/api/uploads/counts')).counts;
 }
 
 /** The queue, the worker, health checks, throughput and failures, for the System status page. */

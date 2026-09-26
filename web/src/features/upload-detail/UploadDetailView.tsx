@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { FieldReview, UploadDetail } from '@label-extractor/shared';
+import { isActiveStatus, type FieldReview, type UploadDetail } from '@label-extractor/shared';
 import { ApiRequestError, errorMessage } from '@/api/client';
 import { useUploadDetail } from '@/api/queries';
 import { InlineError } from '@/components/InlineError';
@@ -22,10 +22,13 @@ export const DETAIL_TITLE_ID = 'upload-detail-title';
 /** Everything about one upload, shown in UploadDetailPanel beside the list. */
 export function UploadDetailView({ id }: { id: string }) {
   const { data: upload, isPending, isError, error, refetch, isRefetching } = useUploadDetail(id);
+  // Still being read (reached by a link, or re-queued by a retry while open): there's nothing to show
+  // yet, so it loads until it's done. Live updates refetch it the moment it finishes.
+  const stillWorking = upload !== undefined && isActiveStatus(upload.status);
 
   return (
     <div className="grid min-w-0 gap-5">
-      {isPending && (
+      {(isPending || stillWorking) && (
         <>
           <h2 id={DETAIL_TITLE_ID} className="sr-only">
             Loading upload
@@ -58,7 +61,7 @@ export function UploadDetailView({ id }: { id: string }) {
 
       {/* Keyed by upload: everything inside that belongs to one upload (an open editor and its
           draft, the preview link) starts afresh for the next, even when it's already cached. */}
-      {upload && <Detail key={upload.id} upload={upload} />}
+      {upload && !stillWorking && <Detail key={upload.id} upload={upload} />}
     </div>
   );
 }

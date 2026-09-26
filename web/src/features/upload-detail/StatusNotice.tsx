@@ -1,4 +1,4 @@
-import { Clock, FileWarning, RotateCw, Sparkles, XCircle } from 'lucide-react';
+import { FileWarning, Sparkles, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { canRetryUpload, type UploadDetail } from '@label-extractor/shared';
 import { errorMessage } from '@/api/client';
@@ -8,38 +8,14 @@ import { Button } from '@/components/ui/button';
 import { TONE_CLASSES } from '@/lib/tone';
 import { uploadState } from '@/lib/uploadState';
 
-/** Explains a not-yet-completed upload: waiting, being read, retrying, or failed (with a retry button). */
+/**
+ * Explains an upload that didn't end in readable data: it failed (with a retry button, if running
+ * it again could help), or its saved result can't be read. Uploads still being worked on never get
+ * here: the detail shows its loading state until they're done.
+ */
 export function StatusNotice({ upload }: { upload: UploadDetail }) {
   const state = uploadState(upload);
   switch (state.kind) {
-    case 'retrying':
-      return (
-        <Alert role="status" className={TONE_CLASSES.warning}>
-          <RotateCw />
-          <AlertTitle className="font-semibold">Retrying automatically</AlertTitle>
-          <AlertDescription className="text-warning/90">{state.error.message} It will be tried again shortly.</AlertDescription>
-        </Alert>
-      );
-
-    case 'waiting':
-      return (
-        <Alert role="status">
-          <Clock />
-          <AlertTitle className="font-semibold">Waiting to be processed</AlertTitle>
-          <AlertDescription>Processing usually starts within a few seconds.</AlertDescription>
-        </Alert>
-      );
-
-    case 'processing':
-    case 'uploading':
-      return (
-        <Alert role="status" className="border-brand/20 bg-brand-soft text-brand">
-          <Sparkles className="animate-pulse motion-reduce:animate-none" />
-          <AlertTitle className="font-semibold">AI agent is reading the label</AlertTitle>
-          <AlertDescription className="text-brand/80">This usually takes 5 to 20 seconds.</AlertDescription>
-        </Alert>
-      );
-
     case 'failed':
       return (
         <Alert className={TONE_CLASSES.danger}>
@@ -69,7 +45,7 @@ export function StatusNotice({ upload }: { upload: UploadDetail }) {
         </Alert>
       );
 
-    case 'completed':
+    default:
       return null;
   }
 }

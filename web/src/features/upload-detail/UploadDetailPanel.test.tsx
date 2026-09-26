@@ -14,12 +14,14 @@ const uploads: Record<string, UploadDetail> = Object.fromEntries(
     ['def', 'oat-milk.png', 'Barista Oat Milk'],
     ['nameless', 'back-of-pack.png', null],
     ['mine', 'my-label.png', 'My Crackers'],
+    ['reading', 'still-reading.png', null],
   ].map(([id, fileName, productName]) => [
     id,
     detail({
       id: id!,
       fileName: fileName!,
       productName,
+      status: id === 'reading' ? 'processing' : 'completed',
       result: { productName: productName ?? null, brand: null, ingredients: [], allergens: [], netWeight: null },
       // Only "mine" may be deleted by whoever is signed in here (the server decides; see canDelete).
       canDelete: id === 'mine',
@@ -166,6 +168,16 @@ describe('UploadDetailPanel', () => {
     // jsdom can't apply min()/clamp(), so the width itself is checked as CSS.
     expect(panelWidth(null)).toBe('min(42rem, 55cqw)');
     expect(panelWidth(900)).toBe('clamp(min(42rem, 55cqw), 900px, max(min(42rem, 55cqw), calc(100cqw - 30rem)))');
+  });
+
+  it("shows an upload that's still being read as loading, not as a half-finished page", async () => {
+    renderAt('/uploads/reading');
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/uploads/reading', expect.anything()));
+    await new Promise((resolve) => setTimeout(resolve, 20)); // its data has arrived by now
+
+    // Named after its heading, which still says it's loading: nothing half-finished is shown.
+    expect(screen.getByRole('complementary', { name: 'Loading upload' })).toBeInTheDocument();
+    expect(screen.queryByText('still-reading.png')).not.toBeInTheDocument();
   });
 
   describe('deleting', () => {

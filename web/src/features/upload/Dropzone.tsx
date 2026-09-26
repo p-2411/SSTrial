@@ -1,9 +1,11 @@
 import { memo, useEffect, useRef, useState, type DragEvent } from 'react';
 import { UploadCloud, X } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   FILE_INPUT_ACCEPT,
   formatBytes,
   MAX_FILE_SIZE_BYTES,
+  MAX_FILES_PER_BATCH,
   SUPPORTED_TYPES_LABEL,
   validateFileMetadata,
   type SupportedMimeType,
@@ -67,8 +69,18 @@ export const Dropzone = memo(function Dropzone({ onSubmit }: { onSubmit: (files:
     };
   }, []);
 
-  const add = (files: File[]) =>
-    setStaged((current) => [...current, ...files.filter((file) => !current.some((s) => sameFile(s.file, file))).map(stage)]);
+  /** Adds files not already listed, up to MAX_FILES_PER_BATCH; says so if some didn't fit. */
+  const add = (files: File[]) => {
+    const fresh = files.filter((file) => !staged.some((s) => sameFile(s.file, file)));
+    const room = Math.max(0, MAX_FILES_PER_BATCH - staged.length);
+    if (fresh.length > room) {
+      const left = fresh.length - room;
+      toast.warning(`You can add up to ${MAX_FILES_PER_BATCH} files at a time`, {
+        description: `${left} ${left === 1 ? "file wasn't" : "files weren't"} added. Submit these first, then add the rest.`,
+      });
+    }
+    if (room > 0) setStaged([...staged, ...fresh.slice(0, room).map(stage)]);
+  };
   const remove = (id: string) => setStaged((current) => current.filter((s) => s.id !== id));
   const choose = () => inputRef.current?.click();
 
