@@ -1,5 +1,6 @@
 import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useLocation } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import type { UploadSummary } from '@label-extractor/shared';
 import { uploadKeys } from '@/api/queries';
@@ -290,6 +291,27 @@ describe('YourUploads — dismissing failures', () => {
 
     await vi.waitFor(() => expect(posted()).toEqual([{ url: '/api/uploads/delete', body: { ids: ['f2'] } }]));
     expect(onDismiss).not.toHaveBeenCalled();
+  });
+
+  it("closes the open upload's panel when it's among those dismissed", async () => {
+    uploading = [couldNotRead('f', 'blurry.png')];
+    review = [];
+    stubApi({ deleted: ['f'] });
+    function Where() {
+      return <output aria-label="Location">{useLocation().pathname}</output>;
+    }
+    renderWithProviders(
+      <>
+        <YourUploads pending={[]} onRetry={() => {}} onDismiss={() => {}} />
+        <Where />
+      </>,
+      { url: '/uploads/f' },
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Dismiss all failed' }));
+    await userEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Dismiss' }));
+
+    await vi.waitFor(() => expect(screen.getByRole('status', { name: 'Location' })).toHaveTextContent(/^\/$/));
   });
 
   it('offers no dismissing while nothing has failed', async () => {

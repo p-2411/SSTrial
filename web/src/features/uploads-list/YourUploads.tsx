@@ -46,7 +46,7 @@ export function YourUploads({ pending, onRetry, onDismiss }: YourUploadsProps) {
   const uploading = uploadingList.data;
   const review = reviewList.data;
   const reviewIds = useMemo(() => review?.map((upload) => upload.id) ?? [], [review]);
-  const selection = useSelection(reviewIds);
+  const reviewSelection = useSelection(reviewIds);
   // Under Uploading, only the failures can be ticked: to dismiss them (see UploadingActions).
   const failed = useMemo(() => uploading?.filter((upload) => upload.status === 'failed') ?? [], [uploading]);
   const failedIds = useMemo(() => failed.map((upload) => upload.id), [failed]);
@@ -83,7 +83,7 @@ export function YourUploads({ pending, onRetry, onDismiss }: YourUploadsProps) {
               {tab === 'uploading' && (failed.length > 0 || unsent.length > 0) && (
                 <UploadingActions failed={failed} unsent={unsent} selection={failedSelection} onDismiss={onDismiss} />
               )}
-              {tab === 'review' && review && review.length > 0 && <ReviewActions uploads={review} selection={selection} />}
+              {tab === 'review' && review && review.length > 0 && <ReviewActions uploads={review} selection={reviewSelection} />}
             </div>
 
             <TabsContent value="uploading">
@@ -92,26 +92,26 @@ export function YourUploads({ pending, onRetry, onDismiss }: YourUploadsProps) {
                   {pending.map((upload) => (
                     <PendingUploadRow key={upload.localId} upload={upload} onRetry={onRetry} onDismiss={onDismiss} />
                   ))}
-                  {uploading?.map((upload) =>
-                    upload.status === 'failed' ? (
+                  {uploading?.map((upload) => {
+                    // Only a failure has a box to tick (see UploadingActions).
+                    const tickable = upload.status === 'failed';
+                    return (
                       <UploadRow
                         key={upload.id}
                         upload={upload}
                         now={now}
-                        selected={failedSelection.isSelected(upload.id)}
-                        onSelect={failedSelection.toggle}
+                        selected={tickable && failedSelection.isSelected(upload.id)}
+                        onSelect={tickable ? failedSelection.toggle : undefined}
                       />
-                    ) : (
-                      <UploadRow key={upload.id} upload={upload} now={now} />
-                    ),
-                  )}
+                    );
+                  })}
                 </ul>
               </ListState>
             </TabsContent>
 
             <TabsContent value="review">
               <ListState list={reviewList} rows={review}>
-                <ReviewList uploads={review ?? []} selection={selection} now={now} />
+                <ReviewList uploads={review ?? []} selection={reviewSelection} now={now} />
               </ListState>
             </TabsContent>
           </Tabs>

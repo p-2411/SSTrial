@@ -1,12 +1,10 @@
 import { useState } from 'react';
 import type { UploadSummary } from '@label-extractor/shared';
-import { useDeleteUploads } from '@/api/queries';
-import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import type { PendingUpload } from '@/features/upload/useFileUploads';
-import { countOf } from '@/lib/format';
-import { toastBatchResult } from '@/lib/toasts';
 import type { Selection } from '@/lib/useSelection';
+import { DeleteUploadsDialog } from './DeleteUploadsDialog';
+import { SelectAllButton } from './SelectAllButton';
 
 interface UploadingActionsProps {
   /** Uploads the server couldn't read. */
@@ -28,7 +26,6 @@ interface UploadingActionsProps {
 export function UploadingActions({ failed, unsent, selection, onDismiss }: UploadingActionsProps) {
   // What the dialog asks about, fixed as it opens: the list may change underneath it.
   const [confirming, setConfirming] = useState<{ ids: string[]; withUnsent: boolean } | null>(null);
-  const remove = useDeleteUploads();
   const picked = selection.selected.length > 0;
 
   const dismissUnsent = () => unsent.forEach((upload) => onDismiss(upload.localId));
@@ -40,43 +37,19 @@ export function UploadingActions({ failed, unsent, selection, onDismiss }: Uploa
     else setConfirming({ ids, withUnsent: !picked });
   };
 
-  const confirm = () => {
-    if (!confirming) return;
-    remove.mutate(confirming.ids, {
-      onSuccess: (deleted) => {
-        if (confirming.withUnsent) dismissUnsent();
-        toastBatchResult(deleted.length, confirming.ids.length, {
-          noun: 'failed upload',
-          done: 'dismissed',
-          skipped: 'not dismissed',
-          why: 'They changed meanwhile. Look at them again.',
-        });
-        selection.clear();
-        setConfirming(null);
-      },
-    });
-  };
-
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {failed.length > 0 && (
-        // A tertiary action: plain text, underlined on hover (like Review's).
-        <Button variant="link" size="sm" className="px-1 font-medium" onClick={() => selection.setAll(!selection.allSelected)}>
-          {selection.allSelected ? 'Deselect all' : 'Select all'}
-        </Button>
-      )}
+      {failed.length > 0 && <SelectAllButton selection={selection} />}
       <Button variant="outline" size="sm" onClick={dismiss}>
         {picked ? `Dismiss ${selection.selected.length}` : 'Dismiss all failed'}
       </Button>
-      <ConfirmDialog
-        open={confirming !== null}
-        title={`Dismiss ${countOf(confirming?.ids.length ?? 0, 'failed upload')}?`}
+      <DeleteUploadsDialog
+        ids={confirming?.ids ?? null}
+        noun="failed upload"
+        verb="Dismiss"
         description="They're deleted with their files, so they can't be tried again. The activity log keeps their history."
-        confirmLabel="Dismiss"
-        cancelLabel="Keep them"
-        variant="destructive"
-        request={remove}
-        onConfirm={confirm}
+        skippedWhy="They changed meanwhile. Look at them again."
+        onDeleted={() => confirming?.withUnsent && dismissUnsent()}
         onClose={() => setConfirming(null)}
       />
     </div>

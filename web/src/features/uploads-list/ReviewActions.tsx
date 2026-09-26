@@ -9,6 +9,7 @@ import { useSubmitToProducts } from '@/features/upload-detail/useSubmitToProduct
 import { countOf } from '@/lib/format';
 import type { Selection } from '@/lib/useSelection';
 import { DeleteSelected } from './DeleteSelected';
+import { SelectAllButton } from './SelectAllButton';
 
 /**
  * The Review tab's actions. An upload the model wasn't sure of ("Check (72%)", amber or red) must
@@ -35,10 +36,7 @@ export function ReviewActions({ uploads, selection }: { uploads: UploadSummary[]
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {/* A tertiary action: plain text, underlined on hover. */}
-      <Button variant="link" size="sm" className="px-1 font-medium" onClick={() => selection.setAll(!selection.allSelected)}>
-        {selection.allSelected ? 'Deselect all' : 'Select all'}
-      </Button>
+      <SelectAllButton selection={selection} />
       <DeleteSelected ids={selection.selected} noun="upload" />
       {toCheck.length > 0 && (
         <Button variant="outline" size="sm" onClick={() => setConfirmingCheck(toCheck)}>
