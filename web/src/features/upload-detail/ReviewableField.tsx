@@ -1,6 +1,6 @@
 import { useId, type ReactNode } from 'react';
 import { Pencil } from 'lucide-react';
-import { FIELD_LABELS, REVIEWED_SCORE, type FieldConfidence, type FieldReview, type LabelField } from '@label-extractor/shared';
+import { FIELD_LABELS, type FieldConfidence, type FieldReview, type LabelField } from '@label-extractor/shared';
 import { confidenceDotClass, ConfidenceScore } from '@/components/Confidence';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -12,10 +12,10 @@ interface ReviewState {
 
 /**
  * One field of the extracted data: a marker coloured by confidence, the label, the value (or its
- * editor), and on the right its confidence ("95%"). Once a person has checked it, it's 100% (who,
- * in its tooltip); once they've corrected it, it says "Edited" (who, and when, is in the detail's
- * header). Edit appears on hover and focus. Under a doubtful value, the reasons for the doubt;
- * confirming it is the card footer's "Mark as checked".
+ * editor), and on the right its confidence ("95%"), or, once a person has reviewed it, "Checked" or
+ * "Edited" (who, in its tooltip; the latest, and when, in the detail's header). A reviewed field
+ * counts as 100% towards the upload's confidence. Edit appears on hover and focus. Under a
+ * doubtful value, the reasons for the doubt; confirming it is the card footer's "Mark as checked".
  *
  * As a `row` (the default) it's a term and its value, for a <dl>. As a `block` it's a section of
  * its own, headed by the label with the value at full width underneath, for long values.
@@ -51,13 +51,7 @@ export function ReviewableField({
   );
   const actions = !editing && (
     <>
-      {review?.kind === 'edited' ? (
-        <EditedMark />
-      ) : review ? (
-        <ConfidenceScore score={REVIEWED_SCORE} title={`Checked by ${review.by ?? 'a former member'}`} />
-      ) : (
-        confidence && <ConfidenceScore score={confidence.score} />
-      )}
+      {review ? <ReviewedMark review={review} /> : confidence && <ConfidenceScore score={confidence.score} />}
       <EditButton name={name} onClick={onEdit} />
     </>
   );
@@ -110,9 +104,14 @@ export function ReviewableField({
   );
 }
 
-/** In place of a corrected field's score: a person set its value. */
-function EditedMark() {
-  return <span className="shrink-0 text-xs text-muted-foreground">Edited</span>;
+/** In place of a reviewed field's score: that a person settled it, and who (in the tooltip). */
+function ReviewedMark({ review }: { review: FieldReview }) {
+  const kind = review.kind === 'edited' ? 'Edited' : 'Checked';
+  return (
+    <span className="shrink-0 text-xs text-muted-foreground" title={`${kind} by ${review.by ?? 'a former member'}`}>
+      {kind}
+    </span>
+  );
 }
 
 /** Under a value that nobody has reviewed yet: why its score is lower, if the model or a check said. */

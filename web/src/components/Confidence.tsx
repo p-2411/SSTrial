@@ -28,10 +28,10 @@ export function confidenceDotClass(score: number | null): string {
  * A score, as just the number: "95%". What it is shows on hover, and is read out to screen readers
  * ("Confidence 95%").
  */
-export function ConfidenceScore({ score, title = MEANING }: { score: number; title?: string }) {
+export function ConfidenceScore({ score }: { score: number }) {
   const band = BANDS[confidenceBand(score)];
   return (
-    <span className={cn('shrink-0 text-xs whitespace-nowrap tabular-nums', band.text)} title={title}>
+    <span className={cn('shrink-0 text-xs whitespace-nowrap tabular-nums', band.text)} title={MEANING}>
       <span className="sr-only">Confidence </span>
       {score}%{band.spoken && <span className="sr-only">{band.spoken}</span>}
     </span>

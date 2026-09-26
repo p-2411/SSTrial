@@ -40,7 +40,7 @@ export function needsChecking(score: number): boolean {
 }
 
 /** A field a person has checked, or corrected: as certain as it gets. */
-export const REVIEWED_SCORE = 100;
+const REVIEWED_SCORE = 100;
 
 /**
  * The upload's score: its least certain field, because one doubtful field is what makes a label

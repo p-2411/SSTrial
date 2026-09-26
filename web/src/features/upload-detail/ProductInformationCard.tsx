@@ -26,8 +26,9 @@ import { useFieldReview } from './useFieldReview';
  * Every field can be corrected in place, one at a time (see useFieldReview). When the extraction
  * was scored, each field's marker takes its confidence colour and its score sits on the right, in
  * a column headed "Confidence". The footer's "Mark as checked" confirms every flagged field as
- * right at once. A checked field's score becomes 100%, and a corrected one says "Edited"; who did
- * it, and when, is in the detail's header.
+ * right at once. A checked or corrected field says "Checked" or "Edited" in place of its score,
+ * and counts as 100% towards the upload's confidence; who did it, and when, is in the detail's
+ * header.
  */
 export function ProductInformationCard({ upload }: { upload: UploadDetail & { result: LabelExtraction } }) {
   const { productName, brand, netWeight, allergens, ingredients } = upload.result;

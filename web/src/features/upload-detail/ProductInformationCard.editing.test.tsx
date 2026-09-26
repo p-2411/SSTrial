@@ -192,12 +192,11 @@ describe('reviewing', () => {
     expect(sent).toEqual([{ revision: 0, checked: ['brand', 'netWeight'] }]);
   });
 
-  it('shows a checked field as 100% confident, with who checked it in its tooltip', () => {
+  it('says a checked field was checked in place of its score, with who in its tooltip', () => {
     const card = renderCard(
       upload({ fieldReviews: { netWeight: { kind: 'checked', by: 'alice@example.com', at: new Date().toISOString() } } }),
     );
-    expect(within(card).getByTitle('Checked by alice@example.com')).toHaveTextContent('100%');
-    expect(within(card).queryByText('Checked')).not.toBeInTheDocument();
+    expect(within(card).getByTitle('Checked by alice@example.com')).toHaveTextContent('Checked');
     expect(within(card).queryByText('58%')).not.toBeInTheDocument();
     // Nothing flagged is left, so there's nothing to confirm.
     expect(within(card).queryByRole('button', { name: 'Mark flagged fields as checked' })).not.toBeInTheDocument();
