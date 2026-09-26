@@ -37,7 +37,7 @@ export function ReviewActions({ uploads, selection }: { uploads: UploadSummary[]
   return (
     <div className="flex flex-wrap items-center gap-2">
       <SelectAllButton selection={selection} />
-      <DeleteSelected ids={selection.selected} noun="upload" />
+      <DeleteSelected ids={selection.selected} />
       {toCheck.length > 0 && (
         <Button variant="outline" size="sm" onClick={() => setConfirmingCheck(toCheck)}>
           {picked ? `Mark ${toCheck.length} as checked` : 'Mark all as checked'}

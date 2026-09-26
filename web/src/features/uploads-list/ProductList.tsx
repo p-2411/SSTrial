@@ -55,7 +55,7 @@ export function ProductList() {
         </div>
         {ids.length > 0 && (
           <CardAction className="flex items-center gap-2">
-            <DeleteSelected ids={picked} noun="product" />
+            <DeleteSelected ids={picked} />
             <ExportMenu
               products={picked.length > 0 ? { ids: picked } : filter}
               label={picked.length > 0 ? `${countOf(picked.length, 'product')} selected` : filtered ? 'Products matching the filter' : 'All products'}

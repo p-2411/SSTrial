@@ -238,7 +238,7 @@ describe('YourUploads — deleting from Review', () => {
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument(); // nothing ticked
     await userEvent.click(screen.getByRole('checkbox', { name: 'Select Barista Oat Milk' }));
     await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
-    const dialog = screen.getByRole('alertdialog', { name: 'Delete 1 upload?' });
+    const dialog = screen.getByRole('alertdialog', { name: 'Delete 1 selected?' });
     await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
     await vi.waitFor(() => expect(posted()).toEqual([{ url: '/api/uploads/delete', body: { ids: ['b'] } }]));

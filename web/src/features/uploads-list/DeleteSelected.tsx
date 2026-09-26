@@ -4,10 +4,9 @@ import { DeleteUploadsDialog } from './DeleteUploadsDialog';
 
 /**
  * Deletes the picked uploads (`ids`) together: a Delete button, there while any are picked, and the
- * dialog it opens, since deleting can't be undone (see DeleteUploadsDialog). `noun` names them
- * ("product", "upload").
+ * dialog it opens, since deleting can't be undone (see DeleteUploadsDialog).
  */
-export function DeleteSelected({ ids, noun }: { ids: string[]; noun: string }) {
+export function DeleteSelected({ ids }: { ids: string[] }) {
   // The uploads the dialog asks about, fixed as it opens: the list may change underneath it.
   const [confirming, setConfirming] = useState<string[] | null>(null);
 
@@ -27,7 +26,6 @@ export function DeleteSelected({ ids, noun }: { ids: string[]; noun: string }) {
       )}
       <DeleteUploadsDialog
         ids={confirming}
-        noun={noun}
         verb="Delete"
         description="Their files and extracted data are removed for good. The activity log keeps their history."
         skippedWhy="Only whoever uploaded it, or an admin, can delete it."

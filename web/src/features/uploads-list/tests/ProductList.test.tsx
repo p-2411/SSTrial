@@ -164,7 +164,7 @@ describe('searching, filtering and picking products', () => {
     await userEvent.click(screen.getByRole('checkbox', { name: 'Select Maple Pecan Crunch' }));
 
     await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
-    const dialog = screen.getByRole('alertdialog', { name: 'Delete 2 products?' });
+    const dialog = screen.getByRole('alertdialog', { name: 'Delete 2 selected?' });
     await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
     await vi.waitFor(() => expect(requests).toContainEqual({ url: '/api/uploads/delete', method: 'POST', body: { ids: ['a', 'b'] } }));

@@ -12,8 +12,11 @@ const DONE: Record<DeleteVerb, string> = { Delete: 'deleted', Dismiss: 'dismisse
 interface DeleteUploadsDialogProps {
   /** The uploads it asks about, fixed when it opened (the list may change underneath it); null when closed. */
   ids: string[] | null;
-  /** One of them: "product", "failed upload". */
-  noun: string;
+  /**
+   * One of them, where the action alone doesn't say what goes: "Dismiss 2 failed uploads?". Left out,
+   * it's whatever is ticked: "Delete 3 selected?".
+   */
+  noun?: string;
   verb: DeleteVerb;
   /** What deleting them means, since it can't be undone. */
   description: string;
@@ -49,7 +52,7 @@ export function DeleteUploadsDialog({ ids, noun, verb, description, skippedWhy, 
   return (
     <ConfirmDialog
       open={ids !== null}
-      title={`${verb} ${countOf(ids?.length ?? 0, noun)}?`}
+      title={`${verb} ${noun ? countOf(ids?.length ?? 0, noun) : `${ids?.length ?? 0} selected`}?`}
       description={description}
       confirmLabel={verb}
       cancelLabel="Keep them"
