@@ -6,12 +6,8 @@ import {
   type ExtractionConfidence,
   type LabelField,
   type FieldReviews,
-  UPLOAD_FILTER_IDS,
-  UPLOAD_FILTERS,
   uploadErrorMessage,
-  type UploadCountsResponse,
   type UploadDetail,
-  type UploadStatus,
   type UploadSummary,
 } from '@label-extractor/shared';
 import { RETRY_POLICY } from '../extraction/retry-policy.ts';
@@ -88,12 +84,4 @@ function checkedConfidence(record: UploadRecord): ExtractionConfidence | null {
 
 function reviewedFields(reviews: StoredFieldReviews): LabelField[] {
   return Object.keys(reviews) as LabelField[];
-}
-
-/** How many uploads each list view holds, from the per-status counts. */
-export function toUploadCounts(byStatus: Partial<Record<UploadStatus, number>>): UploadCountsResponse {
-  const total = (statuses: readonly UploadStatus[]) => statuses.reduce((sum, status) => sum + (byStatus[status] ?? 0), 0);
-  return {
-    counts: Object.fromEntries(UPLOAD_FILTER_IDS.map((id) => [id, total(UPLOAD_FILTERS[id])])) as UploadCountsResponse['counts'],
-  };
 }

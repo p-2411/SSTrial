@@ -17,23 +17,38 @@ export function isUploadStatus(value: string): value is UploadStatus {
 }
 
 /**
- * The views of the upload list. The server does the filtering and counting, so both stay correct
- * however many uploads there are. `uploading` is in none of them: the browser shows its own.
+ * The two upload lists, filtered by the server:
+ *   products  finished products, everyone's: the shared, lasting record
+ *   mine      the signed-in person's own uploads still under way or failed, which nobody else sees
+ * `uploading` is in neither: until its bytes have arrived, the browser that's sending it shows it.
  */
-export const UPLOAD_FILTERS = {
-  all: ['queued', 'processing', 'completed', 'failed'],
-  'in-progress': ['queued', 'processing'],
-  completed: ['completed'],
-  failed: ['failed'],
+export const UPLOAD_VIEWS = {
+  products: ['completed'],
+  mine: ['queued', 'processing', 'failed'],
 } as const satisfies Record<string, readonly Exclude<UploadStatus, 'uploading'>[]>;
 
-export type UploadFilter = keyof typeof UPLOAD_FILTERS;
-export const UPLOAD_FILTER_IDS = Object.keys(UPLOAD_FILTERS) as UploadFilter[];
+export type UploadView = keyof typeof UPLOAD_VIEWS;
+export const UPLOAD_VIEW_IDS = Object.keys(UPLOAD_VIEWS) as UploadView[];
+
+/** Statuses still being worked on: worth watching for changes, and not ready to open. */
+const ACTIVE_STATUSES: readonly UploadStatus[] = ['queued', 'processing'];
 
 /** Whether the upload is still being worked on (and so worth watching for changes). */
 export function isActiveStatus(status: UploadStatus): boolean {
-  return (UPLOAD_FILTERS['in-progress'] as readonly UploadStatus[]).includes(status);
+  return ACTIVE_STATUSES.includes(status);
 }
+
+/**
+ * Most files one person can pick at once. Each is fingerprinted in the browser before it's sent, a
+ * few at a time, so this keeps a batch quick to start and the page responsive.
+ */
+export const MAX_FILES_PER_BATCH = 50;
+
+/**
+ * Most uploads one person can have under way (uploading, waiting or being read) at once. Checked
+ * when an upload is requested, so nobody can fill the queue for everyone else.
+ */
+export const MAX_OPEN_UPLOADS_PER_PERSON = 200;
 
 /**
  * Why an upload failed (or, while `queued`, why its last attempt failed). Only the code is stored;

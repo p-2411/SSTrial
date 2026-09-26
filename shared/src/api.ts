@@ -1,5 +1,5 @@
 import type { FileValidationErrorCode } from './files.ts';
-import type { UploadDetail, UploadFilter, UploadStatus, UploadSummary } from './uploads.ts';
+import type { UploadDetail, UploadStatus, UploadSummary } from './uploads.ts';
 
 /**
  * The HTTP API's contract: response bodies, error codes and the live event stream. Request bodies
@@ -24,11 +24,6 @@ export interface ListUploadsResponse {
   nextCursor: string | null;
 }
 
-/** GET /api/uploads/counts — how many uploads each view holds. */
-export interface UploadCountsResponse {
-  counts: Record<UploadFilter, number>;
-}
-
 /**
  * GET /api/uploads/:id, POST …/complete, POST …/retry, PATCH …/result (RESULT_EDIT_PATH).
  * (DELETE /api/uploads/:id answers 204 with no body.)
@@ -39,6 +34,7 @@ export interface UploadResponse {
 
 export type ApiErrorCode =
   | FileValidationErrorCode // POST /api/uploads: the file's name, type or size
+  | 'TOO_MANY_UPLOADS' // POST /api/uploads: this person already has MAX_OPEN_UPLOADS_PER_PERSON under way
   | 'FILE_NOT_UPLOADED' // POST …/complete: nothing arrived in storage
   | 'FILE_CONTENT_MISMATCH' // POST …/complete: the bytes aren't a supported type
   | 'NOT_RETRYABLE' // POST …/retry

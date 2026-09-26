@@ -1,15 +1,16 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import {
+  canViewUpload,
   createUploadRequestSchema,
   editResultRequestSchema,
   listUploadsQuerySchema,
+  MAX_OPEN_UPLOADS_PER_PERSON,
   SUPPORTED_TYPES_LABEL,
-  UPLOAD_FILTER_IDS,
-  UPLOAD_FILTERS,
+  UPLOAD_VIEW_IDS,
+  UPLOAD_VIEWS,
   type CreateUploadResponse,
   type ListUploadsResponse,
-  type UploadCountsResponse,
   type UploadResponse,
   type UploadHistoryResponse,
 } from '@label-extractor/shared';
@@ -21,7 +22,7 @@ import { editResult } from '../../uploads/edit.ts';
 import { finaliseUpload } from '../../uploads/finalise.ts';
 import { requestUpload } from '../../uploads/intake.ts';
 import { loadUploadDetail } from '../../uploads/detail.ts';
-import { toUploadCounts, toUploadSummary } from '../../uploads/presenter.ts';
+import { toUploadSummary } from '../../uploads/presenter.ts';
 import { retryUpload } from '../../uploads/retry.ts';
 import { deleteUpload } from '../../uploads/delete.ts';
 import type { UploadIntake, UploadQueries, UploadRecord, UploadRemoval, UploadReviews } from '../../uploads/store.ts';
@@ -62,6 +63,16 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
     return { upload: await loadUploadDetail({ storage, members, log: request.log, viewer: request.member! }, upload) };
   }
 
+  /**
+   * The upload named in the URL, if the person asking may see it (see canViewUpload); otherwise a
+   * 404, the same as for one that doesn't exist, so someone else's unfinished upload stays private.
+   */
+  async function visibleUpload(request: FastifyRequest): Promise<UploadRecord> {
+    const upload = await uploads.findById(uploadId(request.params));
+    if (!upload || !canViewUpload({ status: upload.status, uploaderId: upload.uploadedBy }, request.member!)) throw notFound();
+    return upload;
+  }
+
   // 1. Ask to upload a file ------------------------------------------------------------------
   app.post('/api/uploads', async (request, reply): Promise<CreateUploadResponse> => {
     const body = createUploadRequestSchema.safeParse(request.body);
@@ -73,6 +84,12 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
     switch (result.outcome) {
       case 'invalid':
         throw new ApiError(422, result.code, result.message);
+      case 'too-many':
+        throw new ApiError(
+          429,
+          'TOO_MANY_UPLOADS',
+          `You have ${MAX_OPEN_UPLOADS_PER_PERSON} uploads under way. Wait for some to finish, then try again.`,
+        );
       case 'duplicate':
         return { kind: 'duplicate', upload: toUploadSummary(result.upload) };
       case 'created':
@@ -102,14 +119,16 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
   });
 
   // List & detail -------------------------------------------------------------------------
+  // Two views: everyone's finished products, or the asker's own uploads still under way or failed.
   app.get('/api/uploads', async (request): Promise<ListUploadsResponse> => {
     const query = listUploadsQuerySchema.safeParse(request.query);
     if (!query.success) {
-      throw new ApiError(400, 'BAD_REQUEST', `Use status=${UPLOAD_FILTER_IDS.join('|')}, a cursor from a previous page, and limit=1–100.`);
+      throw new ApiError(400, 'BAD_REQUEST', `Use view=${UPLOAD_VIEW_IDS.join('|')}, a cursor from a previous page, and limit=1–100.`);
     }
-    const { status, cursor, limit } = query.data;
+    const { view, cursor, limit } = query.data;
+    const uploadedBy = view === 'mine' ? request.member!.id : undefined;
     // Ask for one extra row: if it comes back, there's another page after this one.
-    const records = await uploads.list({ statuses: UPLOAD_FILTERS[status], limit: limit + 1, after: cursor });
+    const records = await uploads.list({ statuses: UPLOAD_VIEWS[view], uploadedBy, limit: limit + 1, after: cursor });
     const page = records.slice(0, limit);
     return {
       uploads: page.map(toUploadSummary),
@@ -117,14 +136,8 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
     };
   });
 
-  app.get('/api/uploads/counts', async (): Promise<UploadCountsResponse> => {
-    return toUploadCounts(await uploads.countByStatus());
-  });
-
   app.get('/api/uploads/:id', async (request): Promise<UploadResponse> => {
-    const upload = await uploads.findById(uploadId(request.params));
-    if (!upload) throw notFound();
-    return detailResponse(upload, request);
+    return detailResponse(await visibleUpload(request), request);
   });
 
   // People correcting or confirming the extracted data ----------------------------------------
@@ -152,15 +165,15 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
   // One upload's history, for its detail: open to anyone who can see the upload, unlike the whole
   // activity log. Newest first from the store, turned round so the story reads in order.
   app.get('/api/uploads/:id/history', async (request): Promise<UploadHistoryResponse> => {
-    const id = uploadId(request.params);
-    if (!(await uploads.findById(id))) throw notFound();
+    const { id } = await visibleUpload(request);
     const newestFirst = await events.list({ types: [], uploadId: id, limit: UPLOAD_HISTORY_LIMIT });
     return { events: newestFirst.map(toLogEvent).reverse() };
   });
 
   // Manual retry of a failed upload ------------------------------------------------------------
   app.post('/api/uploads/:id/retry', async (request): Promise<UploadResponse> => {
-    const result = await retryUpload({ uploads, events }, uploadId(request.params), request.member!);
+    const { id } = await visibleUpload(request);
+    const result = await retryUpload({ uploads, events }, id, request.member!);
 
     switch (result.outcome) {
       case 'requeued':

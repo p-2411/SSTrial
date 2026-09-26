@@ -1,4 +1,5 @@
 import {
+  MAX_OPEN_UPLOADS_PER_PERSON,
   SUPPORTED_FILE_TYPES,
   validateFileMetadata,
   type CreateUploadRequest,
@@ -18,12 +19,14 @@ import type { UploadIntake, UploadQueries, UploadRecord } from './store.ts';
 
 export type UploadRequestResult =
   | { outcome: 'created'; upload: UploadRecord; uploadUrl: string }
-  /** An identical file is already queued, processing or done. */
+  /** An identical file is already done, or already under way for this person. */
   | { outcome: 'duplicate'; upload: UploadRecord }
+  /** This person already has MAX_OPEN_UPLOADS_PER_PERSON under way. */
+  | { outcome: 'too-many' }
   | { outcome: 'invalid'; code: FileValidationErrorCode; message: string };
 
 export interface IntakeDeps {
-  uploads: Pick<UploadQueries, 'findByContentHash'> & Pick<UploadIntake, 'create'>;
+  uploads: Pick<UploadQueries, 'findByContentHash' | 'countUnderWay'> & Pick<UploadIntake, 'create'>;
   storage: Pick<FileStorage, 'createUploadUrl'>;
   events: EventLog;
 }
@@ -38,13 +41,18 @@ export async function requestUpload(
   if (!validation.ok) return { outcome: 'invalid', code: validation.code, message: validation.message };
 
   // The hash is the browser's claim; the worker checks the real bytes before reusing any result.
+  // Someone else's upload of the same file only counts once it's done: until then it's theirs alone
+  // (see canViewUpload), so pointing at it would point at something this person can't open.
   if (request.sha256) {
     const existing = await deps.uploads.findByContentHash(request.sha256);
-    if (existing) {
+    if (existing && (existing.status === 'completed' || existing.uploadedBy === uploader.id)) {
       await deps.events.record(logEvents.uploadDuplicate(existing, request.fileName.trim()));
       return { outcome: 'duplicate', upload: existing };
     }
   }
+
+  // A soft limit: two requests at the same moment can each pass it, which is fine for its purpose.
+  if ((await deps.uploads.countUnderWay(uploader.id)) >= MAX_OPEN_UPLOADS_PER_PERSON) return { outcome: 'too-many' };
 
   const id = crypto.randomUUID();
   const storagePath = storagePathFor(id, validation.mimeType);

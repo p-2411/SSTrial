@@ -103,12 +103,13 @@ export interface UploadQueries {
   /** The newest queued, processing or completed upload of a file with this hash, if any. */
   findByContentHash(sha256: string): Promise<UploadRecord | null>;
   /**
-   * One page of uploads in the given statuses, newest first. `after` is the ID of the last upload
-   * on the previous page (keyset pagination: stable while new uploads arrive, and fast at any depth).
+   * One page of uploads in the given statuses, newest first, and only `uploadedBy`'s if given.
+   * `after` is the ID of the last upload on the previous page (keyset pagination: stable while new
+   * uploads arrive, and fast at any depth).
    */
-  list(options: { statuses: readonly UploadStatus[]; limit: number; after?: string }): Promise<UploadRecord[]>;
-  /** How many uploads are in each status (excluding ones still being uploaded). */
-  countByStatus(): Promise<Partial<Record<UploadStatus, number>>>;
+  list(options: { statuses: readonly UploadStatus[]; uploadedBy?: string; limit: number; after?: string }): Promise<UploadRecord[]>;
+  /** How many uploads this person has under way (uploading, waiting or being read). */
+  countUnderWay(uploadedBy: string): Promise<number>;
   /** Every completed upload, newest first, read in batches so an export of any size can stream. */
   streamCompleted(): AsyncIterable<UploadRecord>;
 }
@@ -238,22 +239,24 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
         limit 1`);
     },
 
-    async list({ statuses, limit, after }) {
+    async list({ statuses, uploadedBy, limit, after }) {
       // The cursor row's own values are looked up in the database, so the comparison uses
       // Postgres's full microsecond timestamps rather than a millisecond-rounded copy.
       const rows = await sql`
         select * from uploads
         where status = any(${statuses as string[]}::upload_status[])
+          ${uploadedBy ? sql`and uploaded_by = ${uploadedBy}` : sql``}
           ${after ? sql`and (created_at, id) < (select created_at, id from uploads where id = ${after})` : sql``}
         order by created_at desc, id desc
         limit ${limit}`;
       return rows.map(toRecord);
     },
 
-    async countByStatus() {
-      const rows = await sql`
-        select status, count(*)::int as count from uploads where status <> 'uploading' group by status`;
-      return Object.fromEntries(rows.map((row) => [row.status, row.count]));
+    async countUnderWay(uploadedBy) {
+      const [row] = await sql`
+        select count(*)::int as count from uploads
+        where uploaded_by = ${uploadedBy} and status in ('uploading', 'queued', 'processing')`;
+      return row!.count;
     },
 
     async *streamCompleted() {

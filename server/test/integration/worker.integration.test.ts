@@ -326,10 +326,27 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       expect(ours).toEqual(all.map((u) => u.id).filter((id) => ids.includes(id)));
     });
 
-    it('counts uploads by status', async () => {
-      const counts = await uploads.countByStatus();
-      expect(counts.failed).toBeGreaterThanOrEqual(7);
-      expect(counts).not.toHaveProperty('uploading');
+    it("lists one person's uploads, and counts the ones they have under way", async () => {
+      const person = crypto.randomUUID();
+      await sql`insert into auth.users (id, email) values (${person}, ${`${person}@example.test`})`;
+      try {
+        const theirs: string[] = [];
+        for (const status of ['uploading', 'queued', 'failed'] as const) {
+          const id = crypto.randomUUID();
+          createdIds.push(id);
+          theirs.push(id);
+          await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png`, contentSha256: null, uploadedBy: person });
+          const reason = status === 'failed' ? 'LLM_TIMEOUT' : null; // a failed upload must say why
+          await sql`update uploads set status = ${status}, error_code = ${reason} where id = ${id}`;
+        }
+
+        const listed = await uploads.list({ statuses: ['queued', 'failed'], uploadedBy: person, limit: 10 });
+        expect(listed.map((u) => u.id).sort()).toEqual([theirs[1], theirs[2]].sort());
+        expect(await uploads.countUnderWay(person)).toBe(2); // uploading and queued; failed isn't under way
+      } finally {
+        await sql`delete from uploads where uploaded_by = ${person}`;
+        await sql`delete from auth.users where id = ${person}`;
+      }
     });
   });
 

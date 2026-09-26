@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { LABEL_FIELDS, type LabelField } from './fields.ts';
 import { LOG_EVENT_TYPE_IDS, type LogEventType } from './logs.ts';
 import { NET_QUANTITY_UNITS } from './units.ts';
-import { UPLOAD_FILTER_IDS, type UploadFilter } from './uploads.ts';
+import { UPLOAD_VIEW_IDS, type UploadView } from './uploads.ts';
 
 /**
  * Zod schemas for request bodies and query strings, which the API validates.
@@ -22,9 +22,9 @@ export const createUploadRequestSchema = z.object({
 });
 export type CreateUploadRequest = z.infer<typeof createUploadRequestSchema>;
 
-/** GET /api/uploads?status=…&cursor=…&limit=… — newest first, one page at a time. */
+/** GET /api/uploads?view=…&cursor=…&limit=… — newest first, one page at a time. */
 export const listUploadsQuerySchema = z.object({
-  status: z.enum(UPLOAD_FILTER_IDS as [UploadFilter, ...UploadFilter[]]).default('all'),
+  view: z.enum(UPLOAD_VIEW_IDS as [UploadView, ...UploadView[]]).default('products'),
   /** The `nextCursor` of the previous page. */
   cursor: z.uuid().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),

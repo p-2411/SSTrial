@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { MAX_FILE_SIZE_BYTES } from '@label-extractor/shared';
+import { MAX_FILE_SIZE_BYTES, MAX_OPEN_UPLOADS_PER_PERSON } from '@label-extractor/shared';
 import { buildApp, type App } from '../../src/api/app.ts';
 import {
   ADMIN,
@@ -127,6 +127,16 @@ describe('POST /api/uploads — duplicate files', () => {
     expect(events.events).toMatchObject([{ type: 'upload.duplicate', uploadId: ID }]);
   });
 
+  it("does not point at someone else's upload of the same file while it's still under way (it's theirs alone)", async () => {
+    uploads.seed({ id: ID, status: 'processing', contentSha256: HASH, uploadedBy: '00000000-0000-4000-8000-0000000000ff' });
+    expect((await createUpload(request)).json().kind).toBe('created');
+  });
+
+  it("points at the person's own upload of the same file while it's under way", async () => {
+    uploads.seed({ id: ID, status: 'processing', contentSha256: HASH, uploadedBy: ADMIN.id });
+    expect((await createUpload(request)).json()).toMatchObject({ kind: 'duplicate', upload: { id: ID } });
+  });
+
   it.each(['failed', 'uploading'] as const)('does not treat a %s upload of the same file as a duplicate', async (status) => {
     uploads.seed({ id: ID, status, contentSha256: HASH, error: status === 'failed' ? { code: 'LLM_TIMEOUT' } : null });
 
@@ -217,16 +227,28 @@ describe('POST /api/uploads/:id/complete — confirm the upload and queue it', (
   });
 });
 
-describe('GET /api/uploads — list', () => {
-  it('lists newest first and hides uploads the browser has not finished', async () => {
-    uploads.seed({ id: 'a0000000-0000-4000-8000-000000000001', status: 'completed', createdAt: new Date('2026-01-01') });
-    uploads.seed({ id: 'a0000000-0000-4000-8000-000000000002', status: 'queued', createdAt: new Date('2026-01-02') });
-    uploads.seed({ id: 'a0000000-0000-4000-8000-000000000003', status: 'uploading', createdAt: new Date('2026-01-03') });
+describe('GET /api/uploads — the two lists', () => {
+  const OTHER_PERSON = '00000000-0000-4000-8000-0000000000ff';
+  const list = async (query = '') =>
+    (await app.inject({ method: 'GET', url: `/api/uploads${query}` })).json().uploads as Array<{ id: string; status: string }>;
 
-    const response = await app.inject({ method: 'GET', url: '/api/uploads' });
+  it("lists everyone's finished products by default, newest first, and nothing still under way", async () => {
+    uploads.seed({ id: 'a0000000-0000-4000-8000-000000000001', status: 'completed', uploadedBy: OTHER_PERSON, createdAt: new Date('2026-01-01') });
+    uploads.seed({ id: 'a0000000-0000-4000-8000-000000000002', status: 'queued', uploadedBy: ADMIN.id, createdAt: new Date('2026-01-02') });
+    uploads.seed({ id: 'a0000000-0000-4000-8000-000000000003', status: 'uploading', uploadedBy: ADMIN.id, createdAt: new Date('2026-01-03') });
+    uploads.seed({ id: 'a0000000-0000-4000-8000-000000000004', status: 'completed', uploadedBy: ADMIN.id, createdAt: new Date('2026-01-04') });
 
-    expect(response.statusCode).toBe(200);
-    expect(response.json().uploads.map((u: { status: string }) => u.status)).toEqual(['queued', 'completed']);
+    expect((await list()).map((u) => u.id)).toEqual(['a0000000-0000-4000-8000-000000000004', 'a0000000-0000-4000-8000-000000000001']);
+  });
+
+  it("lists the asker's own uploads under way or failed, and nobody else's", async () => {
+    uploads.seed({ id: 'a0000000-0000-4000-8000-000000000001', status: 'queued', uploadedBy: ADMIN.id, createdAt: new Date('2026-01-01') });
+    uploads.seed({ id: 'a0000000-0000-4000-8000-000000000002', status: 'failed', uploadedBy: ADMIN.id, createdAt: new Date('2026-01-02') });
+    uploads.seed({ id: 'a0000000-0000-4000-8000-000000000003', status: 'processing', uploadedBy: OTHER_PERSON, createdAt: new Date('2026-01-03') });
+    uploads.seed({ id: 'a0000000-0000-4000-8000-000000000004', status: 'completed', uploadedBy: ADMIN.id, createdAt: new Date('2026-01-04') });
+    uploads.seed({ id: 'a0000000-0000-4000-8000-000000000005', status: 'uploading', uploadedBy: ADMIN.id, createdAt: new Date('2026-01-05') });
+
+    expect((await list('?view=mine')).map((u) => u.status)).toEqual(['failed', 'queued']);
   });
 
   it('returns an empty list when there are no uploads', async () => {
@@ -234,21 +256,10 @@ describe('GET /api/uploads — list', () => {
     expect(response.json()).toEqual({ uploads: [], nextCursor: null });
   });
 
-  it('rejects an invalid limit, filter or cursor', async () => {
-    for (const query of ['limit=0', 'limit=500', 'status=pending', 'cursor=not-an-id']) {
+  it('rejects an invalid limit, view or cursor', async () => {
+    for (const query of ['limit=0', 'limit=500', 'view=everything', 'cursor=not-an-id']) {
       expect((await app.inject({ method: 'GET', url: `/api/uploads?${query}` })).statusCode).toBe(400);
     }
-  });
-
-  it('filters by status on the server', async () => {
-    seedMany(['completed', 'failed', 'queued', 'processing', 'completed']);
-
-    const statusesFor = async (filter: string) =>
-      (await app.inject({ method: 'GET', url: `/api/uploads?status=${filter}` })).json().uploads.map((u: { status: string }) => u.status);
-
-    expect(await statusesFor('completed')).toEqual(['completed', 'completed']);
-    expect(await statusesFor('failed')).toEqual(['failed']);
-    expect((await statusesFor('in-progress')).sort()).toEqual(['processing', 'queued']);
   });
 
   it('pages through every upload exactly once, newest first', async () => {
@@ -266,13 +277,57 @@ describe('GET /api/uploads — list', () => {
   });
 });
 
-describe('GET /api/uploads/counts', () => {
-  it('counts each view on the server, ignoring uploads still being uploaded', async () => {
-    seedMany(['completed', 'completed', 'failed', 'queued', 'processing', 'uploading']);
+describe("someone else's unfinished upload is private", () => {
+  const OTHER_PERSON = '00000000-0000-4000-8000-0000000000ff';
 
-    const response = await app.inject({ method: 'GET', url: '/api/uploads/counts' });
+  it.each(['queued', 'processing', 'failed'] as const)('can’t be opened, nor its history read, when %s', async (status) => {
+    uploads.seed({ id: ID, status, uploadedBy: OTHER_PERSON, error: status === 'failed' ? { code: 'LLM_TIMEOUT' } : null });
 
-    expect(response.json()).toEqual({ counts: { all: 5, 'in-progress': 2, completed: 2, failed: 1 } });
+    expect((await app.inject({ method: 'GET', url: `/api/uploads/${ID}` })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: `/api/uploads/${ID}/history` })).statusCode).toBe(404);
+  });
+
+  it('can’t be retried by anyone else', async () => {
+    uploads.seed({ id: ID, status: 'failed', uploadedBy: OTHER_PERSON, error: { code: 'LLM_TIMEOUT' } });
+    expect((await app.inject({ method: 'POST', url: `/api/uploads/${ID}/retry` })).statusCode).toBe(404);
+    expect(uploads.enqueued).toEqual([]);
+  });
+
+  it("is open to its uploader, and once it's finished, to everyone", async () => {
+    uploads.seed({ id: ID, status: 'queued', uploadedBy: ADMIN.id });
+    expect((await app.inject({ method: 'GET', url: `/api/uploads/${ID}` })).statusCode).toBe(200);
+
+    uploads.seed({ id: ID, status: 'completed', uploadedBy: OTHER_PERSON, result: SAMPLE_EXTRACTION });
+    expect((await app.inject({ method: 'GET', url: `/api/uploads/${ID}` })).statusCode).toBe(200);
+  });
+
+  it('from before sign-in (no uploader), is left to admins to tidy up', async () => {
+    uploads.seed({ id: ID, status: 'failed', uploadedBy: null, error: { code: 'LLM_TIMEOUT' } });
+    expect((await app.inject({ method: 'GET', url: `/api/uploads/${ID}` })).statusCode).toBe(200); // signed in as an admin
+
+    await app.close();
+    app = await buildApp(testAppDeps({ uploads, storage, events, authenticator: signedInAs(MEMBER) }));
+    expect((await app.inject({ method: 'GET', url: `/api/uploads/${ID}` })).statusCode).toBe(404);
+  });
+});
+
+describe('POST /api/uploads — how many at once', () => {
+  it(`refuses a new upload while the person has ${MAX_OPEN_UPLOADS_PER_PERSON} under way`, async () => {
+    for (let i = 0; i < MAX_OPEN_UPLOADS_PER_PERSON; i++) {
+      uploads.seed({ id: `c0000000-0000-4000-8000-${String(i).padStart(12, '0')}`, status: i % 2 ? 'queued' : 'processing', uploadedBy: ADMIN.id });
+    }
+
+    const response = await createUpload({ fileName: 'label.png', mimeType: 'image/png', sizeBytes: 5000 });
+
+    expect(response.statusCode).toBe(429);
+    expect(response.json().error.code).toBe('TOO_MANY_UPLOADS');
+    expect(uploads.rows.size).toBe(MAX_OPEN_UPLOADS_PER_PERSON);
+  });
+
+  it("doesn't count finished or failed uploads, or other people's", async () => {
+    uploads.seed({ id: 'c0000000-0000-4000-8000-000000000001', status: 'completed', uploadedBy: ADMIN.id, result: SAMPLE_EXTRACTION });
+    uploads.seed({ id: 'c0000000-0000-4000-8000-000000000002', status: 'failed', uploadedBy: ADMIN.id, error: { code: 'LLM_TIMEOUT' } });
+    expect((await createUpload({ fileName: 'label.png', mimeType: 'image/png', sizeBytes: 5000 })).statusCode).toBe(201);
   });
 });
 

@@ -107,17 +107,26 @@ export class InMemoryUploadStore implements UploadStore {
   private newest(predicate: (row: UploadRecord) => boolean) {
     return [...this.rows.values()].filter(predicate).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
   }
-  async list({ statuses, limit, after }: { statuses: readonly UploadRecord['status'][]; limit: number; after?: string }) {
+  async list({
+    statuses,
+    uploadedBy,
+    limit,
+    after,
+  }: {
+    statuses: readonly UploadRecord['status'][];
+    uploadedBy?: string;
+    limit: number;
+    after?: string;
+  }) {
     const newestFirst = [...this.rows.values()]
-      .filter((row) => statuses.includes(row.status))
+      .filter((row) => statuses.includes(row.status) && (!uploadedBy || row.uploadedBy === uploadedBy))
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id));
     const start = after ? newestFirst.findIndex((row) => row.id === after) + 1 : 0;
     return newestFirst.slice(start, start + limit);
   }
-  async countByStatus() {
-    const counts: Partial<Record<UploadRecord['status'], number>> = {};
-    for (const row of this.rows.values()) if (row.status !== 'uploading') counts[row.status] = (counts[row.status] ?? 0) + 1;
-    return counts;
+  async countUnderWay(uploadedBy: string) {
+    const underWay: readonly UploadRecord['status'][] = ['uploading', 'queued', 'processing'];
+    return [...this.rows.values()].filter((row) => row.uploadedBy === uploadedBy && underWay.includes(row.status)).length;
   }
   async *streamCompleted() {
     const completed = [...this.rows.values()]
