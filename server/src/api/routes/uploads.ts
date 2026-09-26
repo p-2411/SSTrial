@@ -6,12 +6,16 @@ import {
   editResultRequestSchema,
   listUploadsQuerySchema,
   revertRequestSchema,
+  uploadIdsRequestSchema,
   MAX_OPEN_UPLOADS_PER_PERSON,
+  MAX_UPLOADS_PER_REQUEST,
   SUPPORTED_TYPES_LABEL,
   UPLOAD_VIEW_IDS,
   UPLOAD_VIEWS,
+  type CheckUploadsResponse,
   type CreateUploadResponse,
   type ListUploadsResponse,
+  type SubmitUploadsResponse,
   type UploadResponse,
   type UploadHistoryResponse,
 } from '@label-extractor/shared';
@@ -23,7 +27,9 @@ import { editResult } from '../../uploads/edit.ts';
 import { finaliseUpload } from '../../uploads/finalise.ts';
 import { requestUpload } from '../../uploads/intake.ts';
 import { loadUploadDetail } from '../../uploads/detail.ts';
-import { toUploadSummary } from '../../uploads/presenter.ts';
+import { toUploadSummary, visibilityOf } from '../../uploads/presenter.ts';
+import { checkFlaggedFields } from '../../uploads/check.ts';
+import { submitUploads } from '../../uploads/submit.ts';
 import { withRevertPoints } from '../../uploads/history.ts';
 import { retryUpload } from '../../uploads/retry.ts';
 import { revertUpload } from '../../uploads/revert.ts';
@@ -63,6 +69,12 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
     return parsed.data.id;
   }
 
+  function uploadIds(body: unknown) {
+    const parsed = uploadIdsRequestSchema.safeParse(body);
+    if (!parsed.success) throw new ApiError(400, 'BAD_REQUEST', `Expected { ids } with 1–${MAX_UPLOADS_PER_REQUEST} upload IDs.`);
+    return parsed.data;
+  }
+
   async function detailResponse(upload: UploadRecord, request: FastifyRequest): Promise<UploadResponse> {
     return { upload: await loadUploadDetail({ storage, members, log: request.log, viewer: request.member! }, upload) };
   }
@@ -73,7 +85,7 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
    */
   async function visibleUpload(request: FastifyRequest): Promise<UploadRecord> {
     const upload = await uploads.findById(uploadId(request.params));
-    if (!upload || !canViewUpload({ status: upload.status, uploaderId: upload.uploadedBy }, request.member!)) throw notFound();
+    if (!upload || !canViewUpload(visibilityOf(upload), request.member!)) throw notFound();
     return upload;
   }
 
@@ -123,16 +135,23 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
   });
 
   // List & detail -------------------------------------------------------------------------
-  // Two views: everyone's finished products, or the asker's own uploads still under way or failed.
+  // Three views, one per stage: the asker's own uploads being read (or failed), their own read
+  // uploads waiting for review, and everyone's products.
   app.get('/api/uploads', async (request): Promise<ListUploadsResponse> => {
     const query = listUploadsQuerySchema.safeParse(request.query);
     if (!query.success) {
       throw new ApiError(400, 'BAD_REQUEST', `Use view=${UPLOAD_VIEW_IDS.join('|')}, a cursor from a previous page, and limit=1–100.`);
     }
     const { view, cursor, limit } = query.data;
-    const uploadedBy = view === 'mine' ? request.member!.id : undefined;
+    const { statuses, submitted, own } = UPLOAD_VIEWS[view];
     // Ask for one extra row: if it comes back, there's another page after this one.
-    const records = await uploads.list({ statuses: UPLOAD_VIEWS[view], uploadedBy, limit: limit + 1, after: cursor });
+    const records = await uploads.list({
+      statuses,
+      submitted: submitted ?? undefined,
+      uploadedBy: own ? request.member!.id : undefined,
+      limit: limit + 1,
+      after: cursor,
+    });
     const page = records.slice(0, limit);
     return {
       uploads: page.map(toUploadSummary),
@@ -146,11 +165,12 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
 
   // People correcting or confirming the extracted data ----------------------------------------
   app.patch('/api/uploads/:id/result', async (request): Promise<UploadResponse> => {
+    const { id } = await visibleUpload(request);
     const body = editResultRequestSchema.safeParse(request.body);
     if (!body.success) {
       throw new ApiError(400, 'BAD_REQUEST', 'Expected { revision, changes?, checked? } with known fields.');
     }
-    const result = await editResult({ uploads, events }, uploadId(request.params), body.data, request.member!);
+    const result = await editResult({ uploads, events }, id, body.data, request.member!);
 
     switch (result.outcome) {
       case 'saved':
@@ -164,6 +184,20 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
       case 'not-found':
         throw notFound();
     }
+  });
+
+  // Review: checking flagged fields in bulk, and submitting to Products ------------------------
+  // Each acts on the uploads named that it can, and says which those were (see check.ts, submit.ts).
+  app.post('/api/uploads/check', async (request): Promise<CheckUploadsResponse> => {
+    const { ids } = uploadIds(request.body);
+    const checked = await checkFlaggedFields({ uploads, events }, ids, request.member!);
+    return { checked: checked.map((upload) => upload.id) };
+  });
+
+  app.post('/api/uploads/submit', async (request): Promise<SubmitUploadsResponse> => {
+    const { ids } = uploadIds(request.body);
+    const submitted = await submitUploads({ uploads, events }, ids, request.member!);
+    return { submitted: submitted.map((upload) => upload.id) };
   });
 
   // One upload's history, for its detail: open to anyone who can see the upload, unlike the whole

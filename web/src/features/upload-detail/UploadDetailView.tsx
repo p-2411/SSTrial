@@ -81,7 +81,12 @@ function Detail({ upload }: { upload: UploadDetail }) {
           <h2 id={DETAIL_TITLE_ID} className="min-w-0 text-2xl font-semibold break-words">
             {productName ?? upload.fileName}
           </h2>
-          <StatusPill status={upload.status} confidence={upload.confidence} className="mt-1.5 shrink-0" />
+          <StatusPill
+            status={upload.status}
+            confidence={upload.confidence}
+            inReview={upload.submittedAt === null}
+            className="mt-1.5 shrink-0"
+          />
         </div>
         {/* The facts, wrapping onto another line rather than overlapping: no fact shrinks below
             what it must show. Only a long file name gives way, truncated (full name in its tooltip). */}

@@ -41,11 +41,11 @@ export async function requestUpload(
   if (!validation.ok) return { outcome: 'invalid', code: validation.code, message: validation.message };
 
   // The hash is the browser's claim; the worker checks the real bytes before reusing any result.
-  // Someone else's upload of the same file only counts once it's done: until then it's theirs alone
-  // (see canViewUpload), so pointing at it would point at something this person can't open.
+  // Someone else's upload of the same file only counts once it's in Products: until then it's theirs
+  // alone (see canViewUpload), so pointing at it would point at something this person can't open.
   if (request.sha256) {
     const existing = await deps.uploads.findByContentHash(request.sha256);
-    if (existing && (existing.status === 'completed' || existing.uploadedBy === uploader.id)) {
+    if (existing && ((existing.status === 'completed' && existing.submittedAt !== null) || existing.uploadedBy === uploader.id)) {
       await deps.events.record(logEvents.uploadDuplicate(existing, request.fileName.trim()));
       return { outcome: 'duplicate', upload: existing };
     }

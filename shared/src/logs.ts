@@ -32,6 +32,7 @@ export const LOG_EVENT_TYPES = {
   'upload.retry_requested': { label: 'Retry requested', level: 'info' },
   'upload.edited': { label: 'Extracted data reviewed', level: 'info' },
   'upload.reverted': { label: 'Data reverted', level: 'info' },
+  'upload.submitted': { label: 'Submitted to Products', level: 'info' },
   'upload.deleted': { label: 'Upload deleted', level: 'info' },
   // The worker, extracting
   'extraction.started': { label: 'Extraction started', level: 'info' },

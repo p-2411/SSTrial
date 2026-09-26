@@ -200,16 +200,21 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
     expect((await uploads.findById(id))?.attempts).toBe(1);
   }, 30_000);
 
-  it('streams completed uploads for export', async () => {
+  it('streams products for export: read uploads once they are submitted', async () => {
     const id = await queueUpload(SAMPLE_EXTRACTION);
     await waitForStatus(id, 'completed');
+    const exported = async () => {
+      const ids: string[] = [];
+      for await (const upload of uploads.streamProducts()) {
+        expect(upload).toMatchObject({ status: 'completed', submittedAt: expect.any(Date) });
+        ids.push(upload.id);
+      }
+      return ids;
+    };
+    expect(await exported()).not.toContain(id); // read, but still waiting for review
 
-    const exported: string[] = [];
-    for await (const upload of uploads.streamCompleted()) {
-      expect(upload.status).toBe('completed');
-      exported.push(upload.id);
-    }
-    expect(exported).toContain(id);
+    await sql`update uploads set submitted_at = now() where id = ${id}`;
+    expect(await exported()).toContain(id);
   });
 
   it('reads results stored before ingredients were structured', async () => {
@@ -669,6 +674,49 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       expect(await uploads.revert(id, 0, (await uploads.listVersions(id))[0]!.id)).toBeNull(); // stale revision
       expect(await uploads.revert(id, 1, other.reading)).toBeNull(); // not this upload's
       expect((await uploads.findById(id))?.result?.brand).toBe('Edited');
+    });
+  });
+
+  describe('review and Products (real SQL)', () => {
+    it('keeps a read upload out of Products until it is submitted, as the data that was judged ready', async () => {
+      const person = crypto.randomUUID();
+      await sql`insert into auth.users (id, email) values (${person}, ${`${person}@example.test`})`;
+      try {
+        const id = crypto.randomUUID();
+        createdIds.push(id);
+        await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png`, contentSha256: null, uploadedBy: person });
+        await sql`update uploads set status = 'queued' where id = ${id}`; // no job, so no worker picks it up
+        const claimed = await uploads.startAttempt(id);
+        await uploads.complete(id, claimed!.claimToken!, SAMPLE_EXTRACTION, null);
+        const listed = async (submitted: boolean) =>
+          (await uploads.list({ statuses: ['completed'], submitted, uploadedBy: person, limit: 10 })).map((u) => u.id);
+
+        expect(await listed(false)).toEqual([id]);
+        expect(await listed(true)).toEqual([]);
+
+        expect(await uploads.submit(id, 1, person)).toBeNull(); // not the revision it's at
+        const submitted = await uploads.submit(id, 0, person);
+        expect(submitted?.submittedAt).toBeInstanceOf(Date);
+        expect(await uploads.submit(id, 0, person)).toBeNull(); // already in
+        expect(await listed(true)).toEqual([id]);
+        expect(await listed(false)).toEqual([]);
+        const [row] = await sql`select submitted_by from uploads where id = ${id}`;
+        expect(row!.submitted_by).toBe(person);
+
+        // Reading it again takes it back out, to be reviewed again.
+        const requeued = await uploads.requeue(id, 'completed');
+        expect(requeued).toMatchObject({ status: 'queued', submittedAt: null });
+      } finally {
+        await sql`delete from uploads where uploaded_by = ${person}`;
+        await sql`delete from auth.users where id = ${person}`;
+      }
+    });
+
+    it('only lets a read upload be in Products', async () => {
+      const id = crypto.randomUUID();
+      createdIds.push(id);
+      await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png`, contentSha256: null, uploadedBy: null });
+      await expect(sql`update uploads set submitted_at = now() where id = ${id}`).rejects.toThrow(/uploads_submitted_only_when_completed/);
     });
   });
 

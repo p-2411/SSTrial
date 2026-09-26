@@ -5,7 +5,7 @@ import { uploadKeys } from '@/api/queries';
 import type { PendingUpload } from '@/features/upload/useFileUploads';
 import { summary } from '@/test/fixtures';
 import { jsonResponse, renderWithProviders } from '@/test/render';
-import { YourUploads } from './YourUploads.tsx';
+import { UploadStage } from './UploadStage.tsx';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -26,19 +26,21 @@ const sending = (name: string): PendingUpload => ({
 });
 
 const renderYours = (pending: PendingUpload[] = []) =>
-  renderWithProviders(<YourUploads pending={pending} onRetry={() => {}} onDismiss={() => {}} />);
+  renderWithProviders(<UploadStage pending={pending} onUpload={() => {}} onRetry={() => {}} onDismiss={() => {}} />);
 
-describe('YourUploads', () => {
-  it("asks for the person's own unfinished uploads, and shows nothing when there are none", async () => {
+describe('UploadStage', () => {
+  it("asks for the person's own uploads being read, and shows just the drop area when there are none", async () => {
     mine = [];
     const fetch = stubMine();
     renderYours();
 
-    await vi.waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/uploads?view=mine', expect.anything()));
-    expect(screen.queryByRole('region', { name: 'Your uploads' })).not.toBeInTheDocument();
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/uploads?view=upload', expect.anything()));
+    const card = screen.getByRole('region', { name: 'Upload' });
+    expect(within(card).getByRole('button', { name: 'Choose files' })).toBeInTheDocument();
+    expect(within(card).queryByRole('list', { name: 'Uploading' })).not.toBeInTheDocument();
   });
 
-  it("lists files still being sent, then the server's, saying only this person can see them", async () => {
+  it("lists files still being sent, then the server's, under the drop area", async () => {
     mine = [
       summary({ id: 'q', fileName: 'waiting.png', status: 'queued', productName: null }),
       summary({ id: 'f', fileName: 'broken.png', status: 'failed', productName: null, error: { code: 'LLM_TIMEOUT', message: 'The AI service took too long to respond.' } }),
@@ -46,14 +48,13 @@ describe('YourUploads', () => {
     stubMine();
     renderYours([sending('sending.png')]);
 
-    const card = await screen.findByRole('region', { name: 'Your uploads' });
-    await within(card).findByText('waiting.png');
-    expect(within(card).getAllByRole('listitem').map((row) => row.textContent)).toEqual([
+    const rows = within(screen.getByRole('region', { name: 'Upload' })).getByRole('list', { name: 'Uploading' });
+    await within(rows).findByText('waiting.png');
+    expect(within(rows).getAllByRole('listitem').map((row) => row.textContent)).toEqual([
       expect.stringContaining('sending.png'),
       expect.stringContaining('waiting.png'),
       expect.stringContaining('broken.png'),
     ]);
-    expect(within(card).getByText('Only you can see these')).toBeInTheDocument();
   });
 
   it('opens a failed upload, but not one still being worked on', async () => {
@@ -64,14 +65,14 @@ describe('YourUploads', () => {
     stubMine();
     renderYours();
 
-    const card = await screen.findByRole('region', { name: 'Your uploads' });
+    const card = screen.getByRole('region', { name: 'Upload' });
     await within(card).findByText('waiting.png');
     const links = within(card).getAllByRole('link');
     expect(links).toHaveLength(1);
     expect(links[0]).toHaveTextContent('broken.png');
   });
 
-  it('announces an upload that has finished, as it leaves for Products', async () => {
+  it('announces an upload that has been read, as it leaves for Review', async () => {
     mine = [summary({ id: 'q', fileName: 'granola.png', status: 'processing', productName: null })];
     stubMine();
     const { client } = renderYours();
@@ -80,6 +81,6 @@ describe('YourUploads', () => {
     mine = [];
     await act(() => client.invalidateQueries({ queryKey: uploadKeys.lists() }));
 
-    expect(await screen.findByText('granola.png is ready.')).toBeInTheDocument();
+    expect(await screen.findByText('granola.png is ready to review.')).toBeInTheDocument();
   });
 });

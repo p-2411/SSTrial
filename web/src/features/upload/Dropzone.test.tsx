@@ -10,13 +10,13 @@ const png = (name = 'label.png') => new File([new Uint8Array(2048)], name, { typ
 const text = () => new File(['not a label'], 'notes.txt', { type: 'text/plain' });
 
 function setup() {
-  const onSubmit = vi.fn<(files: File[]) => void>();
-  render(<Dropzone onSubmit={onSubmit} />);
+  const onUpload = vi.fn<(files: File[]) => void>();
+  render(<Dropzone onUpload={onUpload} />);
   // applyAccept off: the picker's filter is a hint, and people can still drop anything.
   const user = userEvent.setup({ applyAccept: false });
   const pick = (...files: File[]) => user.upload(screen.getByTestId('file-input'), files);
   const cards = () => within(screen.getByRole('list', { name: 'Files to upload' })).getAllByRole('listitem');
-  return { onSubmit, user, pick, cards };
+  return { onUpload, user, pick, cards };
 }
 
 describe('Dropzone', () => {
@@ -24,11 +24,11 @@ describe('Dropzone', () => {
     setup();
     expect(screen.getByText('Drop label photos or PDFs here')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Choose files' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Submit' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Upload' })).not.toBeInTheDocument();
   });
 
-  it('lists picked files inside the drop area, and sends nothing until Submit', async () => {
-    const { onSubmit, pick, cards } = setup();
+  it('lists picked files inside the drop area, and sends nothing until Upload', async () => {
+    const { onUpload, pick, cards } = setup();
 
     await pick(png('front.png'), png('back.png'));
 
@@ -41,34 +41,34 @@ describe('Dropzone', () => {
     expect(screen.queryByText('Drop label photos or PDFs here')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Choose files' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add more files' })).toBeInTheDocument();
-    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onUpload).not.toHaveBeenCalled();
   });
 
-  it('uploads them on Submit, and empties the list', async () => {
-    const { onSubmit, user, pick } = setup();
+  it('uploads them on Upload, and empties the list', async () => {
+    const { onUpload, user, pick } = setup();
     const files = [png('front.png'), png('back.png')];
     await pick(...files);
 
-    await user.click(screen.getByRole('button', { name: 'Submit' }));
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
 
-    expect(onSubmit).toHaveBeenCalledWith(files);
+    expect(onUpload).toHaveBeenCalledWith(files);
     expect(screen.queryByRole('list', { name: 'Files to upload' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Choose files' })).toBeInTheDocument();
   });
 
-  it('says why a file can’t be uploaded, and keeps it back on Submit', async () => {
-    const { onSubmit, user, pick, cards } = setup();
+  it('says why a file can’t be uploaded, and keeps it back on Upload', async () => {
+    const { onUpload, user, pick, cards } = setup();
     const good = png();
     await pick(good, text());
 
     expect(cards()[1]).toHaveTextContent('".txt" files aren\'t supported.');
 
-    await user.click(screen.getByRole('button', { name: 'Submit' }));
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
 
-    expect(onSubmit).toHaveBeenCalledWith([good]);
+    expect(onUpload).toHaveBeenCalledWith([good]);
     expect(cards()).toHaveLength(1);
     expect(cards()[0]).toHaveTextContent('notes.txt');
-    expect(screen.getByRole('button', { name: 'Submit' })).toBeDisabled(); // nothing left that can go
+    expect(screen.getByRole('button', { name: 'Upload' })).toBeDisabled(); // nothing left that can go
   });
 
   it('removes a file, and goes back to the invitation once none are left', async () => {
@@ -90,7 +90,7 @@ describe('Dropzone', () => {
 
     expect(cards()).toHaveLength(50);
     expect(toastWarning).toHaveBeenCalledWith('You can add up to 50 files at a time', {
-      description: "2 files weren't added. Submit these first, then add the rest.",
+      description: "2 files weren't added. Upload these first, then add the rest.",
     });
   });
 

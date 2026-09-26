@@ -1,4 +1,4 @@
-import type { ExtractionConfidence } from './confidence.ts';
+import { needsChecking, type ExtractionConfidence } from './confidence.ts';
 import type { FieldReviews } from './edits.ts';
 import type { LabelExtraction } from './extraction.ts';
 import type { SupportedMimeType } from './files.ts';
@@ -17,15 +17,21 @@ export function isUploadStatus(value: string): value is UploadStatus {
 }
 
 /**
- * The two upload lists, filtered by the server:
- *   products  finished products, everyone's: the shared, lasting record
- *   mine      the signed-in person's own uploads still under way or failed, which nobody else sees
- * `uploading` is in neither: until its bytes have arrived, the browser that's sending it shows it.
+ * The three upload lists, filtered by the server, one for each stage a file goes through:
+ *   upload    the signed-in person's own uploads still being read, or failed
+ *   review    their own uploads that have been read, waiting to be checked and submitted
+ *   products  submitted products, everyone's: the shared, lasting record
+ * The first two are nobody else's business (see canViewUpload). `uploading` is in none: until its
+ * bytes have arrived, the browser that's sending it shows it.
  */
 export const UPLOAD_VIEWS = {
-  products: ['completed'],
-  mine: ['queued', 'processing', 'failed'],
-} as const satisfies Record<string, readonly Exclude<UploadStatus, 'uploading'>[]>;
+  upload: { statuses: ['queued', 'processing', 'failed'], submitted: null, own: true },
+  review: { statuses: ['completed'], submitted: false, own: true },
+  products: { statuses: ['completed'], submitted: true, own: false },
+} as const satisfies Record<
+  string,
+  { statuses: readonly Exclude<UploadStatus, 'uploading'>[]; submitted: boolean | null; own: boolean }
+>;
 
 export type UploadView = keyof typeof UPLOAD_VIEWS;
 export const UPLOAD_VIEW_IDS = Object.keys(UPLOAD_VIEWS) as UploadView[];
@@ -104,6 +110,26 @@ export function canRetryUpload(upload: {
   return upload.status === 'failed' && upload.error !== null && !FILE_PROBLEMS.includes(upload.error.code);
 }
 
+/**
+ * Most uploads one request can submit, or mark as checked, at once: a page or two of the Review
+ * list. Each is its own guarded write, so this keeps a request short.
+ */
+export const MAX_UPLOADS_PER_REQUEST = 100;
+
+/**
+ * Whether an upload can go into Products: it's been read, isn't there already, and nothing in it
+ * is left to check. Every field is confident, or a person has checked (or corrected) the ones that
+ * weren't, so its overall score (its least certain field nobody's reviewed) is confident or gone.
+ */
+export function canSubmitUpload(upload: Pick<UploadSummary, 'status' | 'submittedAt' | 'resultUnreadable' | 'confidence'>): boolean {
+  return upload.status === 'completed' && upload.submittedAt === null && !upload.resultUnreadable && !stillToCheck(upload);
+}
+
+/** Whether a read upload has fields that must be checked before it can be submitted. */
+export function stillToCheck(upload: Pick<UploadSummary, 'status' | 'confidence'>): boolean {
+  return upload.status === 'completed' && upload.confidence !== null && needsChecking(upload.confidence);
+}
+
 /** One upload as shown in the list. Dates are ISO-8601 strings (JSON has no Date type). */
 export interface UploadSummary {
   id: string;
@@ -136,6 +162,8 @@ export interface UploadSummary {
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
+  /** When it went into Products; null while it's still being uploaded, read or reviewed. */
+  submittedAt: string | null;
 }
 
 /** One upload with everything the detail view needs. */

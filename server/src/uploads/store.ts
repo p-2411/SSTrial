@@ -65,6 +65,8 @@ export interface UploadRecord {
   createdAt: Date;
   updatedAt: Date;
   completedAt: Date | null;
+  /** When its uploader submitted it to Products (see uploads/submit.ts); null until then. */
+  submittedAt: Date | null;
 }
 
 /** A saved state of an upload's data, that an admin can put it back to (see uploads/revert.ts). */
@@ -117,15 +119,21 @@ export interface UploadQueries {
   /** The newest queued, processing or completed upload of a file with this hash, if any. */
   findByContentHash(sha256: string): Promise<UploadRecord | null>;
   /**
-   * One page of uploads in the given statuses, newest first, and only `uploadedBy`'s if given.
-   * `after` is the ID of the last upload on the previous page (keyset pagination: stable while new
-   * uploads arrive, and fast at any depth).
+   * One page of uploads in the given statuses, newest first: only those in Products, or only those
+   * not, if `submitted` says; only `uploadedBy`'s if given. `after` is the ID of the last upload on
+   * the previous page (keyset pagination: stable while new uploads arrive, and fast at any depth).
    */
-  list(options: { statuses: readonly UploadStatus[]; uploadedBy?: string; limit: number; after?: string }): Promise<UploadRecord[]>;
+  list(options: {
+    statuses: readonly UploadStatus[];
+    submitted?: boolean;
+    uploadedBy?: string;
+    limit: number;
+    after?: string;
+  }): Promise<UploadRecord[]>;
   /** How many uploads this person has under way (uploading, waiting or being read). */
   countUnderWay(uploadedBy: string): Promise<number>;
-  /** Every completed upload, newest first, read in batches so an export of any size can stream. */
-  streamCompleted(): AsyncIterable<UploadRecord>;
+  /** Every product (submitted upload), newest first, read in batches so an export of any size can stream. */
+  streamProducts(): AsyncIterable<UploadRecord>;
   /** The saved states of an upload's data, oldest first. */
   listVersions(id: string): Promise<UploadVersion[]>;
 }
@@ -196,6 +204,11 @@ export interface UploadReviews {
    * `revision`, or the version isn't this upload's.
    */
   revert(id: string, revision: number, versionId: string): Promise<Versioned | null>;
+  /**
+   * Puts a read upload into Products, as `by`. Only one not already there and still at `revision`,
+   * so it's the data that was judged ready that goes in; null otherwise.
+   */
+  submit(id: string, revision: number, by: string): Promise<UploadRecord | null>;
 }
 
 /** Removing an upload someone asked to delete. */
@@ -271,12 +284,13 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
         limit 1`);
     },
 
-    async list({ statuses, uploadedBy, limit, after }) {
+    async list({ statuses, submitted, uploadedBy, limit, after }) {
       // The cursor row's own values are looked up in the database, so the comparison uses
       // Postgres's full microsecond timestamps rather than a millisecond-rounded copy.
       const rows = await sql`
         select * from uploads
         where status = any(${statuses as string[]}::upload_status[])
+          ${submitted === undefined ? sql`` : submitted ? sql`and submitted_at is not null` : sql`and submitted_at is null`}
           ${uploadedBy ? sql`and uploaded_by = ${uploadedBy}` : sql``}
           ${after ? sql`and (created_at, id) < (select created_at, id from uploads where id = ${after})` : sql``}
         order by created_at desc, id desc
@@ -291,10 +305,10 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
       return row!.count;
     },
 
-    async *streamCompleted() {
+    async *streamProducts() {
       const batches = sql`
         select * from uploads
-        where status = 'completed'
+        where status = 'completed' and submitted_at is not null
         order by created_at desc`.cursor(500);
       for await (const rows of batches) {
         for (const row of rows) yield toRecord(row);
@@ -342,7 +356,9 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
               original_result = null, field_reviews = '{}'::jsonb,
               -- On, never back: an editor still open on the old result must not match the new one.
               result_revision = result_revision + 1,
-              completed_at = null, claim_token = null
+              completed_at = null, claim_token = null,
+              -- Read again, it's reviewed again before it goes back into Products.
+              submitted_at = null, submitted_by = null
           where id = ${id} and status = ${from} and ${allowedFrom('rerun')}
           returning *`);
         if (record) await jobs.enqueueExtraction(id, tx);
@@ -397,6 +413,13 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
           returning id
         )
         select reverted.*, (select id from version) as version_id from reverted`);
+    },
+
+    submit(id, revision, by) {
+      return oneRecord(sql`
+        update uploads set submitted_at = now(), submitted_by = ${by}
+        where id = ${id} and status = 'completed' and submitted_at is null and result_revision = ${revision}
+        returning *`);
     },
 
     complete(id, claimToken, result, confidence) {
@@ -466,6 +489,7 @@ function toRecord(row: postgres.Row): UploadRecord {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     completedAt: row.completed_at ?? null,
+    submittedAt: row.submitted_at ?? null,
   };
 }
 

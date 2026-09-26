@@ -3,6 +3,7 @@ import {
   canDeleteUpload,
   canTransition,
   type CurrentMember,
+  flaggedFields,
   overallConfidence,
   type ExtractionConfidence,
   type LabelField,
@@ -37,7 +38,18 @@ export function toUploadSummary(record: UploadRecord): UploadSummary {
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
     completedAt: record.completedAt?.toISOString() ?? null,
+    submittedAt: record.submittedAt?.toISOString() ?? null,
   };
+}
+
+/** What canViewUpload needs to know about an upload. */
+export function visibilityOf(record: UploadRecord) {
+  return { status: record.status, submitted: record.submittedAt !== null, uploaderId: record.uploadedBy };
+}
+
+/** The fields of a read upload still worth a person's look (see flaggedFields). */
+export function fieldsToCheck(record: UploadRecord): LabelField[] {
+  return flaggedFields(checkedConfidence(record), reviewedFields(record.fieldReviews));
 }
 
 /**

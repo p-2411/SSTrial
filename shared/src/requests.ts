@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { LABEL_FIELDS, type LabelField } from './fields.ts';
 import { LOG_EVENT_TYPE_IDS, type LogEventType } from './logs.ts';
 import { NET_QUANTITY_UNITS } from './units.ts';
-import { UPLOAD_VIEW_IDS, type UploadView } from './uploads.ts';
+import { MAX_UPLOADS_PER_REQUEST, UPLOAD_VIEW_IDS, type UploadView } from './uploads.ts';
 
 /**
  * Zod schemas for request bodies and query strings, which the API validates.
@@ -92,3 +92,9 @@ export const revertRequestSchema = z.object({
   versionId: z.string().regex(/^\d{1,19}$/),
 });
 export type RevertRequest = z.infer<typeof revertRequestSchema>;
+
+/** POST /api/uploads/submit and POST /api/uploads/check: the uploads to act on, as listed in Review. */
+export const uploadIdsRequestSchema = z.object({
+  ids: z.array(z.uuid()).min(1).max(MAX_UPLOADS_PER_REQUEST),
+});
+export type UploadIdsRequest = z.infer<typeof uploadIdsRequestSchema>;

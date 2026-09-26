@@ -1,6 +1,8 @@
 import { RESULT_EDIT_PATH } from '@label-extractor/shared';
 import type {
+  CheckUploadsResponse,
   EditResultRequest,
+  SubmitUploadsResponse,
   RevertRequest,
   OpsStatusResponse,
   CreateUploadRequest,
@@ -15,8 +17,8 @@ import { apiFetch, apiRequest } from './client.ts';
 /** Plain functions for each API endpoint. React Query hooks wrap these in queries.ts. */
 
 /**
- * One page of a list, newest first: everyone's finished `products`, or the signed-in person's own
- * uploads still under way or failed (`mine`).
+ * One page of a list, newest first: the signed-in person's own uploads being read or failed
+ * (`upload`), their own read uploads waiting for review (`review`), or everyone's `products`.
  */
 export function listUploads(view: UploadView, cursor?: string): Promise<ListUploadsResponse> {
   const params = new URLSearchParams({ view });
@@ -53,6 +55,16 @@ export async function deleteUpload(id: string): Promise<void> {
 
 export async function retryUpload(id: string): Promise<UploadDetail> {
   return (await apiRequest<UploadResponse>(`/api/uploads/${encodeURIComponent(id)}/retry`, { method: 'POST' })).upload;
+}
+
+/** Puts the named uploads (the asker's own, in Review) into Products: those with nothing left to check. */
+export async function submitUploads(ids: string[]): Promise<string[]> {
+  return (await apiRequest<SubmitUploadsResponse>('/api/uploads/submit', { method: 'POST', body: { ids } })).submitted;
+}
+
+/** Marks every flagged field of the named uploads as checked, by the asker. */
+export async function checkUploads(ids: string[]): Promise<string[]> {
+  return (await apiRequest<CheckUploadsResponse>('/api/uploads/check', { method: 'POST', body: { ids } })).checked;
 }
 
 /** Admins only: puts an upload's data back to a version from its history. */

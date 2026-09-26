@@ -25,6 +25,7 @@ function record(overrides: Partial<UploadRecord> = {}): UploadRecord {
     createdAt: new Date('2026-09-25T01:00:00Z'),
     updatedAt: new Date('2026-09-25T01:00:05Z'),
     completedAt: new Date('2026-09-25T01:00:05Z'),
+    submittedAt: new Date('2026-09-25T01:10:00Z'),
     ...overrides,
   };
 }

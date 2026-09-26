@@ -8,10 +8,11 @@ let events: InMemoryEventStore;
 
 const ID = '5d9e2f3a-0000-4000-8000-000000000001';
 
-/** The AI's reading, saved as version 1, as the worker does when an upload completes. */
+/** The AI's reading, saved as version 1 as the worker does when an upload completes, then submitted to Products. */
 async function readByTheAi() {
   uploads.seed({ id: ID, status: 'processing', claimToken: 'claim' });
   await uploads.complete(ID, 'claim', SAMPLE_EXTRACTION, null);
+  await uploads.submit(ID, 0, ADMIN.id);
 }
 
 beforeEach(async () => {

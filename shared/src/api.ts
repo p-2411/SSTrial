@@ -32,6 +32,19 @@ export interface UploadResponse {
   upload: UploadDetail;
 }
 
+/**
+ * POST /api/uploads/submit: the uploads now in Products. Any others named weren't submitted: they
+ * still had fields to check, were already in, or weren't the asker's to submit.
+ */
+export interface SubmitUploadsResponse {
+  submitted: string[];
+}
+
+/** POST /api/uploads/check: the uploads whose flagged fields are now marked as checked. */
+export interface CheckUploadsResponse {
+  checked: string[];
+}
+
 export type ApiErrorCode =
   | FileValidationErrorCode // POST /api/uploads: the file's name, type or size
   | 'TOO_MANY_UPLOADS' // POST /api/uploads: this person already has MAX_OPEN_UPLOADS_PER_PERSON under way

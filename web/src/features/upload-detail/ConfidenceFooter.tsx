@@ -66,20 +66,28 @@ export function confidenceBorderClass(upload: Upload): string {
  * The Product information card's footer: the upload's overall confidence, as a verdict. Green when
  * it can be trusted as it is, like SupplyScope's "verified" footer; amber or red, asking for the
  * flagged fields to be checked, when it can't, with the button that confirms them all as right.
+ * While the upload waits in Review, a green footer also offers to submit it to Products.
  */
 export function ConfidenceFooter({
   upload,
   onCheck,
   checking,
+  onSubmit,
+  submitting = false,
 }: {
   upload: Upload;
   /** Confirms the flagged fields as right; offered while any are flagged (medium or low). */
   onCheck: () => void;
   checking: boolean;
+  /** Puts the upload into Products; given only while it's in Review, and offered once nothing's flagged. */
+  onSubmit?: () => void;
+  submitting?: boolean;
 }) {
   const state = overallState(upload);
   const { icon: Icon, bar, text } = STATES[state];
   const flagged = state === 'medium' || state === 'low';
+  // Bold text in the footer's own colour, underlined on hover: still a button, so it spins while saving.
+  const action = 'ml-auto h-auto shrink-0 p-0 font-bold text-current hover:underline';
   return (
     <div className={cn('flex items-center gap-2 px-6 py-3 text-sm font-medium', bar)}>
       <Icon className="size-4 shrink-0" aria-hidden />
@@ -87,16 +95,13 @@ export function ConfidenceFooter({
         {text(upload.confidence)}
       </p>
       {flagged && (
-        // Bold text in the footer's own colour, underlined on hover: still a button, so it spins while saving.
-        <Button
-          variant="link"
-          size="sm"
-          className="ml-auto h-auto shrink-0 p-0 font-bold text-current hover:underline"
-          aria-label="Mark flagged fields as checked"
-          loading={checking}
-          onClick={onCheck}
-        >
+        <Button variant="link" size="sm" className={action} aria-label="Mark flagged fields as checked" loading={checking} onClick={onCheck}>
           Mark as checked
+        </Button>
+      )}
+      {!flagged && onSubmit && (
+        <Button variant="link" size="sm" className={action} loading={submitting} onClick={onSubmit}>
+          Submit to Products
         </Button>
       )}
     </div>

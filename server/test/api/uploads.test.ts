@@ -227,7 +227,7 @@ describe('POST /api/uploads/:id/complete — confirm the upload and queue it', (
   });
 });
 
-describe('GET /api/uploads — the two lists', () => {
+describe('GET /api/uploads — the three lists', () => {
   const OTHER_PERSON = '00000000-0000-4000-8000-0000000000ff';
   const list = async (query = '') =>
     (await app.inject({ method: 'GET', url: `/api/uploads${query}` })).json().uploads as Array<{ id: string; status: string }>;
@@ -248,7 +248,20 @@ describe('GET /api/uploads — the two lists', () => {
     uploads.seed({ id: 'a0000000-0000-4000-8000-000000000004', status: 'completed', uploadedBy: ADMIN.id, createdAt: new Date('2026-01-04') });
     uploads.seed({ id: 'a0000000-0000-4000-8000-000000000005', status: 'uploading', uploadedBy: ADMIN.id, createdAt: new Date('2026-01-05') });
 
-    expect((await list('?view=mine')).map((u) => u.status)).toEqual(['failed', 'queued']);
+    expect((await list('?view=upload')).map((u) => u.status)).toEqual(['failed', 'queued']);
+  });
+
+  it("lists the asker's own read uploads waiting for review, which aren't in Products yet", async () => {
+    const review = { status: 'completed', submittedAt: null, result: SAMPLE_EXTRACTION } as const;
+    uploads.seed({ id: 'a0000000-0000-4000-8000-000000000001', ...review, uploadedBy: ADMIN.id, createdAt: new Date('2026-01-01') });
+    uploads.seed({ id: 'a0000000-0000-4000-8000-000000000002', ...review, uploadedBy: OTHER_PERSON, createdAt: new Date('2026-01-02') });
+    uploads.seed({ id: 'a0000000-0000-4000-8000-000000000003', status: 'completed', uploadedBy: ADMIN.id, createdAt: new Date('2026-01-03') });
+    uploads.seed({ id: 'a0000000-0000-4000-8000-000000000004', status: 'processing', uploadedBy: ADMIN.id, createdAt: new Date('2026-01-04') });
+
+    const inReview = await list('?view=review');
+    expect(inReview.map((u) => u.id)).toEqual(['a0000000-0000-4000-8000-000000000001']);
+    expect(inReview[0]).toMatchObject({ submittedAt: null });
+    expect((await list()).map((u) => u.id)).toEqual(['a0000000-0000-4000-8000-000000000003']);
   });
 
   it('returns an empty list when there are no uploads', async () => {

@@ -77,8 +77,13 @@ export class InMemoryUploadStore implements UploadStore {
     return { upload, versionId: version.id };
   }
 
+  /**
+   * A row as the table would hold it. A completed one is in Products unless `submittedAt: null`
+   * says it's still waiting for review.
+   */
   seed(overrides: Partial<UploadRecord> & { id: string }): UploadRecord {
     const now = new Date();
+    const status = overrides.status ?? 'uploading';
     const record: UploadRecord = {
       fileName: 'label.png',
       mimeType: 'image/png',
@@ -99,6 +104,7 @@ export class InMemoryUploadStore implements UploadStore {
       createdAt: now,
       updatedAt: now,
       completedAt: null,
+      submittedAt: status === 'completed' ? now : null,
       ...overrides,
     };
     this.rows.set(record.id, record);
@@ -133,17 +139,20 @@ export class InMemoryUploadStore implements UploadStore {
   }
   async list({
     statuses,
+    submitted,
     uploadedBy,
     limit,
     after,
   }: {
     statuses: readonly UploadRecord['status'][];
+    submitted?: boolean;
     uploadedBy?: string;
     limit: number;
     after?: string;
   }) {
     const newestFirst = [...this.rows.values()]
       .filter((row) => statuses.includes(row.status) && (!uploadedBy || row.uploadedBy === uploadedBy))
+      .filter((row) => submitted === undefined || (row.submittedAt !== null) === submitted)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id));
     const start = after ? newestFirst.findIndex((row) => row.id === after) + 1 : 0;
     return newestFirst.slice(start, start + limit);
@@ -152,9 +161,9 @@ export class InMemoryUploadStore implements UploadStore {
     const underWay: readonly UploadRecord['status'][] = ['uploading', 'queued', 'processing'];
     return [...this.rows.values()].filter((row) => row.uploadedBy === uploadedBy && underWay.includes(row.status)).length;
   }
-  async *streamCompleted() {
+  async *streamProducts() {
     const completed = [...this.rows.values()]
-      .filter((row) => row.status === 'completed')
+      .filter((row) => row.status === 'completed' && row.submittedAt !== null)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     yield* completed;
   }
@@ -192,6 +201,7 @@ export class InMemoryUploadStore implements UploadStore {
       resultRevision: current.resultRevision + 1,
       completedAt: null,
       claimToken: null,
+      submittedAt: null,
     });
     if (row) this.enqueued.push(id);
     return row;
@@ -231,6 +241,16 @@ export class InMemoryUploadStore implements UploadStore {
     };
     this.rows.set(id, reverted);
     return this.saveVersion(reverted, 'revert');
+  }
+  /** Who submitted each upload, by ID, since the record doesn't carry it. */
+  readonly submittedBy = new Map<string, string>();
+  async submit(id: string, revision: number, by: string) {
+    const row = this.rows.get(id);
+    if (!row || row.status !== 'completed' || row.submittedAt !== null || row.resultRevision !== revision) return null;
+    const submitted = { ...row, submittedAt: new Date(), updatedAt: new Date() };
+    this.rows.set(id, submitted);
+    this.submittedBy.set(id, by);
+    return submitted;
   }
   async listVersions(id: string) {
     return this.versions.filter((v) => v.uploadId === id).map(({ id: versionId, source, createdAt }) => ({ id: versionId, source, createdAt }));

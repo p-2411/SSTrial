@@ -45,6 +45,8 @@ function upload(overrides: Partial<UploadDetail> = {}): Upload {
 /** What the server answers to PATCH …/result: by default, the upload with the changes applied. */
 let answer: (request: EditResultRequest) => Response;
 const sent: EditResultRequest[] = [];
+/** The bodies of POST /api/uploads/submit. */
+const submits: unknown[] = [];
 /** The upload as the server has it now: what GET /api/uploads/u1 answers. */
 let onServer: Upload;
 
@@ -52,6 +54,7 @@ const conflict = () => jsonResponse({ error: { code: 'EDIT_CONFLICT', message: '
 
 beforeEach(() => {
   sent.length = 0;
+  submits.length = 0;
   onServer = upload();
   answer = (request) =>
     jsonResponse({ upload: upload({ result: { ...RESULT, ...request.changes } as LabelExtraction, revision: 1 } as Partial<UploadDetail>) });
@@ -62,6 +65,10 @@ beforeEach(() => {
         const request = JSON.parse(String(init.body)) as EditResultRequest;
         sent.push(request);
         return answer(request);
+      }
+      if (url === '/api/uploads/submit') {
+        submits.push(JSON.parse(String(init?.body)));
+        return jsonResponse({ submitted: ['u1'] });
       }
       if (url === '/api/uploads/u1') return jsonResponse({ upload: onServer });
       return jsonResponse({ uploads: [], nextCursor: null, counts: {} });
@@ -201,6 +208,25 @@ describe('reviewing', () => {
     expect(within(card).queryByText('58%')).not.toBeInTheDocument();
     // Nothing flagged is left, so there's nothing to confirm.
     expect(within(card).queryByRole('button', { name: 'Mark flagged fields as checked' })).not.toBeInTheDocument();
+  });
+
+  it('offers to submit it to Products once nothing is flagged, while it waits in Review', async () => {
+    const checked = { netWeight: { kind: 'checked', by: 'alice@example.com', at: new Date().toISOString() } } as const;
+    renderCard(upload({ submittedAt: null, fieldReviews: checked }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Submit to Products' }));
+
+    expect(submits).toEqual([{ ids: ['u1'] }]);
+  });
+
+  it("doesn't offer to submit while a field is flagged", () => {
+    const card = renderCard(upload({ submittedAt: null }));
+    expect(within(card).queryByRole('button', { name: 'Submit to Products' })).not.toBeInTheDocument();
+  });
+
+  it("doesn't offer to submit once it's in Products", () => {
+    const card = renderCard(upload({ fieldConfidence: { ...CONFIDENCE, netWeight: { score: 95, reasons: [] } } }));
+    expect(within(card).queryByRole('button', { name: 'Submit to Products' })).not.toBeInTheDocument();
   });
 
   it("shows someone else's change to the open field beside the draft, and saves over it only when told to", async () => {

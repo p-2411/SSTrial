@@ -4,7 +4,7 @@ import { toCsv, toJson } from '../../uploads/export.ts';
 import type { UploadQueries } from '../../uploads/store.ts';
 
 export interface ExportRoutesDeps {
-  uploads: Pick<UploadQueries, 'streamCompleted'>;
+  uploads: Pick<UploadQueries, 'streamProducts'>;
 }
 
 /**
@@ -13,11 +13,11 @@ export interface ExportRoutesDeps {
  */
 export async function exportRoutes(app: FastifyInstance, { uploads }: ExportRoutesDeps) {
   app.get('/api/exports/uploads.csv', async (_request, reply) => {
-    return sendDownload(reply, 'text/csv; charset=utf-8', 'csv', toCsv(uploads.streamCompleted()));
+    return sendDownload(reply, 'text/csv; charset=utf-8', 'csv', toCsv(uploads.streamProducts()));
   });
 
   app.get('/api/exports/uploads.json', async (_request, reply) => {
-    return sendDownload(reply, 'application/json; charset=utf-8', 'json', toJson(uploads.streamCompleted(), new Date()));
+    return sendDownload(reply, 'application/json; charset=utf-8', 'json', toJson(uploads.streamProducts(), new Date()));
   });
 }
 

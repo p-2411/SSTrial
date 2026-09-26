@@ -54,6 +54,15 @@ export function overallConfidence(
 }
 
 /**
+ * The fields worth a person's look: scored below confident, and not yet edited or checked by anyone.
+ * What "Mark as checked" confirms, and what must be checked before an upload can be submitted.
+ */
+export function flaggedFields(confidence: ExtractionConfidence | null, reviewed: readonly LabelField[]): LabelField[] {
+  if (!confidence) return [];
+  return LABEL_FIELDS.filter((field) => !reviewed.includes(field) && needsChecking(confidence[field].score));
+}
+
+/**
  * Checks that catch the model being confidently wrong: where the data contradicts itself, that
  * field's score is capped at DOUBTFUL_SCORE and the reason added. Checks only ever lower a score,
  * and the model's own reason for a low score is kept. Safe to apply more than once.

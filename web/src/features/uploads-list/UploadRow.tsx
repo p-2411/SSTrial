@@ -36,7 +36,7 @@ export const UploadRow = memo(function UploadRow({ upload, now }: { upload: Uplo
       </div>
       <div className="flex flex-col items-end gap-1.5">
         {/* A completed upload's pill also says whether it's worth checking ("Check (72%)"). */}
-        <StatusPill status={upload.status} confidence={upload.confidence} />
+        <StatusPill status={upload.status} confidence={upload.confidence} inReview={upload.submittedAt === null} />
         <RelativeTime className="text-xs text-muted-foreground tabular-nums" iso={upload.createdAt} now={now} />
       </div>
     </>

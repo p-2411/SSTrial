@@ -136,6 +136,17 @@ export const logEvents = {
     };
   },
 
+  uploadSubmitted(upload: UploadRef & Pick<UploadRecord, 'result'>, by: string): NewLogEvent {
+    const base = aboutUpload(upload);
+    const product = upload.result?.productName;
+    return {
+      ...base,
+      type: 'upload.submitted',
+      message: `${by} added ${product ? `${product} (${upload.fileName})` : upload.fileName} to Products.`,
+      data: { ...base.data, by },
+    };
+  },
+
   uploadDeleted(upload: UploadRef, by: string): NewLogEvent {
     const base = aboutUpload(upload);
     return {

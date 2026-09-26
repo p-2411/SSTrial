@@ -12,11 +12,10 @@ import {
 } from '@label-extractor/shared';
 import { FileTypeTile } from '@/components/FileTypeTile';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { formatFileFacts } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
-/** A file picked but not yet submitted. `problem` says why it can't be uploaded, if it can't. */
+/** A file picked but not yet uploaded. `problem` says why it can't be uploaded, if it can't. */
 interface StagedFile {
   id: string;
   file: File;
@@ -46,12 +45,12 @@ const sameFile = (a: File, b: File) => a.name === b.name && a.size === b.size &&
 /**
  * Where files come in: drag and drop, or the file picker (which is also the keyboard path). Files
  * are gathered first, listed inside the drop area where more can still be dropped, and only sent
- * on Submit. A file that can't be uploaded says why on its own card, and stays behind on Submit
+ * on Upload. A file that can't be uploaded says why on its own card, and stays behind on Upload
  * so the reason isn't lost.
  *
- * Memoised: `onSubmit` is stable, so upload progress re-rendering the page doesn't re-render this.
+ * Memoised: `onUpload` is stable, so upload progress re-rendering the page doesn't re-render this.
  */
-export const Dropzone = memo(function Dropzone({ onSubmit }: { onSubmit: (files: File[]) => void }) {
+export const Dropzone = memo(function Dropzone({ onUpload }: { onUpload: (files: File[]) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [staged, setStaged] = useState<StagedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -76,7 +75,7 @@ export const Dropzone = memo(function Dropzone({ onSubmit }: { onSubmit: (files:
     if (fresh.length > room) {
       const left = fresh.length - room;
       toast.warning(`You can add up to ${MAX_FILES_PER_BATCH} files at a time`, {
-        description: `${left} ${left === 1 ? "file wasn't" : "files weren't"} added. Submit these first, then add the rest.`,
+        description: `${left} ${left === 1 ? "file wasn't" : "files weren't"} added. Upload these first, then add the rest.`,
       });
     }
     if (room > 0) setStaged([...staged, ...fresh.slice(0, room).map(stage)]);
@@ -85,8 +84,8 @@ export const Dropzone = memo(function Dropzone({ onSubmit }: { onSubmit: (files:
   const choose = () => inputRef.current?.click();
 
   const ready = staged.filter((s) => s.problem === null);
-  const submit = () => {
-    onSubmit(ready.map((s) => s.file));
+  const upload = () => {
+    onUpload(ready.map((s) => s.file));
     setStaged((current) => current.filter((s) => s.problem !== null));
   };
 
@@ -94,7 +93,7 @@ export const Dropzone = memo(function Dropzone({ onSubmit }: { onSubmit: (files:
   const isEmpty = staged.length === 0;
 
   return (
-    <Card className="gap-2 p-2">
+    <div className="grid gap-2">
       <div
         className={cn(
           'rounded-lg border border-dashed border-border bg-muted/50 transition-colors',
@@ -167,12 +166,12 @@ export const Dropzone = memo(function Dropzone({ onSubmit }: { onSubmit: (files:
           <Button variant="outline" onClick={choose}>
             Add more files
           </Button>
-          <Button onClick={submit} disabled={ready.length === 0}>
-            Submit
+          <Button onClick={upload} disabled={ready.length === 0}>
+            Upload
           </Button>
         </div>
       )}
-    </Card>
+    </div>
   );
 });
 

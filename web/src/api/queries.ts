@@ -3,7 +3,17 @@ import { isActiveStatus, type EditResultRequest, type RevertRequest, type Upload
 import { ApiRequestError } from './client.ts';
 import { isLiveConnected } from './liveConnection.ts';
 import { getUploadHistory, listLogs, type LogFilters } from './logs.ts';
-import { deleteUpload, editResult, getOpsStatus, getUpload, listUploads, retryUpload, revertUpload } from './uploads.ts';
+import {
+  checkUploads,
+  deleteUpload,
+  editResult,
+  getOpsStatus,
+  getUpload,
+  listUploads,
+  retryUpload,
+  revertUpload,
+  submitUploads,
+} from './uploads.ts';
 
 /**
  * Server state lives in React Query: caching, polling and retries are handled here so
@@ -24,7 +34,7 @@ function pollWhile(active: boolean): number | false {
 
 export const uploadKeys = {
   all: ['uploads'] as const,
-  /** Both lists; pass a view for one of them. */
+  /** Every list; pass a view for one of them. */
   lists: () => [...uploadKeys.all, 'list'] as const,
   list: (view: UploadView) => [...uploadKeys.lists(), view] as const,
   detail: (id: string) => [...uploadKeys.all, 'detail', id] as const,
@@ -52,7 +62,7 @@ export function refreshAllUploads(queryClient: QueryClient): Promise<void> {
   return queryClient.invalidateQueries({ queryKey: uploadKeys.all });
 }
 
-/** Refetches both lists: anything that moves an upload between them, or into one. */
+/** Refetches every list: anything that moves an upload between them, or into one. */
 export function refreshUploadLists(queryClient: QueryClient): Promise<void> {
   return queryClient.invalidateQueries({ queryKey: uploadKeys.lists() });
 }
@@ -73,7 +83,7 @@ export function storeUpload(queryClient: QueryClient, upload: UploadDetail): voi
 }
 
 /**
- * One of the two upload lists, filtered and paginated by the server ("Load more" fetches the next
+ * One of the upload lists (a stage: upload, review, products), filtered and paginated by the server ("Load more" fetches the next
  * page). Polls only while something on screen is still in progress.
  */
 export function useUploadList(view: UploadView) {
@@ -123,6 +133,27 @@ export function useEditResult(uploadId: string) {
       storeUpload(queryClient, upload);
       await refreshUploadLists(queryClient);
     },
+  });
+}
+
+/**
+ * Review's two actions, on the uploads listed there: submitting those that are ready to Products,
+ * and marking every flagged field as checked. Each resolves to the IDs it acted on. Both change
+ * uploads' details and history as well as the lists, so everything about uploads is refetched.
+ */
+export function useSubmitUploads() {
+  return useReviewAction(submitUploads);
+}
+
+export function useCheckUploads() {
+  return useReviewAction(checkUploads);
+}
+
+function useReviewAction(action: (ids: string[]) => Promise<string[]>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: action,
+    onSuccess: () => Promise.all([refreshAllUploads(queryClient), refreshLogs(queryClient)]),
   });
 }
 

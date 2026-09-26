@@ -18,12 +18,15 @@ export function canDeleteUpload(uploaderId: string | null, person: { id: string;
 }
 
 /**
- * Whether this person may see an upload at all. A finished product is everyone's. One still under
- * way, or failed, is its uploader's alone: nobody else can open it or even list it. (Uploads from
- * before sign-in existed have no uploader, so admins see those, to tidy them up.)
+ * Whether this person may see an upload at all. A submitted product is everyone's. Until then (being
+ * read, failed, or waiting for review) it's its uploader's alone: nobody else can open it or even
+ * list it. (Uploads from before sign-in existed have no uploader, so admins see those, to tidy up.)
  */
-export function canViewUpload(upload: { status: string; uploaderId: string | null }, person: { id: string; role: Role }): boolean {
-  if (upload.status === 'completed') return true;
+export function canViewUpload(
+  upload: { status: string; submitted: boolean; uploaderId: string | null },
+  person: { id: string; role: Role },
+): boolean {
+  if (upload.status === 'completed' && upload.submitted) return true;
   return upload.uploaderId === null ? person.role === 'admin' : upload.uploaderId === person.id;
 }
 

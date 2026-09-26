@@ -29,21 +29,26 @@ const WORTH_CHECKING: Record<'check' | 'low', Omit<PillStyle, 'label'>> = {
 
 /**
  * Status as a rounded pill: icon + word, never colour alone (SupplyScope's pill style). A completed
- * upload also says how confident its extraction is: a confident one is just "Completed", and one
- * worth a look reads "Check (72%)" instead, amber or red, so it invites a check. `confidence` is the
- * upload's overall score (its least certain unchecked field), or null when there's nothing to flag.
+ * upload also says how confident its extraction is: a confident one is just "Completed" ("Ready",
+ * while it waits in Review to be submitted), and one worth a look reads "Check (72%)" instead,
+ * amber or red, so it invites a check. `confidence` is the upload's overall score (its least certain
+ * unchecked field), or null when there's nothing to flag.
  */
 export function StatusPill({
   status,
   confidence = null,
+  inReview = false,
   className,
 }: {
   status: UploadStatus;
   confidence?: number | null;
+  /** Read, but not yet submitted to Products. */
+  inReview?: boolean;
   className?: string;
 }) {
   const band = status === 'completed' && confidence !== null ? confidenceBand(confidence) : 'ok';
   const { icon: Icon, className: tone, spin } = band === 'ok' ? STATUS[status] : WORTH_CHECKING[band];
+  const label = inReview && status === 'completed' ? 'Ready' : STATUS[status].label;
   return (
     <Badge
       variant="outline"
@@ -52,7 +57,7 @@ export function StatusPill({
     >
       <Icon aria-hidden className={cn(spin && 'animate-spin motion-reduce:animate-none')} />
       {band === 'ok' ? (
-        STATUS[status].label
+        label
       ) : (
         <>
           <span className="sr-only">Completed, confidence {confidence}%: </span>
