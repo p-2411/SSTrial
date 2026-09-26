@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UploadDetail } from '@label-extractor/shared';
 import { jsonResponse, renderWithProviders } from '@/test/render';
 import { detail } from '@/test/fixtures';
-import { UploadDetailPanel } from './UploadDetailPanel.tsx';
+import { panelWidth, UploadDetailPanel } from './UploadDetailPanel.tsx';
 
 /** Uploads the fake API can return, by ID. "nameless" is a read label with no product name on it. */
 const uploads: Record<string, UploadDetail> = Object.fromEntries(
@@ -152,6 +152,20 @@ describe('UploadDetailPanel', () => {
     const lastEdited = within(panel).getByText('Last edited', { selector: 'dt' }).parentElement!;
     expect(lastEdited).toHaveTextContent('by alice@example.com');
     expect(within(panel).queryByText(/bob@example\.com/)).not.toBeInTheDocument();
+  });
+
+  it('has a handle on its left edge to widen it, which the keyboard can reach', async () => {
+    renderAt('/uploads/abc');
+    await screen.findByRole('complementary', { name: 'Maple Pecan Crunch' });
+    const handle = screen.getByRole('separator', { name: 'Resize details panel' });
+    expect(handle).toHaveAttribute('aria-orientation', 'vertical');
+    expect(handle).toHaveAttribute('tabindex', '0');
+  });
+
+  it('is never narrower than its default width, nor so wide it crowds out the list', () => {
+    // jsdom can't apply min()/clamp(), so the width itself is checked as CSS.
+    expect(panelWidth(null)).toBe('min(42rem, 55cqw)');
+    expect(panelWidth(900)).toBe('clamp(min(42rem, 55cqw), 900px, max(min(42rem, 55cqw), calc(100cqw - 30rem)))');
   });
 
   describe('deleting', () => {
