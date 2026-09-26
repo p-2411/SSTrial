@@ -1,12 +1,10 @@
 # Decisions
 
-**In short:** the browser uploads each file straight to storage; the API records the upload and, in the same Postgres transaction, queues a job. A separate worker calls the LLM, validates the answer against our schema and stores it. Browsers see each change live.
-
 ## 50,000 uploads arriving at once
 
 - **Ingest never touches our servers.** Files go straight to Supabase Storage with signed URLs; the API only handles two small, stateless requests per file, so it scales horizontally.
 - **The queue absorbs the burst.** 50,000 jobs is a small Postgres table. They wait durably, and nothing is lost if workers are busy or restarting.
-- **Throughput is set by the LLM's rate limit, not by us.** At 500 requests a minute, 50,000 labels take about 100 minutes however many workers run. A token bucket shared by all workers paces them to that limit. Identical files are recognised by their SHA-256 and read once.
+- **Throughput is set by the LLM's rate limit, not by us.** At 500 requests a minute, 50,000 labels take about 100 minutes regardless of however many workers run. This is due to the OpenAI rate limits. A token bucket shared by all workers paces them to that limit. Identical files are recognised by their SHA-256 and read once.
 - **For bulk imports** I'd use OpenAI's Batch API (about half the cost, a separate quota), with queue priorities so people's own uploads skip the backlog.
 
 ## Why a Postgres queue (pg-boss)
@@ -30,7 +28,7 @@ It also gives us, for free:
 
 ## Trade-offs
 
-- **Supabase Storage over S3 or R2.** One platform for database, queue and files was simpler. Storage sits behind an interface, so switching is one file.
+- **Supabase Storage over S3 or R2.** One platform for database, queue and files was simpler. Storage sits behind an interface, so switching is one file. YAGNI.
 - **Confidence from the model, checked by code.** The model scores each field in the same call; extracting twice and comparing would measure doubt better, at double the cost. Its scores aren't calibrated, so plain checks lower any field the rest of the data contradicts, and people can mark fields as checked.
-- **SupplyScope's own UI stack** (Tailwind v4, shadcn/ui), so their team could extend it. Desktop only.
+- **SupplyScope's own UI stack** (Tailwind v4, shadcn/ui), so it feels like a SupplyScope product. Desktop only.
 - **Left out for now:** team management (accounts come from a script), CI, HEIC photos and rollback migrations. A label can occasionally be read twice if a worker loses the database mid-call; the claim token makes the second read harmless.
