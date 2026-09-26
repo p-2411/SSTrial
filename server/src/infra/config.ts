@@ -46,8 +46,12 @@ const workerSchema = z.object({
   OPENAI_TIMEOUT_MS: z.coerce.number().int().positive().default(90_000),
   /** Requests per minute allowed to the LLM across *all* workers together (shared rate limiter). */
   OPENAI_REQUESTS_PER_MINUTE: z.coerce.number().positive().default(120),
-  /** How many jobs this worker process handles at once. Scale out with more processes. */
-  WORKER_CONCURRENCY: z.coerce.number().int().positive().default(4),
+  /**
+   * How many labels this worker process reads at once. A read is mostly waiting on the LLM (about
+   * 13 s), so keeping up with 120 requests a minute (the default rate) takes about 24 in flight.
+   * Scale out with more processes; the shared rate limiter keeps them all within the limit.
+   */
+  WORKER_CONCURRENCY: z.coerce.number().int().positive().default(24),
 });
 
 export type ApiConfig = z.infer<typeof apiSchema>;
