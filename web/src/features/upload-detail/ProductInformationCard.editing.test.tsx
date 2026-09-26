@@ -151,6 +151,9 @@ describe('editing extracted data', () => {
   it('edits ingredients row by row, keeping what it can’t edit', async () => {
     renderCard();
     await userEvent.click(screen.getByRole('button', { name: 'Edit ingredients' }));
+    // Its columns are headed, so it's clear which input is which.
+    expect(screen.getByText('Title')).toBeInTheDocument();
+    expect(screen.getByText('%')).toBeInTheDocument();
     const firstName = screen.getByRole('textbox', { name: 'Ingredient 1' });
     await userEvent.clear(firstName);
     await userEvent.type(firstName, 'Oat flakes');

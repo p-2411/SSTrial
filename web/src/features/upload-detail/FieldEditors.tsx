@@ -208,6 +208,9 @@ interface Row extends IngredientDraft {
   key: number;
 }
 
+/** The ingredients editor's columns: position, title, percentage, remove. */
+const INGREDIENT_COLUMNS = 'grid grid-cols-[1.75rem_minmax(0,1fr)_5rem_auto] gap-1.5';
+
 /**
  * Ingredients as editable rows: name and percentage, remove, add. Sub-ingredients and allergen
  * links stay as extracted (new rows have none), so they're carried through untouched.
@@ -223,9 +226,17 @@ export function IngredientsEditor({ value, onSave, ...form }: EditorProps<Ingred
 
   return (
     <EditorForm {...form} onSubmit={() => onSave(ingredientsChanges(rows))}>
+      {/* Column headings, for sight: each input already has its own accessible name. The empty
+          last column is the remove buttons'. */}
+      <div aria-hidden className={cn(INGREDIENT_COLUMNS, 'text-xs font-medium text-muted-foreground')}>
+        <span />
+        <span>Title</span>
+        <span>%</span>
+        <span className="w-6" />
+      </div>
       <ol className="grid gap-1.5">
         {rows.map((row, index) => (
-          <li key={row.key} className="grid grid-cols-[1.75rem_minmax(0,1fr)_5rem_auto] items-center gap-1.5 text-sm">
+          <li key={row.key} className={cn(INGREDIENT_COLUMNS, 'items-center text-sm')}>
             <span aria-hidden className="text-muted-foreground tabular-nums">
               {index + 1}
             </span>
