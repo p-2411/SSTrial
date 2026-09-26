@@ -2,7 +2,7 @@
 
 Upload photos or PDFs of product labels; a background worker reads each one with an LLM and extracts the **product name, brand, ingredients, allergens and net weight** as validated, structured JSON.
 
-![The app: upload list on the left, extracted label data on the right](docs/screenshot.png)
+![The uploads page: the drop area, Review and Products on the left, and a product's extracted data on the right](docs/screenshot.png)
 
 - **Live:** https://api-production-4ec2.up.railway.app (accounts are created by us: ask for a login).
 - **Run it locally:** [Running locally](#running-locally), about five commands. **Tests:** [Tests](#tests).
