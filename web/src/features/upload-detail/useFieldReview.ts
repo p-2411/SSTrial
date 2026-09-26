@@ -19,7 +19,7 @@ interface OpenEditor {
 }
 
 /**
- * Editing one field at a time, and confirming fields as right.
+ * Editing one field at a time, and confirming the upload's flagged fields as right.
  *
  * Nobody's change is silently lost, and neither is the person's draft. The editor remembers the
  * value its draft is based on. If someone else changes that field meanwhile (arriving live, or
@@ -38,7 +38,7 @@ export function useFieldReview(upload: UploadDetail & { result: LabelExtraction 
   const [editor, setEditor] = useState<OpenEditor | null>(null);
   const [error, setError] = useState<string | null>(null);
   const checking = useRef(false); // a double click mustn't send two checks (state would lag a render)
-  const [checkingField, setCheckingField] = useState<LabelField | null>(null);
+  const [checkInFlight, setCheckInFlight] = useState(false);
 
   /** Updates the open editor, if it's still this field's; null closes it. */
   const updateEditor = (field: LabelField, changes: Partial<OpenEditor> | null) =>
@@ -79,12 +79,12 @@ export function useFieldReview(upload: UploadDetail & { result: LabelExtraction 
     }
   };
 
-  const check = async (field: LabelField) => {
-    if (checking.current) return;
+  const check = async (fields: LabelField[]) => {
+    if (checking.current || fields.length === 0) return;
     checking.current = true;
-    setCheckingField(field);
+    setCheckInFlight(true);
     try {
-      await markChecked.mutateAsync({ revision: upload.revision, checked: [field] });
+      await markChecked.mutateAsync({ revision: upload.revision, checked: fields });
     } catch (failure) {
       const refused = isEditConflict(failure);
       if (refused) await refreshUpload(queryClient, upload.id); // so their version shows
@@ -93,7 +93,7 @@ export function useFieldReview(upload: UploadDetail & { result: LabelExtraction 
       });
     } finally {
       checking.current = false;
-      setCheckingField(null);
+      setCheckInFlight(false);
     }
   };
 
@@ -114,9 +114,10 @@ export function useFieldReview(upload: UploadDetail & { result: LabelExtraction 
       setError(null);
       setEditor({ field, baseline: valueOf(upload, field), saving: false });
     },
-    check: (field: LabelField) => void check(field),
-    /** The field being marked as checked right now, if any. */
-    checking: checkingField,
+    /** Confirms these fields as right, in one go (the upload's flagged ones: see ProductInformationCard). */
+    check: (fields: LabelField[]) => void check(fields),
+    /** Whether a check is being saved right now. */
+    checking: checkInFlight,
     /** For the open field's editor (see FieldEditors). */
     editorProps,
   };

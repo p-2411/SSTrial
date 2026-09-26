@@ -54,7 +54,7 @@ describe('UploadRow', () => {
     renderRow(summary({ confidence }));
     const pill = screen.getByText('Check');
     expect(pill).toHaveClass(tone);
-    expect(pill).toHaveTextContent(`Completed, confidence ${confidence}%: Check · ${confidence}%`); // as read aloud
+    expect(pill).toHaveTextContent(`Completed, confidence ${confidence}%: Check (${confidence}%)`); // as read aloud
     expect(screen.queryByText('Completed')).not.toBeInTheDocument();
   });
 

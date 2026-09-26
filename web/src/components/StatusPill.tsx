@@ -30,7 +30,7 @@ const WORTH_CHECKING: Record<'check' | 'low', Omit<PillStyle, 'label'>> = {
 /**
  * Status as a rounded pill: icon + word, never colour alone (SupplyScope's pill style). A completed
  * upload also says how confident its extraction is: a confident one is just "Completed", and one
- * worth a look reads "Check · 72%" instead, amber or red, so it invites a check. `confidence` is the
+ * worth a look reads "Check (72%)" instead, amber or red, so it invites a check. `confidence` is the
  * upload's overall score (its least certain unchecked field), or null when there's nothing to flag.
  */
 export function StatusPill({
@@ -56,7 +56,7 @@ export function StatusPill({
       ) : (
         <>
           <span className="sr-only">Completed, confidence {confidence}%: </span>
-          Check<span aria-hidden> · {confidence}%</span>
+          Check<span aria-hidden> ({confidence}%)</span>
         </>
       )}
     </Badge>

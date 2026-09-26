@@ -1,5 +1,13 @@
 import type { ReactNode } from 'react';
-import { isVolumeUnit, type Ingredient, type LabelExtraction, type LabelField, type UploadDetail } from '@label-extractor/shared';
+import {
+  isVolumeUnit,
+  LABEL_FIELDS,
+  needsChecking,
+  type Ingredient,
+  type LabelExtraction,
+  type LabelField,
+  type UploadDetail,
+} from '@label-extractor/shared';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatQuantity } from '@/lib/quantity';
 import { TONE_CLASSES } from '@/lib/tone';
@@ -18,9 +26,9 @@ import { useFieldReview } from './useFieldReview';
  *
  * Every field can be corrected in place, one at a time (see useFieldReview). When the extraction
  * was scored, each field's marker takes its confidence colour and its score sits on the right, in
- * a column headed "Confidence"; a doubtful field can also be confirmed as right. Once a person has
- * edited or confirmed a field, it says so in place of its score; who did it, and when, is in the
- * detail's header.
+ * a column headed "Confidence". The footer's "Mark as checked" confirms every flagged field as
+ * right at once. Once a person has edited or confirmed a field, it says so in place of its score;
+ * who did it, and when, is in the detail's header.
  */
 export function ProductInformationCard({ upload }: { upload: UploadDetail & { result: LabelExtraction } }) {
   const { productName, brand, netWeight, allergens, ingredients } = upload.result;
@@ -31,8 +39,6 @@ export function ProductInformationCard({ upload }: { upload: UploadDetail & { re
     confidence: upload.fieldConfidence?.[field],
     review: upload.fieldReviews[field],
     onEdit: () => fields.edit(field),
-    onCheck: () => fields.check(field),
-    checking: fields.checking === field,
   });
 
   return (
@@ -102,9 +108,18 @@ export function ProductInformationCard({ upload }: { upload: UploadDetail & { re
         </div>
       </CardContent>
 
-      <ConfidenceFooter upload={upload} />
+      <ConfidenceFooter upload={upload} onCheck={() => fields.check(flaggedFields(upload))} checking={fields.checking} />
     </Card>
   );
+}
+
+/** Position, title and printed percentage, for the list and its headings. */
+const INGREDIENT_COLUMNS = 'grid grid-cols-[1.75rem_minmax(0,1fr)_3.5rem]';
+
+/** Fields nobody has reviewed yet whose score says they're worth a look: what "Mark as checked" confirms. */
+function flaggedFields({ fieldConfidence, fieldReviews }: UploadDetail): LabelField[] {
+  if (!fieldConfidence) return [];
+  return LABEL_FIELDS.filter((field) => !fieldReviews[field] && needsChecking(fieldConfidence[field].score));
 }
 
 /**
@@ -115,9 +130,15 @@ function IngredientList({ ingredients }: { ingredients: Ingredient[] }) {
   const anyAllergens = ingredients.some((ingredient) => ingredient.allergens.length > 0);
   return (
     <>
-      <ol className="mt-2 grid gap-1">
+      {/* Column headings, as in the editor. For sight only: each row reads fine on its own. */}
+      <div aria-hidden className={cn(INGREDIENT_COLUMNS, 'mt-2 text-xs font-medium text-muted-foreground')}>
+        <span />
+        <span>Title</span>
+        <span className="text-right">%</span>
+      </div>
+      <ol className="mt-1 grid gap-1">
         {ingredients.map((ingredient, index) => (
-          <li key={ingredient.name} className="grid grid-cols-[1.75rem_minmax(0,1fr)_3.5rem] items-baseline text-sm">
+          <li key={ingredient.name} className={cn(INGREDIENT_COLUMNS, 'items-baseline text-sm')}>
             <span aria-hidden className="text-muted-foreground tabular-nums">
               {index + 1}
             </span>

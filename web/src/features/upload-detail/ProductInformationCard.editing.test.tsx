@@ -1,7 +1,14 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { EditResultRequest, ExtractionConfidence, LabelExtraction, UploadDetail } from '@label-extractor/shared';
+import {
+  overallConfidence,
+  type EditResultRequest,
+  type ExtractionConfidence,
+  type LabelExtraction,
+  type LabelField,
+  type UploadDetail,
+} from '@label-extractor/shared';
 import { uploadKeys, useUploadDetail } from '@/api/queries';
 import { detail } from '@/test/fixtures';
 import { createTestQueryClient, jsonResponse, Providers, renderWithProviders } from '@/test/render';
@@ -27,8 +34,13 @@ const CONFIDENCE: ExtractionConfidence = {
 };
 
 type Upload = UploadDetail & { result: LabelExtraction };
-const upload = (overrides: Partial<UploadDetail> = {}): Upload =>
-  ({ ...detail({ id: 'u1', status: 'completed', fieldConfidence: CONFIDENCE, ...overrides }), result: RESULT }) as Upload;
+/** A scored upload as the API sends it: its overall score is worked out from its fields', as on the server. */
+function upload(overrides: Partial<UploadDetail> = {}): Upload {
+  const fieldConfidence = overrides.fieldConfidence ?? CONFIDENCE;
+  const reviewed = Object.keys(overrides.fieldReviews ?? {}) as LabelField[];
+  const confidence = overallConfidence(fieldConfidence, reviewed);
+  return { ...detail({ id: 'u1', status: 'completed', fieldConfidence, confidence, ...overrides }), result: RESULT } as Upload;
+}
 
 /** What the server answers to PATCH …/result: by default, the upload with the changes applied. */
 let answer: (request: EditResultRequest) => Response;
@@ -171,13 +183,13 @@ describe('editing extracted data', () => {
 });
 
 describe('reviewing', () => {
-  it('offers to mark a doubtful field as checked, and only that one', async () => {
-    renderCard();
-    const buttons = screen.getAllByRole('button', { name: /Mark .* as checked/ });
-    expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['Mark net weight as checked']);
+  it('marks every flagged field as checked at once, from the footer, and only those', async () => {
+    renderCard(upload({ fieldConfidence: { ...CONFIDENCE, brand: { score: 70, reasons: [] } } }));
+    // One button for the upload, not one per field.
+    expect(screen.getAllByRole('button', { name: /as checked/ })).toHaveLength(1);
 
-    await userEvent.click(buttons[0]!);
-    expect(sent).toEqual([{ revision: 0, checked: ['netWeight'] }]);
+    await userEvent.click(screen.getByRole('button', { name: 'Mark flagged fields as checked' }));
+    expect(sent).toEqual([{ revision: 0, checked: ['brand', 'netWeight'] }]);
   });
 
   it('says a reviewed field was checked in place of its score (who did it is in the header)', () => {
@@ -187,7 +199,8 @@ describe('reviewing', () => {
     expect(within(card).getByText('Checked')).toBeInTheDocument();
     expect(within(card).queryByText(/alice@example\.com/)).not.toBeInTheDocument();
     expect(within(card).queryByText('58%')).not.toBeInTheDocument();
-    expect(within(card).queryByRole('button', { name: 'Mark net weight as checked' })).not.toBeInTheDocument();
+    // Nothing flagged is left, so there's nothing to confirm.
+    expect(within(card).queryByRole('button', { name: 'Mark flagged fields as checked' })).not.toBeInTheDocument();
   });
 
   it("shows someone else's change to the open field beside the draft, and saves over it only when told to", async () => {
@@ -269,11 +282,11 @@ describe('reviewing', () => {
     expect(sent).toEqual([{ revision: 1, changes: { brand: 'Harvest & Hearth Mine' } }]);
   });
 
-  it('keeps an open editor, and its draft, when another field is marked as checked', async () => {
+  it('keeps an open editor, and its draft, when the flagged fields are marked as checked', async () => {
     renderCard();
     await userEvent.click(screen.getByRole('button', { name: 'Edit brand' }));
     await userEvent.type(screen.getByRole('textbox', { name: 'Brand' }), ' Mine');
-    await userEvent.click(screen.getByRole('button', { name: 'Mark net weight as checked' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Mark flagged fields as checked' }));
 
     await vi.waitFor(() => expect(sent).toHaveLength(1));
     expect(screen.getByRole('textbox', { name: 'Brand' })).toHaveValue('Harvest & Hearth Mine');
@@ -284,7 +297,7 @@ describe('reviewing', () => {
     let release: (response: Response) => void = () => {};
     answer = () => new Promise<Response>((resolve) => (release = resolve)) as unknown as Response;
     renderCard();
-    const check = screen.getByRole('button', { name: 'Mark net weight as checked' });
+    const check = screen.getByRole('button', { name: 'Mark flagged fields as checked' });
     await userEvent.dblClick(check);
 
     expect(sent).toHaveLength(1);

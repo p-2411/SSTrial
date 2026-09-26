@@ -119,19 +119,19 @@ describe('ProductInformationCard', () => {
 
     it('is green when every field is confidently read', () => {
       const card = renderCard(full, scored([97, 95, 92, 90, 88]));
-      expect(footer(card)).toHaveTextContent('High confidence · 88%');
-      expect(footer(card)).toHaveClass('bg-success');
+      expect(footer(card)).toHaveTextContent('High confidence (88%)');
+      expect(footer(card).parentElement).toHaveClass('bg-success'); // the bar around the verdict
     });
 
     it('is amber, and asks for a check, when a field is worth checking', () => {
       const card = renderCard(full, scored([97, 72, 92, 90, 88]));
-      expect(footer(card)).toHaveTextContent('Medium confidence · 72%. Check the flagged fields.');
+      expect(footer(card)).toHaveTextContent('Medium confidence (72%). Check flagged fields.');
       expect(card).toHaveClass('border-warning-border');
     });
 
     it('is red when a field is more likely wrong than right', () => {
       const card = renderCard(full, scored([97, 72, 45, 90, 88]));
-      expect(footer(card)).toHaveTextContent('Low confidence · 45%. Check the flagged fields.');
+      expect(footer(card)).toHaveTextContent('Low confidence (45%). Check flagged fields.');
       expect(card).toHaveClass('border-danger-border');
     });
 
@@ -141,7 +141,7 @@ describe('ProductInformationCard', () => {
         brand: { kind: 'checked', by: 'alice@example.com', at },
         netWeight: { kind: 'edited', by: 'alice@example.com', at },
       });
-      expect(footer(card)).toHaveTextContent('High confidence · 88%');
+      expect(footer(card)).toHaveTextContent('High confidence (88%)');
     });
 
     it('says so when a person has reviewed every field', () => {
