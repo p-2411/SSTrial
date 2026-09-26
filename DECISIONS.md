@@ -1,16 +1,18 @@
 # Decisions
 
-## Architecture in one breath
+## Architecture overview
 
-The browser asks the API for a signed URL, uploads the file **straight to storage**, then tells the API it's done. The API checks the file's real type from its first bytes and, **in one Postgres transaction**, marks the upload `queued` and inserts a job. A separate worker process pulls jobs, calls the LLM, validates the answer against our schema and stores it. A database trigger announces each change, and the API pushes it to browsers over server-sent events. Each step is also recorded in an activity log that admins can browse.
+The browser asks the API for a signed URL, uploads the file **straight to storage**, then tells the API it's done. The API checks the file's real type from its first bytes and, in one Postgres transaction, marks the upload `queued` and inserts a job. A separate worker process pulls jobs, calls the LLM, validates the answer against our schema and stores it. A database trigger announces each change, and the API pushes it to browsers over server-sent events. Each step is also recorded in an activity log that admins can browse.
 
 ## Why a Postgres queue (pg-boss) rather than Redis or SQS
 
-- **Transactional enqueue.** The queue lives in the same database as the `uploads` table, so "mark queued" and "create job" commit or roll back together. Without that we'd need an outbox table to avoid the two failure cases: a row stuck in `queued` with no job, or a job for a row that never got updated.
-- **One less moving part.** We already run Postgres (Supabase). Redis would add a service to host, secure and monitor for no benefit at this scale.
-- **Everything we need is built in:** `SKIP LOCKED` job claiming (any number of workers, each job to one worker), retry limits, exponential back-off with jitter, job expiry for crashed workers, and a dead-letter queue.
-- **The trade-off:** a Postgres queue tops out at thousands of jobs a second, polls (2 s latency) rather than pushes, and shares load with the primary database. Our bottleneck is the LLM at tens of jobs a second, so that ceiling is far away. Past roughly 1k jobs/s, or if queue traffic started to contend with app queries, I'd move to SQS or Redis and add an outbox.
-- **Rejected:** having the API call a worker endpoint directly. Jobs are lost if the worker is down, crashes mid-job are forgotten, and there's no back-pressure. It also wouldn't be a real queue.
+Main reason here is **YAGNI**: assuming our scale is 50,000 uploads at a given moment, Postgres is enough for thousands per second, and going with Postgres provides the least technical friction since we're already running Postgres on Supabase so it becomes convenient to also store the queue there. Redis or other would add a service we'd have to manage, and although it is faster, it is optimising for a scale that is outside the scope of the product. 
+
+**The trade-off:** a Postgres queue tops out at thousands of jobs a second, polls (2 s latency) rather than pushes, and shares load with the primary database. Our bottleneck is the LLM at tens of jobs a second, so that ceiling is pretty far away. Past roughly 1k jobs/s, or if queue traffic started to contend with app queries, I'd move to SQS or Redis and add an outbox.
+
+Using Postgres also provides the following benefits:
+**Transactional enqueue.** The queue lives in the same database as the `uploads` table, so "mark queued" and "create job" commit or roll back together. Without that we'd need an outbox table to avoid the two failure cases: a row stuck in `queued` with no job, or a job for a row that never got updated.
+**Everything we need is built in:** `SKIP LOCKED` job claiming (any number of workers, each job to one worker), retry limits, exponential back-off with jitter, job expiry for crashed workers, and a dead-letter queue.
 
 ## How LLM failures are handled
 
@@ -34,12 +36,14 @@ The LLM sits behind a `LabelExtractor` interface. Every failure becomes an `Extr
 
 ## Confidence scores
 
-- **From the model, in the same call.** It scores each field 0–100 and gives a reason for anything below 85 ("partly hidden by a fold"). That costs a few output tokens rather than a second call. Alternatives considered: token log-probabilities (not available for reasoning models such as the default, gpt-6-luna), extracting twice and comparing (a real measure of disagreement, but double the cost and time), and a separate verifier model (TypeSafe's Jev returns calibrated probabilities, but takes text only, and our input is images).
-- **Plain checks correct it.** A model's own score ranks fields well but isn't a calibrated probability, and models are most overconfident exactly where they're wrong. So `applyConfidenceChecks` (`shared/src/confidence.ts`) caps a field at 60 where the data contradicts itself: the net amount isn't in its own printed text, a declared allergen is in no ingredient, or the percentages add up to more than 100%. Checks only lower scores and add their own reason.
+- **From the model, in the same call.** It scores each field 0–100 and gives a reason for anything below 85 ("partly hidden by a fold"). That costs a few output tokens rather than a second call. Alternatives considered: extracting twice and comparing (a real measure of disagreement, but double the cost and time), and a separate verifier model (TypeSafe's Jev returns calibrated probabilities, but takes text only, and our input is images).
+- **Plain checks correct it.** A model's own score ranks fields well but isn't a calibrated or necessarily accurate probability, and models can be overconfident even where they're wrong. We counter this with deterministic checks on the LLMs confiden scores. `applyConfidenceChecks` (`shared/src/confidence.ts`) caps a field at 60 where the data contradicts itself: the net amount isn't in its own printed text, a declared allergen is in no ingredient, or the percentages add up to more than 100%. Checks only lower scores and add their own reason.
 - **Checked when read, not when stored.** The model's scores are stored as it gave them, and the checks run each time an upload is read. Stored once at extraction, a cap would outlive an edit that fixed the contradiction, and miss one an edit introduced (removing the only ingredient that contains a declared allergen). The checks are a few comparisons, so running them per read costs nothing measurable.
 - **Reusing an identical file's result reuses the model's answer.** When a file's bytes match a completed upload, its extraction is copied instead of asking the model again: the model's original output and scores, not a person's corrections to the other upload, which belong to that upload and the person who made them.
-- **Bands, not decimals.** The UI works in three bands (85+ fine, 60–84 check, below 60 low), because the difference between 88 and 92 means nothing. An upload's score is its least certain field: one bad field is what makes a label need review, and an average would hide it.
+- **Bands, not decimals.** The UI works in three bands (85+ fine, 60–84 check, below 60 low) since precise details are essentially meaningless since the probability is a semantic indicator rather than a calculated probability. An upload's score is its least certain field.
 - **Advisory, so lenient.** The label data is validated strictly and retried if malformed; the scores aren't worth a retry. Missing or malformed scores are stored as "not scored", and uploads from before scoring existed simply show none. Scores live in their own column, apart from the result that's exported.
+
+Low confidence scores prompt a "Check" status which invite the user to check the fields and edit them if needed, and if they are content they are able to "Mark as checked".
 
 ## Reviewing and editing extracted data
 
@@ -64,31 +68,7 @@ The LLM sits behind a `LabelExtractor` interface. Every failure becomes an `Extr
 3. **Processing is bounded by the LLM's rate limit, not by us.** At 500 requests/minute, 50k files take about 100 minutes however many workers we run. The shared token bucket paces all workers to that rate, so adding workers beyond it gains nothing but doesn't cause 429 storms either. Identical files are recognised by their SHA-256 and processed once.
 4. **For bulk imports,** I'd route through OpenAI's Batch API (about half the cost, a separate higher quota, results within 24 h) and keep the realtime path for interactive uploads, using pg-boss priorities so interactive uploads jump the backlog.
 5. **Supporting pieces:** per-process DB pools stay small behind Supabase's pooler. The list is filtered, counted and paginated by the server (keyset cursor), and status changes are pushed to browsers rather than polled. The System status page shows a backlog building before users notice.
-
-## Every upload reaches a final state
-
-- **Nothing to clean up.** Creating an upload also schedules a one-off *finalise* job for just after its signed URL expires, in the same transaction. If the browser confirms (or its file is rejected), the job is cancelled in that same transaction, so it never runs. If the file arrived but the tab closed, the job confirms it. If nothing arrived, the upload is discarded. There's no periodic sweeper.
-- **Rejected files aren't kept.** If the bytes aren't a supported type, the file and the upload are deleted, and the browser shows the reason on its own row with "Try again".
-- **Unreadable results are surfaced.** A saved result that no longer fits the schema is flagged and can be run again, not shown as blank.
-
-## Monitoring
-
-- **Health checks:** `GET /api/health` on the API and on the worker checks the database, the queue and (on the worker) its job loop. It answers 503 naming what failed, without the error's text (it's public, and errors can name hosts); the admin-only status page shows the details. Railway uses it on deploy.
-- **Worker heartbeat:** a once-a-minute job in the worker records that it's running. That covers the one failure a worker can't report itself: no worker running. The same job prunes the activity log.
-- **Where to look:** the System status page (`/status`) and `GET /api/ops` for the state of things now: the queue, the worker, health checks, the last 24 hours and failures by reason. The activity log (`/logs`) shows what happened, and when.
-- **No alerts, deliberately.** An earlier version opened and resolved alerts (AI service refusing requests, stalled queue, backlog, high failure rate, crashed attempts). They only ever showed inside the app, where the same facts are already on the status page and in the activity log, so they were removed. Alerting worth having would notify someone (email, Slack, a pager) from an uptime check on `/api/health` and the host's log search. That's the step to add before real use.
-
-## Activity log
-
-An `events` table records what happened to each upload (created, identical to an earlier file, queued, rejected, discarded, retried by hand, reviewed or edited, deleted, each extraction attempt started, completed, scheduled for retry, failed or abandoned) and to the system (rate-limit pauses, process starts). The Logs page (`/logs`) shows it newest first, grouped by day. One menu narrows it to any mix of event types, and `?upload=<id>` in the address narrows it to one upload. Each type has a fixed level, set once in the shared catalogue ("Extraction failed" is always an error), so there's no separate level filter: "Warnings and errors" and "Errors only" are shortcuts that tick the matching types. The filters are kept in the URL.
-
-- **A table, not the stdout logs.** The processes still log to stdout (pino) for debugging: stack traces, raw provider errors. But those can't be queried per upload from the app, and they're only as good as the host's log search. Events are one readable sentence each, plus structured `data` (error code, attempt, duration, file name), so they work for the person running the system, not only for a developer.
-- **Written by the application, not by triggers.** A trigger on `uploads` would catch every status change atomically, but it can't know *why*: which attempt, whether the error is worth retrying, how long the AI took, that a result was reused, that every worker paused. The use cases and the worker know, so they record events through a small `EventLog` interface, and every message is worded in one file (`server/src/logs/events.ts`).
-- **Best-effort, after the change, never in its transaction.** A log write can't fail or slow down an upload: a failed insert is reported to stdout and swallowed. The cost is that an event can be missing if a process dies between a change and its event. For a history meant for people, that's the right side to err on. Recording in the same transaction would turn a logging hiccup into a failed upload.
-- **History outlives the upload.** `upload_id` has no foreign key, because rejected and discarded uploads are deleted, and their events are exactly the ones worth keeping. Events carry the file name for the same reason.
-- **Read back leniently.** A row whose type this version no longer knows (say, one since removed) is simply not listed, filtered out in the query so pages stay full. Each event's level comes from its type, so it can't disagree with the catalogue.
-- **Scale.** An upload writes four events when all goes well, and a few more for each retry, so 50,000 uploads add 200,000 to 300,000 rows. Pages use a keyset cursor on the ID. Per-upload and per-type lookups have their own indexes; the event types worth filtering to (failures, retries, rejections) are rare, so a filtered page reads few rows. Events are kept for 30 days and pruned by the worker's once-a-minute housekeeping, so each run deletes about a minute's worth, found through a BRIN index on the timestamp. Past a few million rows a day, I'd partition by day and drop old partitions instead, or send events to a log store.
-- **Live.** A statement-level trigger on `events` sends a NOTIFY with no payload. The API forwards it as a `log` server-sent event, and the page refetches its newest events. With no payload there's nothing to parse or trust, and a burst of inserts collapses into one refresh in the browser.
+6. 
 
 ## Storage
 
@@ -104,18 +84,7 @@ It's also styled with their brand, taken from supplyscope.io and their product s
 - **Detail view:** opens as a panel that slides in beside the list and narrows it, rather than covering it, so the main page is just "add files, see results" and you can move between uploads by clicking the next row. The URL (`/uploads/:id`) still drives it, so links, refresh and the back button work. Inside, it's modelled on their compliance screen: a "Core information" card with verified values in green, then the source document to check them against.
 - **Not copied:** their logo or product name (the deployed app is public, and it shouldn't pass as an official SupplyScope product) and their display typeface (Labil Grotesk is commercially licensed). Inter, which their app itself uses, stands in with tight heading tracking.
 - **Desktop only:** there's no mobile layout. It's a desktop operations tool, and supporting phones would have added complexity for little benefit.
-
-## Sign-in and roles
-
-- **Accounts come from a script, not sign-up or invites.** It's the smallest thing that shows how access is managed. Invites would need an email provider (Supabase's built-in one only emails the project's own team), and public sign-up would let anyone spend the OpenAI credit. Supabase Auth holds the accounts and passwords; the `members` table says who has access and as what.
-- **Two roles.** Members do the work: upload, review, export. Admins can also see how the system is running (System status, the Activity log). The API enforces it with `requireRole`; the UI only hides what the API would refuse anyway.
-- **Roles live in a table, not in the token.** The API looks the member up on every request (one primary-key read), so removing someone or changing their role applies immediately instead of when their token next refreshes, up to an hour later.
-- **The token travels in a header, never in a URL,** where it would end up in server and proxy logs. That's why live updates read the event stream with `fetch` (the browser's `EventSource` can't send headers) and exports download through `fetch` rather than a plain link.
-- **A live stream is re-checked.** It's authorised when it opens, then ended when the token runs out or after 15 minutes, whichever is first; the browser reconnects with its current token, which is checked again. So an expired sign-in stops receiving changes, and someone removed from `members` does within 15 minutes.
-- **Malformed tokens are signed out, not an outage.** Only a failure to reach Supabase Auth answers 503 (so an Auth outage doesn't sign everyone out); a token that can't even be decoded is a 401 like any other invalid one.
-- **Passwords aren't command-line arguments.** `create-user` asks for them without echoing (or reads a pipe), because arguments land in shell history and are visible to other processes.
-- **Only Supabase's auth client ships to the browser** (`@supabase/auth-js`), not all of supabase-js: the browser never talks to the database or storage directly.
-
+- 
 ## Other trade-offs and things deliberately left out
 
 - **One workspace, no team management:** everyone signed in shares one list, and accounts come from a script. Before real use: invites through an email provider, password reset, per-user quotas, and separate workspaces if several companies share it.
