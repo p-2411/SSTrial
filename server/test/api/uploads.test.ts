@@ -489,7 +489,7 @@ describe('GET /api/uploads/:id/history', () => {
     const response = await history();
 
     expect(response.statusCode).toBe(200);
-    expect(response.json().events.map((event: { message: string }) => event.message)).toEqual(['uploaded', 'edited']);
+    expect(response.json().entries.map((entry: { message: string }) => entry.message)).toEqual(['uploaded', 'edited']);
   });
 
   it('is open to members, not just admins', async () => {

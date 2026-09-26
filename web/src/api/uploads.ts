@@ -1,6 +1,7 @@
 import { RESULT_EDIT_PATH } from '@label-extractor/shared';
 import type {
   EditResultRequest,
+  RevertRequest,
   OpsStatusResponse,
   CreateUploadRequest,
   CreateUploadResponse,
@@ -52,6 +53,11 @@ export async function deleteUpload(id: string): Promise<void> {
 
 export async function retryUpload(id: string): Promise<UploadDetail> {
   return (await apiRequest<UploadResponse>(`/api/uploads/${encodeURIComponent(id)}/retry`, { method: 'POST' })).upload;
+}
+
+/** Admins only: puts an upload's data back to a version from its history. */
+export async function revertUpload(id: string, request: RevertRequest): Promise<UploadDetail> {
+  return (await apiRequest<UploadResponse>(`/api/uploads/${encodeURIComponent(id)}/revert`, { method: 'POST', body: request })).upload;
 }
 
 /**

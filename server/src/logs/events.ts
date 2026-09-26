@@ -10,7 +10,7 @@ import {
   type UploadErrorCode,
 } from '@label-extractor/shared';
 import { isRetryableCode, RETRY_POLICY } from '../extraction/retry-policy.ts';
-import type { UploadRecord } from '../uploads/store.ts';
+import type { UploadRecord, UploadVersion } from '../uploads/store.ts';
 import type { NewLogEvent } from './store.ts';
 
 /**
@@ -102,7 +102,13 @@ export const logEvents = {
   /** Someone corrected fields (`changes`, with before and after) and/or confirmed others (`checked`). */
   resultEdited(
     upload: UploadRef,
-    review: { by: string; changes: Partial<Record<LabelField, { from: unknown; to: unknown }>>; checked: LabelField[] },
+    review: {
+      by: string;
+      changes: Partial<Record<LabelField, { from: unknown; to: unknown }>>;
+      checked: LabelField[];
+      /** The data after this review, as saved: what "Revert to here" goes back to. */
+      versionId: string;
+    },
   ): NewLogEvent {
     const base = aboutUpload(upload);
     const edited = Object.keys(review.changes) as LabelField[];
@@ -114,7 +120,19 @@ export const logEvents = {
       ...base,
       type: 'upload.edited',
       message: `${review.by} ${phrases.join(' and ')} of ${upload.fileName}.`,
-      data: { ...base.data, by: review.by, changes: review.changes, checked: review.checked },
+      data: { ...base.data, by: review.by, changes: review.changes, checked: review.checked, versionId: review.versionId },
+    };
+  },
+
+  /** An admin put the data back to an earlier version (`to`); the result is saved as `versionId`. */
+  uploadReverted(upload: UploadRef, revert: { by: string; to: UploadVersion; versionId: string }): NewLogEvent {
+    const base = aboutUpload(upload);
+    const back = { extraction: "the AI's reading", review: 'how it was after an earlier review', revert: 'an earlier version' }[revert.to.source];
+    return {
+      ...base,
+      type: 'upload.reverted',
+      message: `${revert.by} put ${upload.fileName} back to ${back}.`,
+      data: { ...base.data, by: revert.by, revertedTo: revert.to.id, versionId: revert.versionId },
     };
   },
 
@@ -141,9 +159,10 @@ export const logEvents = {
   },
 
   /** `reusedFrom`: an identical file whose result was reused instead of asking the AI again. */
+  /** `versionId`: the reading as saved, which an admin can put the data back to (see uploads/revert.ts). */
   extractionCompleted(
     upload: UploadRecord,
-    details: { productName: string | null; durationMs?: number; reusedFrom?: string },
+    details: { productName: string | null; versionId: string; durationMs?: number; reusedFrom?: string },
   ): NewLogEvent {
     const base = aboutUpload(upload);
     const found = details.productName ? `: ${details.productName}` : '';

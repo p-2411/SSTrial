@@ -5,6 +5,7 @@ import {
   createUploadRequestSchema,
   editResultRequestSchema,
   listUploadsQuerySchema,
+  revertRequestSchema,
   MAX_OPEN_UPLOADS_PER_PERSON,
   SUPPORTED_TYPES_LABEL,
   UPLOAD_VIEW_IDS,
@@ -23,9 +24,12 @@ import { finaliseUpload } from '../../uploads/finalise.ts';
 import { requestUpload } from '../../uploads/intake.ts';
 import { loadUploadDetail } from '../../uploads/detail.ts';
 import { toUploadSummary } from '../../uploads/presenter.ts';
+import { withRevertPoints } from '../../uploads/history.ts';
 import { retryUpload } from '../../uploads/retry.ts';
+import { revertUpload } from '../../uploads/revert.ts';
 import { deleteUpload } from '../../uploads/delete.ts';
 import type { UploadIntake, UploadQueries, UploadRecord, UploadRemoval, UploadReviews } from '../../uploads/store.ts';
+import { requireRole } from '../auth.ts';
 import { ApiError, notFound } from '../errors.ts';
 
 export interface UploadRoutesDeps {
@@ -166,8 +170,29 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
   // activity log. Newest first from the store, turned round so the story reads in order.
   app.get('/api/uploads/:id/history', async (request): Promise<UploadHistoryResponse> => {
     const { id } = await visibleUpload(request);
-    const newestFirst = await events.list({ types: [], uploadId: id, limit: UPLOAD_HISTORY_LIMIT });
-    return { events: newestFirst.map(toLogEvent).reverse() };
+    const [newestFirst, versions] = await Promise.all([
+      events.list({ types: [], uploadId: id, limit: UPLOAD_HISTORY_LIMIT }),
+      uploads.listVersions(id),
+    ]);
+    return { entries: withRevertPoints(newestFirst.map(toLogEvent).reverse(), versions) };
+  });
+
+  // An admin putting a product's data back to an earlier version ------------------------------
+  app.post('/api/uploads/:id/revert', { preHandler: requireRole('admin') }, async (request): Promise<UploadResponse> => {
+    const body = revertRequestSchema.safeParse(request.body);
+    if (!body.success) throw new ApiError(400, 'BAD_REQUEST', 'Expected { revision, versionId }.');
+    const result = await revertUpload({ uploads, events }, uploadId(request.params), body.data, request.member!);
+
+    switch (result.outcome) {
+      case 'reverted':
+        return detailResponse(result.upload, request);
+      case 'conflict':
+        throw new ApiError(409, 'EDIT_CONFLICT', 'Someone else changed this upload since you opened it.');
+      case 'not-revertible':
+        throw new ApiError(409, 'NOT_EDITABLE', 'Only a completed upload can be reverted.');
+      case 'not-found':
+        throw notFound();
+    }
   });
 
   // Manual retry of a failed upload ------------------------------------------------------------

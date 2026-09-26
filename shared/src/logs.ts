@@ -31,6 +31,7 @@ export const LOG_EVENT_TYPES = {
   'upload.discarded': { label: 'Unfinished upload discarded', level: 'info' },
   'upload.retry_requested': { label: 'Retry requested', level: 'info' },
   'upload.edited': { label: 'Extracted data reviewed', level: 'info' },
+  'upload.reverted': { label: 'Data reverted', level: 'info' },
   'upload.deleted': { label: 'Upload deleted', level: 'info' },
   // The worker, extracting
   'extraction.started': { label: 'Extraction started', level: 'info' },
@@ -70,9 +71,15 @@ export interface LogEvent {
   data: Record<string, unknown>;
 }
 
+/** One entry in an upload's history: an event, and whether an admin can put the data back to it. */
+export type UploadHistoryEntry = LogEvent & {
+  /** The version "Revert to here" restores; null where the data didn't change, or can't go back. */
+  revertTo: string | null;
+};
+
 /** GET /api/uploads/:id/history — everything that happened to one upload, oldest first. */
 export interface UploadHistoryResponse {
-  events: LogEvent[];
+  entries: UploadHistoryEntry[];
 }
 
 export interface ListLogsResponse {

@@ -82,3 +82,11 @@ export const editResultRequestSchema = z.object({
 });
 export type EditResultRequest = z.input<typeof editResultRequestSchema>;
 export type ResultChanges = NonNullable<EditResultRequest['changes']>;
+
+/** POST /api/uploads/:id/revert — admins only. Made against the revision the admin saw, like an edit. */
+export const revertRequestSchema = z.object({
+  revision: z.number().int().min(0),
+  /** A version's ID, from the upload's history (`revertTo`). */
+  versionId: z.string().regex(/^\d{1,19}$/),
+});
+export type RevertRequest = z.infer<typeof revertRequestSchema>;

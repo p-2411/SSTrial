@@ -1,6 +1,7 @@
 import {
   applyConfidenceChecks,
   canDeleteUpload,
+  canTransition,
   type CurrentMember,
   overallConfidence,
   type ExtractionConfidence,
@@ -64,6 +65,7 @@ export function toUploadDetail(
     fileUrl,
     uploadedBy: emailOf(record.uploadedBy),
     canDelete: canDeleteUpload(record.uploadedBy, viewer),
+    canRevert: viewer.role === 'admin' && canTransition('review', record.status),
   };
 }
 

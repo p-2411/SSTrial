@@ -22,7 +22,15 @@ import type { ChangeFeed } from '../src/infra/change-feed.ts';
 import { StorageUnavailableError, type FileStorage } from '../src/infra/storage.ts';
 import type { EventStore, LogEventRecord, NewLogEvent } from '../src/logs/store.ts';
 import type { OpsSnapshot } from '../src/ops/store.ts';
-import type { NewUpload, SettleOptions, StoredFieldReviews, UploadRecord, UploadStore } from '../src/uploads/store.ts';
+import type {
+  NewUpload,
+  SettleOptions,
+  StoredFieldReviews,
+  UploadRecord,
+  UploadStore,
+  UploadVersion,
+  Versioned,
+} from '../src/uploads/store.ts';
 
 /**
  * In-memory stand-ins for Postgres, the queue and Supabase Storage, so API and worker logic can be
@@ -52,6 +60,22 @@ export class InMemoryUploadStore implements UploadStore {
   readonly finaliseScheduled: string[] = [];
   /** Upload IDs whose finalise job was cancelled, in order. */
   readonly finaliseCancelled: string[] = [];
+  /** Saved states of each upload's data, as the upload_versions table keeps them. */
+  readonly versions: Array<UploadVersion & { uploadId: string; state: Pick<UploadRecord, 'result' | 'confidence' | 'fieldReviews'> }> = [];
+  private nextVersionId = 1;
+
+  /** Saves the upload's current data as a version, as the real store does with every change. */
+  private saveVersion(upload: UploadRecord, source: UploadVersion['source']): Versioned {
+    const version = {
+      id: String(this.nextVersionId++),
+      source,
+      createdAt: new Date(),
+      uploadId: upload.id,
+      state: { result: upload.result, confidence: upload.confidence, fieldReviews: upload.fieldReviews },
+    };
+    this.versions.push(version);
+    return { upload, versionId: version.id };
+  }
 
   seed(overrides: Partial<UploadRecord> & { id: string }): UploadRecord {
     const now = new Date();
@@ -192,10 +216,28 @@ export class InMemoryUploadStore implements UploadStore {
       updatedAt: new Date(),
     };
     this.rows.set(id, saved);
-    return saved;
+    return this.saveVersion(saved, 'review');
+  }
+  async revert(id: string, revision: number, versionId: string) {
+    const row = this.rows.get(id);
+    const version = this.versions.find((v) => v.id === versionId && v.uploadId === id);
+    if (!row || !version || !canTransition('review', row.status) || row.resultRevision !== revision) return null;
+    const reverted = {
+      ...row,
+      ...version.state,
+      originalResult: row.originalResult ?? row.result,
+      resultRevision: revision + 1,
+      updatedAt: new Date(),
+    };
+    this.rows.set(id, reverted);
+    return this.saveVersion(reverted, 'revert');
+  }
+  async listVersions(id: string) {
+    return this.versions.filter((v) => v.uploadId === id).map(({ id: versionId, source, createdAt }) => ({ id: versionId, source, createdAt }));
   }
   async complete(id: string, claimToken: string, result: LabelExtraction, confidence: ExtractionConfidence | null) {
-    return this.transition(id, 'complete', { result, confidence, error: null, completedAt: new Date(), claimToken: null }, claimToken);
+    const done = await this.transition(id, 'complete', { result, confidence, error: null, completedAt: new Date(), claimToken: null }, claimToken);
+    return done && this.saveVersion(done, 'extraction');
   }
   async scheduleRetry(id: string, claimToken: string, code: UploadErrorCode) {
     return this.transition(id, 'retryLater', { error: { code }, claimToken: null }, claimToken);

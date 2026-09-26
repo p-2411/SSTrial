@@ -77,7 +77,7 @@ Every field gets a score out of 100 for how sure the extraction is, with the rea
 
 ### Reviewing and editing
 
-Any field can be corrected in place in the detail panel: the product name, brand, net weight (amount and unit), allergens, and ingredients (name and percentage, add or remove rows). The fields that scored under 85 can also be confirmed as right all at once, with "Mark as checked" in the card's footer. A reviewed field says "Edited" or "Checked" instead of its score, and stops counting towards the upload's confidence; the detail's header says who last edited or checked the data, and when. Edits are validated like model output, the model's original output is kept, and two people saving at once can't overwrite each other: the second is told, keeps their draft, and chooses whether it still applies. Exports use the edited data.
+Any field can be corrected in place in the detail panel: the product name, brand, net weight (amount and unit), allergens, and ingredients (name and percentage, add or remove rows). The fields that scored under 85 can also be confirmed as right all at once, with "Mark as checked" in the card's footer. A reviewed field says "Edited" or "Checked" instead of its score, and stops counting towards the upload's confidence; the detail's header says who last edited or checked the data, and when. Edits are validated like model output, the model's original output is kept, and two people saving at once can't overwrite each other: the second is told, keeps their draft, and chooses whether it still applies. Exports use the edited data. Every state the data has been in is saved as a version (the AI's reading, each edit or check, each revert), so an admin can put a product back to any of them from its history with "Revert to here"; the revert is recorded too, so nothing is lost.
 
 ### Deleting
 
@@ -187,6 +187,7 @@ check the token: 503 `AUTH_UNAVAILABLE`, so an Auth outage doesn't sign everyone
 | `GET` | `/api/uploads/:id` | One upload with its extracted data and a preview URL |
 | `POST` | `/api/uploads/:id/retry` | Run extraction again, for failures that could succeed and results that can't be read |
 | `GET` | `/api/uploads/:id/history` | Everything that happened to one upload, oldest first: its upload, each attempt to read it, and who edited or checked it. Anyone who can see the upload |
+| `POST` | `/api/uploads/:id/revert` | Admins only. Puts a completed upload's data back to a version from its history (`{ revision, versionId }`); the revert is itself recorded and can be undone |
 | `PATCH` | `/api/uploads/:id/result` | Correct fields (`changes`) or confirm them (`checked`), made against `revision`. 422 for an invalid value, 409 if someone saved since |
 | `DELETE` | `/api/uploads/:id` | Delete the upload and its file: 204. Only its uploader or an admin (403 otherwise); the detail says which as `canDelete` |
 | `GET` | `/api/events` | Server-sent events announcing upload changes and new activity-log events. Ends when the access token runs out (or after 15 minutes), and the browser reconnects with its current token |

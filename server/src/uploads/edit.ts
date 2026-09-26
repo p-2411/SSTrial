@@ -72,13 +72,14 @@ export async function editResult(
   // Someone saved between our read and our write. (Completed uploads are never deleted.)
   if (!saved) return { outcome: 'conflict' };
   await deps.events.record(
-    logEvents.resultEdited(saved, {
+    logEvents.resultEdited(saved.upload, {
       by: editor.email,
       changes: Object.fromEntries(edited.map((field) => [field, { from: current[field], to: result[field] }])),
       checked,
+      versionId: saved.versionId,
     }),
   );
-  return { outcome: 'saved', upload: saved };
+  return { outcome: 'saved', upload: saved.upload };
 }
 
 /** The current result with the changes applied, ready to validate. */

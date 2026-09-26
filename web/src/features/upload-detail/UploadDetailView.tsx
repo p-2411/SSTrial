@@ -119,7 +119,7 @@ function Detail({ upload }: { upload: UploadDetail }) {
       {upload.result && <ProductInformationCard upload={{ ...upload, result: upload.result }} />}
       <SourceDocumentCard upload={upload} />
       {upload.result && <JsonDisclosure data={upload.result} fileName={upload.fileName} />}
-      <UploadHistory uploadId={upload.id} />
+      <UploadHistory upload={upload} />
       {/* Last, on its own row: it can't be undone, so it's out of the way of everything else. */}
       {upload.canDelete && <DeleteUpload upload={upload} />}
     </>

@@ -154,4 +154,6 @@ export interface UploadDetail extends UploadSummary {
   uploadedBy: string | null;
   /** Whether the person asking may delete it (see canDeleteUpload). */
   canDelete: boolean;
+  /** Whether the person asking may put its data back to a point in its history: admins, once it's completed. */
+  canRevert: boolean;
 }

@@ -72,7 +72,9 @@ export async function processUpload(deps: ProcessUploadDeps, job: ExtractionJob)
     const completed = await deps.uploads.complete(upload.id, attempt.claim, result, confidence);
     if (!completed) return lostClaim(log);
     log.info(details, 'Extraction completed');
-    await deps.events.record(logEvents.extractionCompleted(completed, { productName: result.productName, ...details }));
+    await deps.events.record(
+      logEvents.extractionCompleted(completed.upload, { productName: result.productName, versionId: completed.versionId, ...details }),
+    );
     return { status: 'completed' };
   } catch (thrown) {
     return recordFailure(deps, attempt, toExtractionError(thrown), job.isFinalAttempt);

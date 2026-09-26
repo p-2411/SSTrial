@@ -67,6 +67,20 @@ export interface UploadRecord {
   completedAt: Date | null;
 }
 
+/** A saved state of an upload's data, that an admin can put it back to (see uploads/revert.ts). */
+export interface UploadVersion {
+  id: string;
+  /** What produced it: the AI reading the label, a person's edit or check, or a revert. */
+  source: 'extraction' | 'review' | 'revert';
+  createdAt: Date;
+}
+
+/** A write that also saved the upload's new state as a version: the upload, and that version. */
+export interface Versioned {
+  upload: UploadRecord;
+  versionId: string;
+}
+
 /** Who reviewed a field (their user ID) and when. The API names them by email. */
 export interface StoredFieldReview {
   kind: FieldReviewKind;
@@ -112,6 +126,8 @@ export interface UploadQueries {
   countUnderWay(uploadedBy: string): Promise<number>;
   /** Every completed upload, newest first, read in batches so an export of any size can stream. */
   streamCompleted(): AsyncIterable<UploadRecord>;
+  /** The saved states of an upload's data, oldest first. */
+  listVersions(id: string): Promise<UploadVersion[]>;
 }
 
 /** Getting uploads into the queue: creating, confirming or discarding them, and running them again. */
@@ -144,13 +160,16 @@ export interface UploadAttempts {
   recordContentHash(id: string, sha256: string): Promise<void>;
   /** The newest *completed* upload of an identical file other than `excludeId`, to reuse its result. */
   findCompletedTwin(sha256: string, excludeId: string): Promise<UploadRecord | null>;
-  /** `processing → completed` with the validated result. Null if `claimToken` is no longer current. */
+  /**
+   * `processing → completed` with the validated result, saved as a version too. Null if
+   * `claimToken` is no longer current.
+   */
   complete(
     id: string,
     claimToken: string,
     result: LabelExtraction,
     confidence: ExtractionConfidence | null,
-  ): Promise<UploadRecord | null>;
+  ): Promise<Versioned | null>;
   /** `processing → queued`, recording why this attempt failed; the queue will retry it. Needs the claim. */
   scheduleRetry(id: string, claimToken: string, code: UploadErrorCode): Promise<UploadRecord | null>;
   /** `processing → failed` — permanent. Needs the claim. */
@@ -165,11 +184,18 @@ export interface UploadAttempts {
 /** People correcting and confirming a completed upload's data. */
 export interface UploadReviews {
   /**
-   * Saves an edited result and who reviewed which fields, as the next revision. Only a completed
-   * upload still at `revision` is changed, so an edit made against an older version saves nothing
-   * (null). The model's own output is kept, on the first edit, as `original_result`.
+   * Saves an edited result and who reviewed which fields, as the next revision and as a version.
+   * Only a completed upload still at `revision` is changed, so an edit made against an older
+   * version saves nothing (null). The model's own output is kept, on the first edit, as
+   * `original_result`.
    */
-  saveReview(id: string, revision: number, result: LabelExtraction, fieldReviews: StoredFieldReviews): Promise<UploadRecord | null>;
+  saveReview(id: string, revision: number, result: LabelExtraction, fieldReviews: StoredFieldReviews): Promise<Versioned | null>;
+  /**
+   * Puts a completed upload's data (result, reviews and scores) back to a saved version, as the next
+   * revision; the revert is saved as a version of its own. Null if the upload has moved on from
+   * `revision`, or the version isn't this upload's.
+   */
+  revert(id: string, revision: number, versionId: string): Promise<Versioned | null>;
 }
 
 /** Removing an upload someone asked to delete. */
@@ -192,6 +218,12 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
   async function oneRecord(query: Promise<postgres.Row[]>): Promise<UploadRecord | null> {
     const [row] = await query;
     return row ? toRecord(row) : null;
+  }
+
+  /** The same, for a write that also saved a version (its ID comes back as `version_id`). */
+  async function oneVersioned(query: Promise<postgres.Row[]>): Promise<Versioned | null> {
+    const [row] = await query;
+    return row ? { upload: toRecord(row), versionId: String(row.version_id) } : null;
   }
 
   /** SQL guard for a lifecycle transition: the row must be in one of its from-statuses. */
@@ -326,26 +358,67 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
         returning *`);
     },
 
+    // Each of these saves the new state as a version in the same statement (a data-modifying CTE
+    // always runs), so a change can never land without the version that lets it be undone.
     saveReview(id, revision, result, fieldReviews) {
-      return oneRecord(sql`
-        update uploads
-        set status = ${statusAfter('review')},
-            original_result = coalesce(original_result, result),
-            result = ${sql.json(result as postgres.JSONValue)},
-            field_reviews = ${sql.json(toStoredReviews(fieldReviews))},
-            result_revision = result_revision + 1
-        where id = ${id} and ${allowedFrom('review')} and result_revision = ${revision}
-        returning *`);
+      return oneVersioned(sql`
+        with saved as (
+          update uploads
+          set status = ${statusAfter('review')},
+              original_result = coalesce(original_result, result),
+              result = ${sql.json(result as postgres.JSONValue)},
+              field_reviews = ${sql.json(toStoredReviews(fieldReviews))},
+              result_revision = result_revision + 1
+          where id = ${id} and ${allowedFrom('review')} and result_revision = ${revision}
+          returning *
+        ), version as (
+          insert into upload_versions (upload_id, source, result, confidence, field_reviews)
+          select id, 'review', result, confidence, field_reviews from saved
+          returning id
+        )
+        select saved.*, (select id from version) as version_id from saved`);
+    },
+
+    revert(id, revision, versionId) {
+      return oneVersioned(sql`
+        with target as (
+          select result, confidence, field_reviews from upload_versions where id = ${versionId}::bigint and upload_id = ${id}
+        ), reverted as (
+          update uploads
+          set original_result = coalesce(original_result, uploads.result),
+              result = target.result, confidence = target.confidence, field_reviews = target.field_reviews,
+              result_revision = result_revision + 1
+          from target
+          where uploads.id = ${id} and ${allowedFrom('review')} and result_revision = ${revision}
+          returning uploads.*
+        ), version as (
+          insert into upload_versions (upload_id, source, result, confidence, field_reviews)
+          select id, 'revert', result, confidence, field_reviews from reverted
+          returning id
+        )
+        select reverted.*, (select id from version) as version_id from reverted`);
     },
 
     complete(id, claimToken, result, confidence) {
-      return oneRecord(sql`
-        update uploads
-        set status = ${statusAfter('complete')}, result = ${sql.json(result as postgres.JSONValue)},
-            confidence = ${confidence ? sql.json(confidence as unknown as postgres.JSONValue) : null},
-            completed_at = now(), error_code = null, claim_token = null
-        where id = ${id} and ${allowedFrom('complete')} and claim_token = ${claimToken}
-        returning *`);
+      return oneVersioned(sql`
+        with done as (
+          update uploads
+          set status = ${statusAfter('complete')}, result = ${sql.json(result as postgres.JSONValue)},
+              confidence = ${confidence ? sql.json(confidence as unknown as postgres.JSONValue) : null},
+              completed_at = now(), error_code = null, claim_token = null
+          where id = ${id} and ${allowedFrom('complete')} and claim_token = ${claimToken}
+          returning *
+        ), version as (
+          insert into upload_versions (upload_id, source, result, confidence)
+          select id, 'extraction', result, confidence from done
+          returning id
+        )
+        select done.*, (select id from version) as version_id from done`);
+    },
+
+    async listVersions(id) {
+      const rows = await sql`select id, source, created_at from upload_versions where upload_id = ${id} order by id`;
+      return rows.map((row) => ({ id: String(row.id), source: row.source, createdAt: row.created_at }));
     },
 
     scheduleRetry(id, claimToken, code) {

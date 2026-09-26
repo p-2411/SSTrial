@@ -1,9 +1,9 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { isActiveStatus, type EditResultRequest, type UploadDetail, type UploadView } from '@label-extractor/shared';
+import { isActiveStatus, type EditResultRequest, type RevertRequest, type UploadDetail, type UploadView } from '@label-extractor/shared';
 import { ApiRequestError } from './client.ts';
 import { isLiveConnected } from './liveConnection.ts';
 import { getUploadHistory, listLogs, type LogFilters } from './logs.ts';
-import { deleteUpload, editResult, getOpsStatus, getUpload, listUploads, retryUpload } from './uploads.ts';
+import { deleteUpload, editResult, getOpsStatus, getUpload, listUploads, retryUpload, revertUpload } from './uploads.ts';
 
 /**
  * Server state lives in React Query: caching, polling and retries are handled here so
@@ -134,6 +134,21 @@ export function useRetryUpload() {
     onSuccess: async (upload) => {
       storeUpload(queryClient, upload);
       await refreshUploadLists(queryClient);
+    },
+  });
+}
+
+/**
+ * Admins only: put an upload's data back to a version from its history. The reverted upload is
+ * cached at once; its history (which gains the revert) and the lists are refetched.
+ */
+export function useRevertUpload(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: RevertRequest) => revertUpload(id, request),
+    onSuccess: async (upload) => {
+      storeUpload(queryClient, upload);
+      await Promise.all([refreshUploadLists(queryClient), queryClient.invalidateQueries({ queryKey: logKeys.upload(id) })]);
     },
   });
 }

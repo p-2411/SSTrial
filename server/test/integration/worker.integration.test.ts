@@ -1,7 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type postgres from 'postgres';
 import type { PgBoss } from 'pg-boss';
-import { canTransition, UPLOAD_STATUSES, UPLOAD_TRANSITIONS, type UploadStatus, type UploadTransition } from '@label-extractor/shared';
+import {
+  canTransition,
+  UPLOAD_STATUSES,
+  UPLOAD_TRANSITIONS,
+  type ExtractionConfidence,
+  type UploadStatus,
+  type UploadTransition,
+} from '@label-extractor/shared';
 import { ExtractionError } from '../../src/extraction/errors.ts';
 import type { RetryPolicy } from '../../src/extraction/retry-policy.ts';
 import type { LabelExtractor } from '../../src/extraction/extractor.ts';
@@ -534,11 +541,11 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       confirm: (id) => uploads.markUploaded(id, 'image/png'),
       discard: (id) => uploads.discardUnfinished(id),
       claim: (id) => uploads.startAttempt(id),
-      complete: (id, claim) => uploads.complete(id, claim, SAMPLE_EXTRACTION, null),
+      complete: async (id, claim) => (await uploads.complete(id, claim, SAMPLE_EXTRACTION, null))?.upload ?? null,
       retryLater: (id, claim) => uploads.scheduleRetry(id, claim, 'LLM_TIMEOUT'),
       fail: (id, claim) => uploads.fail(id, claim, 'LLM_REFUSED'),
       abandon: (id) => uploads.failAbandoned(id, 'PROCESSING_TIMEOUT'),
-      review: (id) => uploads.saveReview(id, 0, SAMPLE_EXTRACTION, {}),
+      review: async (id) => (await uploads.saveReview(id, 0, SAMPLE_EXTRACTION, {}))?.upload ?? null,
       delete: (id) => uploads.remove(id),
       // requeue takes the status the caller saw; pass the real one, so only the guard decides.
       rerun: (id, _claim, status) => uploads.requeue(id, status as 'failed' | 'completed'),
@@ -594,7 +601,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       const by = crypto.randomUUID();
 
       const first = await uploads.saveReview(id, 0, { ...SAMPLE_EXTRACTION, brand: 'First' }, { brand: { kind: 'edited', by, at } });
-      expect(first).toMatchObject({ resultRevision: 1, result: { brand: 'First' }, fieldReviews: { brand: { kind: 'edited', by } } });
+      expect(first?.upload).toMatchObject({ resultRevision: 1, result: { brand: 'First' }, fieldReviews: { brand: { kind: 'edited', by } } });
 
       // Made against revision 0 again: someone else saved in between, so nothing is written.
       expect(await uploads.saveReview(id, 0, { ...SAMPLE_EXTRACTION, brand: 'Stale' }, {})).toBeNull();
@@ -602,6 +609,50 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       await uploads.saveReview(id, 1, { ...SAMPLE_EXTRACTION, brand: 'Second' }, { brand: { kind: 'edited', by, at } });
       const [row] = await sql`select result, original_result, result_revision from uploads where id = ${id}`;
       expect(row).toMatchObject({ result_revision: 2, result: { brand: 'Second' }, original_result: { brand: SAMPLE_EXTRACTION.brand } });
+    });
+  });
+
+  describe('versions and reverting (real SQL)', () => {
+    /** A completed upload, read by "the AI" (with scores), as the worker leaves it. */
+    async function readUpload() {
+      const id = crypto.randomUUID();
+      createdIds.push(id);
+      await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png`, contentSha256: null, uploadedBy: null });
+      await sql`update uploads set status = 'queued' where id = ${id}`; // no job, so no worker picks it up
+      const claimed = await uploads.startAttempt(id);
+      const confidence = Object.fromEntries(
+        (['productName', 'brand', 'netWeight', 'allergens', 'ingredients'] as const).map((field) => [field, { score: 90, reasons: [] }]),
+      ) as unknown as ExtractionConfidence;
+      const read = await uploads.complete(id, claimed!.claimToken!, SAMPLE_EXTRACTION, confidence);
+      return { id, reading: read!.versionId };
+    }
+
+    it('saves every change as a version, and reverts to one: data, reviews and scores', async () => {
+      const { id, reading } = await readUpload();
+      const by = crypto.randomUUID();
+      const edited = await uploads.saveReview(id, 0, { ...SAMPLE_EXTRACTION, brand: 'Edited' }, { brand: { kind: 'edited', by, at: new Date() } });
+      await sql`update uploads set confidence = null where id = ${id}`; // as if a re-run had lost the scores
+
+      expect((await uploads.listVersions(id)).map((v) => [v.id, v.source])).toEqual([
+        [reading, 'extraction'],
+        [edited!.versionId, 'review'],
+      ]);
+
+      const reverted = await uploads.revert(id, 1, reading);
+
+      expect(reverted?.upload).toMatchObject({ result: { brand: SAMPLE_EXTRACTION.brand }, fieldReviews: {}, resultRevision: 2 });
+      expect(reverted?.upload.confidence?.brand.score).toBe(90);
+      expect((await uploads.listVersions(id)).at(-1)).toMatchObject({ id: reverted!.versionId, source: 'revert' });
+    });
+
+    it("won't revert from an older revision, or to another upload's version", async () => {
+      const { id } = await readUpload();
+      const other = await readUpload();
+      await uploads.saveReview(id, 0, { ...SAMPLE_EXTRACTION, brand: 'Edited' }, {});
+
+      expect(await uploads.revert(id, 0, (await uploads.listVersions(id))[0]!.id)).toBeNull(); // stale revision
+      expect(await uploads.revert(id, 1, other.reading)).toBeNull(); // not this upload's
+      expect((await uploads.findById(id))?.result?.brand).toBe('Edited');
     });
   });
 
@@ -626,8 +677,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       expect(await uploads.fail(id, first!.claimToken!, 'LLM_TIMEOUT')).toBeNull();
 
       await expect(uploads.complete(id, second!.claimToken!, SAMPLE_EXTRACTION, null)).resolves.toMatchObject({
-        status: 'completed',
-        claimToken: null,
+        upload: { status: 'completed', claimToken: null },
       });
     });
 

@@ -1,4 +1,10 @@
-import { LOG_EVENTS_PATH, type ListLogsResponse, type LogEvent, type LogEventType, type UploadHistoryResponse } from '@label-extractor/shared';
+import {
+  LOG_EVENTS_PATH,
+  type ListLogsResponse,
+  type LogEventType,
+  type UploadHistoryEntry,
+  type UploadHistoryResponse,
+} from '@label-extractor/shared';
 import { apiRequest } from './client.ts';
 
 /** What the activity log is narrowed to: some types of event (none means every type), one upload. */
@@ -23,7 +29,10 @@ export function listLogs(filters: LogFilters, cursor?: string): Promise<ListLogs
   return apiRequest<ListLogsResponse>(`${LOG_EVENTS_PATH}${query}`);
 }
 
-/** Everything that happened to one upload, oldest first. Open to anyone who can see the upload. */
-export async function getUploadHistory(id: string): Promise<LogEvent[]> {
-  return (await apiRequest<UploadHistoryResponse>(`/api/uploads/${encodeURIComponent(id)}/history`)).events;
+/**
+ * Everything that happened to one upload, oldest first, each entry saying whether its data can be
+ * reverted to. Open to anyone who can see the upload (reverting is for admins).
+ */
+export async function getUploadHistory(id: string): Promise<UploadHistoryEntry[]> {
+  return (await apiRequest<UploadHistoryResponse>(`/api/uploads/${encodeURIComponent(id)}/history`)).entries;
 }
