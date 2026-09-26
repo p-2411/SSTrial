@@ -18,7 +18,7 @@ export function UploadsPage() {
           centred: switching to a short filter mustn't make everything shift sideways. */}
       <div className="min-w-0 flex-1 overflow-y-auto [scrollbar-gutter:stable_both-edges]">
         <div className="mx-auto grid max-w-4xl content-start gap-4 p-6">
-          <Dropzone onFiles={addFiles} />
+          <Dropzone onSubmit={addFiles} />
           <UploadList
             leadingRows={pending.map((upload) => (
               <PendingUploadRow key={upload.localId} upload={upload} onRetry={retry} onDismiss={dismiss} />
