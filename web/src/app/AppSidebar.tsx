@@ -134,6 +134,15 @@ function ProfileMenu() {
   const { signOut } = useAuth();
   const { busy } = useFileUploadsContext();
   const [confirming, setConfirming] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const signOutNow = async () => {
+    setSigningOut(true);
+    try {
+      await signOut();
+    } finally {
+      setSigningOut(false);
+    }
+  };
 
   return (
     <SidebarMenu>
@@ -155,7 +164,7 @@ function ProfileMenu() {
           </DropdownMenuTrigger>
           {/* Opens upwards, as wide as the button: it sits at the bottom of the screen. */}
           <DropdownMenuContent side="top" align="start" className="w-(--radix-dropdown-menu-trigger-width)">
-            <DropdownMenuItem onSelect={() => (busy ? setConfirming(true) : void signOut())}>
+            <DropdownMenuItem onSelect={() => (busy ? setConfirming(true) : void signOutNow())}>
               <LogOut aria-hidden />
               Sign out
             </DropdownMenuItem>
@@ -174,7 +183,7 @@ function ProfileMenu() {
             <AlertDialogCancel asChild>
               <Button variant="outline">Keep uploading</Button>
             </AlertDialogCancel>
-            <Button variant="destructive" onClick={() => void signOut()}>
+            <Button variant="destructive" loading={signingOut} onClick={() => void signOutNow()}>
               Sign out anyway
             </Button>
           </AlertDialogFooter>

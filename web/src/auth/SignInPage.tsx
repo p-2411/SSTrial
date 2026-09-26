@@ -52,7 +52,7 @@ export function SignInPage() {
                 {message}
               </p>
             )}
-            <Button type="submit" disabled={pending || state.status === 'loading'}>
+            <Button type="submit" loading={pending} disabled={state.status === 'loading'}>
               Sign in
             </Button>
           </form>

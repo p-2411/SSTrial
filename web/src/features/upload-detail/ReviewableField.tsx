@@ -29,6 +29,7 @@ export function ReviewableField({
   editor,
   onEdit,
   onCheck,
+  checking = false,
   children,
 }: ReviewState & {
   field: LabelField;
@@ -41,6 +42,8 @@ export function ReviewableField({
   editor: ReactNode;
   onEdit: () => void;
   onCheck: () => void;
+  /** Being marked as checked right now. */
+  checking?: boolean;
   children: ReactNode;
 }) {
   const headingId = useId();
@@ -75,7 +78,7 @@ export function ReviewableField({
             <div className="mt-2">{editor}</div>
           ) : (
             <>
-              <ReviewNotes state={state} name={name} onCheck={onCheck} />
+              <ReviewNotes state={state} name={name} onCheck={onCheck} checking={checking} />
               {children}
             </>
           )}
@@ -96,7 +99,7 @@ export function ReviewableField({
         ) : (
           <>
             {children}
-            <ReviewNotes state={state} name={name} onCheck={onCheck} />
+            <ReviewNotes state={state} name={name} onCheck={onCheck} checking={checking} />
           </>
         )}
       </dd>
@@ -115,10 +118,12 @@ function ReviewNotes({
   state: { confidence, review },
   name,
   onCheck,
+  checking,
 }: {
   state: ReviewState;
   name: string;
   onCheck: () => void;
+  checking: boolean;
 }) {
   if (review || !confidence) return null;
   const needsCheck = needsChecking(confidence.score);
@@ -138,6 +143,7 @@ function ReviewNotes({
           size="xs"
           className="h-auto justify-self-start p-0 text-xs"
           aria-label={`Mark ${name} as checked`}
+          loading={checking}
           onClick={onCheck}
         >
           Mark as checked

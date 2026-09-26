@@ -75,8 +75,8 @@ export function UploadList({ leadingRows }: UploadListProps) {
 
           {list.hasNextPage && (
             <div className="border-t border-border/70 p-3 text-center">
-              <Button variant="ghost" size="sm" onClick={() => void list.fetchNextPage()} disabled={list.isFetchingNextPage}>
-                {list.isFetchingNextPage ? 'Loading…' : 'Load more'}
+              <Button variant="ghost" size="sm" onClick={() => void list.fetchNextPage()} loading={list.isFetchingNextPage}>
+                Load more
               </Button>
             </div>
           )}

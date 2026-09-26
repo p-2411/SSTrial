@@ -81,11 +81,11 @@ function RetryButton({ uploadId, label }: { uploadId: string; label: string }) {
     <div className="mt-3 flex flex-wrap items-center gap-3">
       <Button
         variant="brand"
-        disabled={retry.isPending}
+        loading={retry.isPending}
         onClick={() => retry.mutate(uploadId, { onSuccess: () => toast.success('Extraction queued again') })}
       >
         <Sparkles data-icon="inline-start" aria-hidden />
-        {retry.isPending ? 'Queuing…' : label}
+        {label}
       </Button>
       {retry.isError && <span className="text-sm">{errorMessage(retry.error)}</span>}
     </div>

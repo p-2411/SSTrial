@@ -20,8 +20,8 @@ export function InlineError({ title, message, onRetry, retrying = false }: Inlin
       <AlertDescription className="text-danger/90">
         <p>{message}</p>
         {onRetry && (
-          <Button variant="outline" size="sm" onClick={onRetry} disabled={retrying} className="mt-2 text-foreground">
-            {retrying ? 'Trying again…' : 'Try again'}
+          <Button variant="outline" size="sm" onClick={onRetry} loading={retrying} className="mt-2 text-foreground">
+            Try again
           </Button>
         )}
       </AlertDescription>

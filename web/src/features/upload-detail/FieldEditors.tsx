@@ -99,8 +99,8 @@ function EditorForm({
         </p>
       )}
       <div className="flex gap-1.5">
-        <Button type="submit" size="xs" disabled={!canSave}>
-          {saving ? 'Saving…' : 'Save'}
+        <Button type="submit" size="xs" loading={saving} disabled={Boolean(conflict)}>
+          Save
         </Button>
         <Button type="button" size="xs" variant="ghost" onClick={onCancel} disabled={saving}>
           Cancel

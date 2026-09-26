@@ -37,7 +37,8 @@ export function useFieldReview(upload: UploadDetail & { result: LabelExtraction 
   const markChecked = useEditResult(upload.id);
   const [editor, setEditor] = useState<OpenEditor | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const checking = useRef(false); // a double click mustn't send two checks
+  const checking = useRef(false); // a double click mustn't send two checks (state would lag a render)
+  const [checkingField, setCheckingField] = useState<LabelField | null>(null);
 
   /** Updates the open editor, if it's still this field's; null closes it. */
   const updateEditor = (field: LabelField, changes: Partial<OpenEditor> | null) =>
@@ -81,6 +82,7 @@ export function useFieldReview(upload: UploadDetail & { result: LabelExtraction 
   const check = async (field: LabelField) => {
     if (checking.current) return;
     checking.current = true;
+    setCheckingField(field);
     try {
       await markChecked.mutateAsync({ revision: upload.revision, checked: [field] });
     } catch (failure) {
@@ -91,6 +93,7 @@ export function useFieldReview(upload: UploadDetail & { result: LabelExtraction 
       });
     } finally {
       checking.current = false;
+      setCheckingField(null);
     }
   };
 
@@ -112,6 +115,8 @@ export function useFieldReview(upload: UploadDetail & { result: LabelExtraction 
       setEditor({ field, baseline: valueOf(upload, field), saving: false });
     },
     check: (field: LabelField) => void check(field),
+    /** The field being marked as checked right now, if any. */
+    checking: checkingField,
     /** For the open field's editor (see FieldEditors). */
     editorProps,
   };

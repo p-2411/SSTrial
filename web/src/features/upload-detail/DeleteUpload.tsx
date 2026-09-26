@@ -68,8 +68,8 @@ export function DeleteUpload({ upload }: { upload: Pick<UploadDetail, 'id' | 'fi
               Keep it
             </Button>
           </AlertDialogCancel>
-          <Button variant="destructive" disabled={remove.isPending} onClick={confirm}>
-            {remove.isPending ? 'Deleting…' : 'Delete'}
+          <Button variant="destructive" loading={remove.isPending} onClick={confirm}>
+            Delete
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

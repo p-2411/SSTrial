@@ -68,8 +68,8 @@ export function LogsPage() {
 
         {log.hasNextPage && (
           <div className="border-t border-border/70 p-3 text-center">
-            <Button variant="ghost" size="sm" onClick={() => void log.fetchNextPage()} disabled={log.isFetchingNextPage}>
-              {log.isFetchingNextPage ? 'Loading…' : 'Load older events'}
+            <Button variant="ghost" size="sm" onClick={() => void log.fetchNextPage()} loading={log.isFetchingNextPage}>
+              Load older events
             </Button>
           </div>
         )}
