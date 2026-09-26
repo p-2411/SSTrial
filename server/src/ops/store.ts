@@ -1,5 +1,4 @@
 import type postgres from 'postgres';
-import { storedErrorCode, type UploadErrorCode } from '@label-extractor/shared';
 
 /** Everything the System status page shows, as stored. ops/presenter.ts shapes it for the API. */
 export interface OpsSnapshot {
@@ -7,7 +6,6 @@ export interface OpsSnapshot {
   queue: { waiting: number; retrying: number; processing: number };
   /** Over the last STATUS_WINDOW_HOURS. */
   recent: { completed: number; failed: number; medianSecondsToResult: number | null };
-  failures: Array<{ code: UploadErrorCode; count: number }>;
 }
 
 export interface OpsStore {
@@ -18,7 +16,7 @@ export interface OpsStore {
 
 /** A worker that hasn't checked in for this long is treated as down. */
 const WORKER_SILENT_AFTER_SECONDS = 180;
-/** The System status page's throughput and failure figures cover this window (`last24h`). */
+/** The System status page's throughput figures cover this window (`last24h`). */
 const STATUS_WINDOW_HOURS = 24;
 /** Heartbeats are keyed by process type; only workers send them (the API answers health checks). */
 const WORKER = 'worker';
@@ -46,10 +44,6 @@ export function createOpsStore(sql: postgres.Sql): OpsStore {
           percentile_cont(0.5) within group (order by extract(epoch from completed_at - created_at))
             filter (where status = 'completed' and completed_at > ${window}) as median_seconds
         from uploads`;
-      const failures = await sql`
-        select error_code, count(*)::int as count from uploads
-        where status = 'failed' and updated_at > ${window}
-        group by error_code order by count desc`;
       const [heartbeat] = await sql`
         select last_seen_at, last_seen_at > now() - make_interval(secs => ${WORKER_SILENT_AFTER_SECONDS}) as healthy
         from ops_heartbeats where process = ${WORKER}`;
@@ -62,7 +56,6 @@ export function createOpsStore(sql: postgres.Sql): OpsStore {
           failed: recent!.failed,
           medianSecondsToResult: recent!.median_seconds === null ? null : Number(recent!.median_seconds),
         },
-        failures: failures.map((row) => ({ code: storedErrorCode(row.error_code), count: row.count })),
       };
     },
   };

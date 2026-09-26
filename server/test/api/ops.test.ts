@@ -33,11 +33,10 @@ describe('GET /api/ops', () => {
       worker: { lastSeenAt: null, healthy: false },
       queue: { waiting: 0, retrying: 0, processing: 0 },
       last24h: { completed: 0, failed: 0, failureRate: null, medianSecondsToResult: null },
-      failuresByReason: [],
     });
   });
 
-  it('shapes stored figures for the page: messages, rates, whole seconds and ISO dates', async () => {
+  it('shapes stored figures for the page: rates, whole seconds and ISO dates', async () => {
     const seen = new Date('2026-09-25T01:00:00Z');
     app = await buildApp(
       testAppDeps({
@@ -47,8 +46,6 @@ describe('GET /api/ops', () => {
             worker: { lastSeenAt: seen, healthy: true },
             queue: { waiting: 2, retrying: 1, processing: 1 },
             recent: { completed: 3, failed: 1, medianSecondsToResult: 7.4 },
-            // A code this version no longer knows reads as INTERNAL_ERROR, and is counted with it.
-            failures: [{ code: 'INTERNAL_ERROR', count: 1 }, { code: 'INTERNAL_ERROR', count: 1 }, { code: 'LLM_TIMEOUT', count: 1 }],
           }),
         },
       }),
@@ -59,9 +56,5 @@ describe('GET /api/ops', () => {
     expect(body.worker).toEqual({ lastSeenAt: seen.toISOString(), healthy: true });
     expect(body.queue).toEqual({ waiting: 2, retrying: 1, processing: 1 });
     expect(body.last24h).toEqual({ completed: 3, failed: 1, failureRate: 0.25, medianSecondsToResult: 7 });
-    expect(body.failuresByReason).toEqual([
-      { code: 'INTERNAL_ERROR', message: expect.any(String), count: 2 },
-      { code: 'LLM_TIMEOUT', message: 'The AI service took too long to respond.', count: 1 },
-    ]);
   });
 });

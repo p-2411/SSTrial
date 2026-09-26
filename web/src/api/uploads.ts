@@ -43,7 +43,7 @@ export function listUploads(view: UploadView, cursor?: string, filter: ProductFi
   return apiRequest<ListUploadsResponse>(`/api/uploads?${params}`);
 }
 
-/** The queue, the worker, health checks, throughput and failures, for the System status page. */
+/** The queue, the worker, health checks and throughput, for the System status page. */
 export function getOpsStatus(): Promise<OpsStatusResponse> {
   return apiRequest<OpsStatusResponse>('/api/ops');
 }

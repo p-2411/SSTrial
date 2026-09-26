@@ -447,7 +447,6 @@ export const EMPTY_OPS_SNAPSHOT: OpsSnapshot = {
   worker: { lastSeenAt: null, healthy: false },
   queue: { waiting: 0, retrying: 0, processing: 0 },
   recent: { completed: 0, failed: 0, medianSecondsToResult: null },
-  failures: [],
 };
 
 /** Everything buildApp needs, faked; tests override the parts they care about. */

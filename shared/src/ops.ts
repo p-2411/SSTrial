@@ -1,5 +1,3 @@
-import type { UploadErrorCode } from './uploads.ts';
-
 /** Contracts for GET /api/ops — the data behind the System status page. */
 
 export interface HealthCheckResult {
@@ -35,5 +33,4 @@ export interface OpsStatusResponse {
     /** Median time from upload to result, for uploads completed in the window. */
     medianSecondsToResult: number | null;
   };
-  failuresByReason: Array<{ code: UploadErrorCode; message: string; count: number }>;
 }

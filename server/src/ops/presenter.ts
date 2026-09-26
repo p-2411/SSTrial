@@ -1,7 +1,7 @@
-import { uploadErrorMessage, type HealthReport, type OpsStatusResponse, type UploadErrorCode } from '@label-extractor/shared';
+import type { HealthReport, OpsStatusResponse } from '@label-extractor/shared';
 import type { OpsSnapshot } from './store.ts';
 
-/** Shapes the monitoring snapshot for GET /api/ops: messages for codes, ISO dates, derived rates. */
+/** Shapes the monitoring snapshot for GET /api/ops: ISO dates, derived rates. */
 export function toOpsStatus(snapshot: OpsSnapshot, health: HealthReport): OpsStatusResponse {
   const { worker, queue, recent } = snapshot;
   const finished = recent.completed + recent.failed;
@@ -15,19 +15,7 @@ export function toOpsStatus(snapshot: OpsSnapshot, health: HealthReport): OpsSta
       failureRate: finished === 0 ? null : recent.failed / finished,
       medianSecondsToResult: roundOrNull(recent.medianSecondsToResult),
     },
-    failuresByReason: mergeByCode(snapshot.failures).map(({ code, count }) => ({
-      code,
-      message: uploadErrorMessage(code),
-      count,
-    })),
   };
-}
-
-/** Codes no longer in the catalogue are read as INTERNAL_ERROR, so one code can appear twice. */
-function mergeByCode(failures: OpsSnapshot['failures']): OpsSnapshot['failures'] {
-  const counts = new Map<UploadErrorCode, number>();
-  for (const { code, count } of failures) counts.set(code, (counts.get(code) ?? 0) + count);
-  return [...counts].map(([code, count]) => ({ code, count })).sort((a, b) => b.count - a.count);
 }
 
 function roundOrNull(value: number | null): number | null {

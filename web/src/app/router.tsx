@@ -14,7 +14,7 @@ import { NotFoundPage } from './NotFoundPage';
  * shell (sidebar + top bar):
  *   /             upload + list
  *   /uploads/:id  the same page, with that upload's details in a panel beside the list
- *   /status       system status: the queue, the worker, health checks, throughput and failures
+ *   /status       system status: the queue, the worker, health checks and throughput
  *   /logs         the activity log: what happened to each upload and to the system
  * The upload routes accept ?status=… to filter the list (see statusFilters.ts), and /logs accepts
  * ?type=…&type=…&upload=… (see logFilters.ts). Desktop layout only.

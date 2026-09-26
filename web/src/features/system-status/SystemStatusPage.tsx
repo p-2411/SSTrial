@@ -4,15 +4,14 @@ import { OPS_REFRESH_MS, useOpsStatus } from '@/api/queries';
 import { InlineError } from '@/components/InlineError';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useNow } from '@/lib/useNow';
-import { FailuresCard } from './FailuresCard';
 import { HealthChecksCard } from './HealthChecksCard';
 import { Last24HoursCard } from './Last24HoursCard';
 import { QueueStats } from './QueueStats';
 
 /**
- * Route: /status — is the system healthy, is work flowing, and what went wrong recently?
- * Everything comes from GET /api/ops, refreshed every OPS_REFRESH_MS. What happened, and when, is
- * on the activity log instead.
+ * Route: /status — is the system healthy, and is work flowing? Everything comes from GET /api/ops,
+ * refreshed every OPS_REFRESH_MS. What went wrong, and when, is on the activity log instead, which
+ * can be searched and filtered.
  */
 export function SystemStatusPage() {
   const { data, isPending, isError, error, refetch, isRefetching } = useOpsStatus();
@@ -42,7 +41,6 @@ function Status({ data }: { data: OpsStatusResponse }) {
         <HealthChecksCard checks={data.health.checks} />
         <Last24HoursCard last24h={data.last24h} />
       </div>
-      <FailuresCard failures={data.failuresByReason} />
     </>
   );
 }

@@ -12,7 +12,6 @@ const healthy: OpsStatusResponse = {
   worker: { lastSeenAt: now, healthy: true },
   queue: { waiting: 3, retrying: 1, processing: 2 },
   last24h: { completed: 40, failed: 2, failureRate: 2 / 42, medianSecondsToResult: 7 },
-  failuresByReason: [{ code: 'LLM_TIMEOUT', message: 'The AI service took too long to respond.', count: 2 }],
 };
 
 function renderWith(status: OpsStatusResponse) {
@@ -24,7 +23,7 @@ function renderWith(status: OpsStatusResponse) {
 const stat = (label: string) => within(screen.getByText(label).parentElement!).getAllByText(/./)[1]!.textContent;
 
 describe('SystemStatusPage', () => {
-  it('shows the queue, the worker, health checks, the last 24 hours and failures', async () => {
+  it('shows the queue, the worker, health checks and the last 24 hours', async () => {
     renderWith(healthy);
 
     expect(await screen.findByText('Running')).toBeInTheDocument();
@@ -33,8 +32,6 @@ describe('SystemStatusPage', () => {
     expect(stat('Processing')).toBe('2');
     expect(screen.getByText('database')).toBeInTheDocument(); // capitalised by CSS
     expect(screen.getByText('5%')).toBeInTheDocument();
-    expect(screen.getByText('Failures')).toBeInTheDocument();
-    expect(screen.getByText('The AI service took too long to respond.')).toBeInTheDocument();
   });
 
   it('names a failing check, and says when the worker has gone quiet', async () => {

@@ -54,12 +54,6 @@ function TopBar() {
       <SidebarTrigger className="-ml-1" />
       <Separator orientation="vertical" className="data-vertical:h-5 data-vertical:self-center" />
       <h1 className="text-base font-semibold">{systemPageTitle ?? 'Label extraction'}</h1>
-      {/* The indigo BETA pill SupplyScope puts beside new AI features. */}
-      {!systemPageTitle && (
-        <span className="rounded-full bg-brand px-1.5 py-0.5 text-[10px] leading-none font-semibold tracking-wide text-brand-foreground">
-          BETA
-        </span>
-      )}
     </header>
   );
 }

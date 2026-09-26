@@ -9,7 +9,7 @@ export const SIGN_IN_PATH = '/sign-in';
 /** The upload list (the home page). */
 export const HOME_PATH = '/';
 
-/** System status: the queue, the worker, health checks, throughput and failures. */
+/** System status: the queue, the worker, health checks and throughput. */
 export const STATUS_PATH = '/status';
 
 /** The activity log: what happened to each upload and to the system. */
