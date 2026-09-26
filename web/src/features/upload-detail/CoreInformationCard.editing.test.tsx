@@ -2,8 +2,9 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EditResultRequest, ExtractionConfidence, LabelExtraction, UploadDetail } from '@label-extractor/shared';
+import { uploadKeys, useUploadDetail } from '@/api/queries';
 import { detail } from '@/test/fixtures';
-import { jsonResponse, Providers, renderWithProviders } from '@/test/render';
+import { createTestQueryClient, jsonResponse, Providers, renderWithProviders } from '@/test/render';
 import { CoreInformationCard } from './CoreInformationCard';
 
 const RESULT: LabelExtraction = {
@@ -32,24 +33,42 @@ const upload = (overrides: Partial<UploadDetail> = {}): Upload =>
 /** What the server answers to PATCH …/result: by default, the upload with the changes applied. */
 let answer: (request: EditResultRequest) => Response;
 const sent: EditResultRequest[] = [];
+/** The upload as the server has it now: what GET /api/uploads/u1 answers. */
+let onServer: Upload;
+
+const conflict = () => jsonResponse({ error: { code: 'EDIT_CONFLICT', message: 'Someone else just changed this upload.' } }, 409);
 
 beforeEach(() => {
   sent.length = 0;
+  onServer = upload();
   answer = (request) =>
     jsonResponse({ upload: upload({ result: { ...RESULT, ...request.changes } as LabelExtraction, revision: 1 } as Partial<UploadDetail>) });
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (_url: string, init?: RequestInit) => {
+    vi.fn(async (url: string, init?: RequestInit) => {
       if (init?.method === 'PATCH') {
         const request = JSON.parse(String(init.body)) as EditResultRequest;
         sent.push(request);
         return answer(request);
       }
+      if (url === '/api/uploads/u1') return jsonResponse({ upload: onServer });
       return jsonResponse({ uploads: [], nextCursor: null, counts: {} });
     }),
   );
 });
 afterEach(() => vi.unstubAllGlobals());
+
+/** The card as the app shows it: fed from the cached upload, so a refetch reaches it. */
+function LiveCard() {
+  const { data } = useUploadDetail('u1');
+  return data?.result ? <CoreInformationCard upload={{ ...data, result: data.result }} /> : null;
+}
+
+function renderLiveCard() {
+  const client = createTestQueryClient();
+  client.setQueryData(uploadKeys.detail('u1'), onServer);
+  renderWithProviders(<LiveCard />, { client });
+}
 
 function renderCard(value: Upload = upload()) {
   const { client, rerender } = renderWithProviders(<CoreInformationCard upload={value} />);
@@ -167,27 +186,73 @@ describe('reviewing', () => {
     expect(within(card).queryByRole('button', { name: 'Mark net weight as checked' })).not.toBeInTheDocument();
   });
 
-  it('closes the editor when someone else saved first, so their version shows', async () => {
-    answer = () => jsonResponse({ error: { code: 'EDIT_CONFLICT', message: 'Someone else just changed this upload.' } }, 409);
-    renderCard();
-    await userEvent.click(screen.getByRole('button', { name: 'Edit brand' }));
-    await userEvent.type(screen.getByRole('textbox', { name: 'Brand' }), 'x');
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    expect(await screen.findByRole('button', { name: 'Edit brand' })).toBeInTheDocument();
-    expect(screen.queryByRole('textbox', { name: 'Brand' })).not.toBeInTheDocument();
-  });
-
-  it("won't save over a change someone else made to the same field while the editor was open", async () => {
+  it("shows someone else's change to the open field beside the draft, and saves over it only when told to", async () => {
     const card = renderCard();
     await userEvent.click(screen.getByRole('button', { name: 'Edit brand' }));
     await userEvent.type(screen.getByRole('textbox', { name: 'Brand' }), ' Mine');
     // Their save arrives through the live stream: a new revision, and a different brand.
     card.update({ ...upload({ revision: 1 }), result: { ...RESULT, brand: 'Theirs' } });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Someone else changed this: Theirs');
+    expect(screen.getByRole('textbox', { name: 'Brand' })).toHaveValue('Harvest & Hearth Mine');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Keep mine' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(sent).toEqual([{ revision: 1, changes: { brand: 'Harvest & Hearth Mine' } }]);
+  });
+
+  it('drops the draft for their value when told to', async () => {
+    const card = renderCard();
+    await userEvent.click(screen.getByRole('button', { name: 'Edit brand' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Brand' }), ' Mine');
+    card.update({ ...upload({ revision: 1 }), result: { ...RESULT, brand: 'Theirs' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Use theirs' }));
+
+    expect(screen.queryByRole('textbox', { name: 'Brand' })).not.toBeInTheDocument();
+    expect(screen.getByText('Theirs')).toBeInTheDocument();
+    expect(sent).toEqual([]);
+  });
+
+  it('saves again on top of theirs when a save is refused over a change to another field', async () => {
+    answer = (request) => {
+      if (sent.length > 1) return jsonResponse({ upload: { ...onServer, revision: 2, result: { ...onServer.result, ...request.changes } } });
+      // Someone renamed the product while this save was on its way.
+      onServer = { ...upload({ revision: 1 }), result: { ...RESULT, productName: 'Renamed by someone else' } };
+      return conflict();
+    };
+    renderLiveCard();
+    await userEvent.click(screen.getByRole('button', { name: 'Edit brand' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Brand' }), ' Mine');
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
 
-    expect(sent).toEqual([]);
-    expect(await screen.findByText('Theirs')).toBeInTheDocument(); // editor closed, their value shows
+    expect(await screen.findByText('Harvest & Hearth Mine')).toBeInTheDocument(); // saved, editor closed
+    expect(screen.getByText('Renamed by someone else')).toBeInTheDocument();
+    expect(sent).toEqual([
+      { revision: 0, changes: { brand: 'Harvest & Hearth Mine' } },
+      { revision: 1, changes: { brand: 'Harvest & Hearth Mine' } },
+    ]);
+  });
+
+  it('keeps the draft, showing their value, when a save is refused over a change to the same field', async () => {
+    answer = () => {
+      onServer = { ...upload({ revision: 1 }), result: { ...RESULT, brand: 'Theirs' } };
+      return conflict();
+    };
+    renderLiveCard();
+    await userEvent.click(screen.getByRole('button', { name: 'Edit brand' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Brand' }), ' Mine');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Someone else changed this: Theirs');
+    expect(screen.getByRole('textbox', { name: 'Brand' })).toHaveValue('Harvest & Hearth Mine');
+    expect(sent).toHaveLength(1); // not retried over their change
+
+    answer = (request) => jsonResponse({ upload: { ...onServer, revision: 2, result: { ...onServer.result, ...request.changes } } });
+    await userEvent.click(screen.getByRole('button', { name: 'Keep mine' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(sent[1]).toEqual({ revision: 1, changes: { brand: 'Harvest & Hearth Mine' } });
+    expect(await screen.findByText('Harvest & Hearth Mine')).toBeInTheDocument();
   });
 
   it("saves against the latest revision when someone else changed a different field", async () => {

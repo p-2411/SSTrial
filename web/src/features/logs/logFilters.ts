@@ -1,5 +1,5 @@
 import { useSearchParams } from 'react-router';
-import { LOG_EVENT_TYPE_IDS, type LogEventType } from '@label-extractor/shared';
+import { LOG_EVENT_TYPE_IDS, LOG_EVENT_TYPES, type LogEventType } from '@label-extractor/shared';
 import { logFilterParams, type LogFilters } from '@/api/logs';
 
 /**
@@ -33,4 +33,65 @@ export function useLogFilters(): [LogFilters, (changes: Partial<LogFilters>) => 
   const [params, setParams] = useSearchParams();
   const filters = readLogFilters(params);
   return [filters, (changes) => setParams(logFilterParams({ ...filters, ...changes }))];
+}
+
+/*
+ * The "Show" menu's model (LogFilterBar draws it): its sections of event types, the shortcuts at
+ * its top, and how a choice is summed up on its button.
+ */
+
+/** Which heading each type sits under in the menu. Keyed by type, so a new one needs a place here. */
+const TYPE_GROUP = {
+  'upload.created': 'Uploads',
+  'upload.duplicate': 'Uploads',
+  'upload.queued': 'Uploads',
+  'upload.rejected': 'Uploads',
+  'upload.discarded': 'Uploads',
+  'upload.retry_requested': 'Uploads',
+  'upload.edited': 'Uploads',
+  'extraction.started': 'Extraction',
+  'extraction.completed': 'Extraction',
+  'extraction.retry_scheduled': 'Extraction',
+  'extraction.failed': 'Extraction',
+  'extraction.abandoned': 'Extraction',
+  'ratelimit.paused': 'Extraction',
+  'process.started': 'System',
+} satisfies Record<LogEventType, string>;
+
+/** The menu's sections of event types, in shared's order. */
+export const TYPE_MENU: Array<{ heading: string; types: LogEventType[] }> = [];
+for (const type of LOG_EVENT_TYPE_IDS) {
+  const heading = TYPE_GROUP[type];
+  const section = TYPE_MENU.find((candidate) => candidate.heading === heading);
+  if (section) section.types.push(type);
+  else TYPE_MENU.push({ heading, types: [type] });
+}
+
+/**
+ * Choices at the top of the menu, each a whole set of types. A type always has the same level, so
+ * "warnings and errors" is just the types that are warnings or errors. Everything is no filter.
+ */
+export const SHORTCUTS: Array<{ label: string; types: LogEventType[] }> = [
+  { label: 'Everything', types: [] },
+  { label: 'Warnings and errors', types: LOG_EVENT_TYPE_IDS.filter((type) => LOG_EVENT_TYPES[type].level !== 'info') },
+  { label: 'Errors only', types: LOG_EVENT_TYPE_IDS.filter((type) => LOG_EVENT_TYPES[type].level === 'error') },
+];
+
+/** Both lists are in the catalogue's order, so comparing them in order is enough. */
+export function sameTypes(a: LogEventType[], b: LogEventType[]): boolean {
+  return a.length === b.length && a.every((type, i) => type === b[i]);
+}
+
+/** The menu button's summary of the choice, after "Show": "everything", "errors only", "3 types of event"… */
+export function describeFilter(types: LogEventType[]): string {
+  const shortcut = SHORTCUTS.find((candidate) => sameTypes(candidate.types, types));
+  if (shortcut) return midSentence(shortcut.label);
+  if (types.length === 1) return midSentence(LOG_EVENT_TYPES[types[0]!].label);
+  return `${types.length} types of event`;
+}
+
+/** A label as it reads after "Show": "Errors only" → "errors only", but "AI requests paused" stays. */
+function midSentence(label: string): string {
+  const firstWord = label.split(' ')[0]!;
+  return firstWord === firstWord.toUpperCase() ? label : label.charAt(0).toLowerCase() + label.slice(1);
 }

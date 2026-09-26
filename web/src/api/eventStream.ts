@@ -2,7 +2,9 @@
  * Server-sent events with our Authorization header. The browser's EventSource can't send headers,
  * and a token in the URL would end up in server and proxy logs, so this reads the stream with
  * fetch instead. It offers the parts of EventSource that useLiveUpdates uses, including
- * reconnecting after the server's `retry:` interval when the stream drops or is refused.
+ * reconnecting after the server's `retry:` interval when the stream ends, drops or is refused.
+ * Each attempt asks for the headers afresh, so when the server ends a stream because its token
+ * has expired, the next one goes out with the refreshed token.
  */
 
 type Listener = (event: MessageEvent<string>) => void;
@@ -61,14 +63,19 @@ export class AuthorizedEventSource {
   }
 }
 
-/** Resolves after `ms`, or as soon as `signal` aborts. */
+/**
+ * Resolves after `ms`, or as soon as `signal` aborts. Whichever comes first undoes the other: the
+ * signal lasts as long as the stream, so a listener left on it per retry would pile up.
+ */
 function wait(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    signal.addEventListener('abort', () => {
+    const done = () => {
       clearTimeout(timer);
+      signal.removeEventListener('abort', done);
       resolve();
-    }, { once: true });
+    };
+    const timer = setTimeout(done, ms);
+    signal.addEventListener('abort', done, { once: true });
   });
 }
 

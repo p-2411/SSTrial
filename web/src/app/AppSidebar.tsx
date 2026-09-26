@@ -1,5 +1,6 @@
+import { useId, useState } from 'react';
 import { Link, matchPath, useLocation } from 'react-router';
-import { Activity, Files, LogOut, ScanText, ScrollText } from 'lucide-react';
+import { Activity, Files, LogOut, ScanText, ScrollText, type LucideIcon } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -13,9 +14,11 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { useAuth, useSignedInMember } from '@/auth/AuthProvider';
+import { ROLE_LABELS, useHasRole } from '@/auth/roles';
 import { Button } from '@/components/ui/button';
 import { loadLogsPage } from '@/features/logs/loadLogsPage';
 import { loadSystemStatusPage } from '@/features/system-status/loadSystemStatusPage';
+import { useFileUploadsContext } from '@/features/upload/FileUploadsProvider';
 import { HOME_PATH, LOGS_PATH, STATUS_PATH, UPLOAD_PATH_PATTERN } from '@/routes';
 
 /**
@@ -26,12 +29,10 @@ import { HOME_PATH, LOGS_PATH, STATUS_PATH, UPLOAD_PATH_PATTERN } from '@/routes
 export function AppSidebar() {
   const { pathname } = useLocation();
   const member = useSignedInMember();
-  const { signOut } = useAuth();
+  const isAdmin = useHasRole('admin');
 
   // The list and an open upload are both part of Uploads.
   const onUploadsPage = pathname === HOME_PATH || matchPath(UPLOAD_PATH_PATTERN, pathname) !== null;
-  const onStatusPage = pathname === STATUS_PATH;
-  const onLogsPage = pathname === LOGS_PATH;
 
   return (
     <Sidebar>
@@ -53,50 +54,24 @@ export function AppSidebar() {
           <SidebarGroupLabel className="text-sidebar-foreground/60">Label extraction</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={onUploadsPage}>
-                  <Link to={HOME_PATH} aria-current={onUploadsPage ? 'page' : undefined}>
-                    <Files aria-hidden />
-                    <span>Uploads</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              <NavItem to={HOME_PATH} icon={Files} label="Uploads" active={onUploadsPage} />
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {member.role === 'admin' && (
+        {isAdmin && (
           <SidebarGroup>
             <SidebarGroupLabel className="text-sidebar-foreground/60">System</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={onStatusPage}>
-                    {/* The page's code is split out; start fetching it as soon as a visit looks likely. */}
-                    <Link
-                      to={STATUS_PATH}
-                      aria-current={onStatusPage ? 'page' : undefined}
-                      onMouseEnter={() => void loadSystemStatusPage()}
-                      onFocus={() => void loadSystemStatusPage()}
-                    >
-                      <Activity aria-hidden />
-                      <span>System status</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={onLogsPage}>
-                    <Link
-                      to={LOGS_PATH}
-                      aria-current={onLogsPage ? 'page' : undefined}
-                      onMouseEnter={() => void loadLogsPage()}
-                      onFocus={() => void loadLogsPage()}
-                    >
-                      <ScrollText aria-hidden />
-                      <span>Activity log</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                <NavItem
+                  to={STATUS_PATH}
+                  icon={Activity}
+                  label="System status"
+                  active={pathname === STATUS_PATH}
+                  preload={loadSystemStatusPage}
+                />
+                <NavItem to={LOGS_PATH} icon={ScrollText} label="Activity log" active={pathname === LOGS_PATH} preload={loadLogsPage} />
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -108,18 +83,90 @@ export function AppSidebar() {
           <p className="truncate font-medium text-white" title={member.email}>
             {member.email}
           </p>
-          <p className="text-sidebar-foreground/60">{member.role === 'admin' ? 'Admin' : 'Member'}</p>
+          <p className="text-sidebar-foreground/60">{ROLE_LABELS[member.role]}</p>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="justify-start px-0 text-sidebar-foreground/80 hover:bg-transparent hover:text-white"
-          onClick={() => void signOut()}
-        >
-          <LogOut data-icon="inline-start" aria-hidden />
-          Sign out
-        </Button>
+        <SignOut />
       </SidebarFooter>
     </Sidebar>
+  );
+}
+
+/**
+ * One destination. A page whose code is split out passes `preload`, to start fetching it as soon
+ * as a visit looks likely (hover or focus).
+ */
+function NavItem({
+  to,
+  icon: Icon,
+  label,
+  active,
+  preload,
+}: {
+  to: string;
+  icon: LucideIcon;
+  label: string;
+  active: boolean;
+  preload?: () => Promise<unknown>;
+}) {
+  const startLoading = preload && (() => void preload());
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton asChild isActive={active}>
+        <Link to={to} aria-current={active ? 'page' : undefined} onMouseEnter={startLoading} onFocus={startLoading}>
+          <Icon aria-hidden />
+          <span>{label}</span>
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
+/**
+ * Signs out, but asks first while files are still uploading: signing out leaves the app, which
+ * stops them without a trace. Its own component, so upload progress re-renders only this.
+ */
+function SignOut() {
+  const { signOut } = useAuth();
+  const { busy } = useFileUploadsContext();
+  const [confirming, setConfirming] = useState(false);
+  const questionId = useId();
+
+  // Uploads that finish meanwhile leave nothing to ask about.
+  if (confirming && !busy) setConfirming(false);
+
+  if (confirming && busy) {
+    return (
+      <div role="group" aria-labelledby={questionId} className="grid gap-2 text-xs">
+        <p id={questionId} className="text-white">
+          Files are still uploading. Signing out now stops them.
+        </p>
+        <div className="flex gap-1.5">
+          <Button size="xs" variant="secondary" onClick={() => void signOut()}>
+            Sign out anyway
+          </Button>
+          <Button
+            size="xs"
+            variant="ghost"
+            className="text-sidebar-foreground/80 hover:bg-white/10 hover:text-white"
+            onClick={() => setConfirming(false)}
+            autoFocus
+          >
+            Keep uploading
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="justify-start px-0 text-sidebar-foreground/80 hover:bg-transparent hover:text-white"
+      onClick={() => (busy ? setConfirming(true) : void signOut())}
+    >
+      <LogOut data-icon="inline-start" aria-hidden />
+      Sign out
+    </Button>
   );
 }

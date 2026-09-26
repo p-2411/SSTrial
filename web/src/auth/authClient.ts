@@ -1,5 +1,6 @@
 import { GoTrueClient } from '@supabase/auth-js';
 import { CONFIG_PATH, type PublicConfig } from '@label-extractor/shared';
+import { apiRequest } from '@/api/client';
 
 /** The parts of Supabase Auth the app uses, so AuthProvider can be tested with a fake. */
 export interface AuthClient {
@@ -27,9 +28,8 @@ export function loadSupabaseAuthClient(): Promise<AuthClient> {
 }
 
 async function createAuthClient(): Promise<AuthClient> {
-  const response = await fetch(CONFIG_PATH).catch(() => null);
-  if (!response?.ok) throw new Error("Can't reach the server. Check your connection and try again.");
-  const config = (await response.json()) as PublicConfig;
+  // Public, so it needs no token: nobody can be signed in before this has loaded anyway.
+  const config = await apiRequest<PublicConfig>(CONFIG_PATH);
   // Only Supabase's auth client, not the full supabase-js: the browser never talks to the database
   // or storage through it, and the rest would more than double the size of this module.
   const auth = new GoTrueClient({

@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react';
 import type { Role } from '@label-extractor/shared';
 import { SIGN_IN_PATH } from '@/routes';
 import { useAuth } from './AuthProvider';
+import { ROLE_LABELS, useHasRole } from './roles';
 
 /** Renders its children only for a signed-in member; sends anyone else to sign in, then back here. */
 export function RequireAuth({ children }: { children: ReactNode }) {
@@ -23,13 +24,12 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   return children;
 }
 
-/** Renders its children only for members with this role. The API refuses the data anyway. */
+/** Renders its children only for members with this role. Goes under RequireAuth. The API refuses the data anyway. */
 export function RequireRole({ role, children }: { role: Role; children: ReactNode }) {
-  const { state } = useAuth();
-  if (state.status === 'signed-in' && state.member.role !== role) {
+  if (!useHasRole(role)) {
     return (
       <div className="grid flex-1 place-content-center p-6 text-center">
-        <p className="text-muted-foreground">Only {role}s can see this page.</p>
+        <p className="text-muted-foreground">Only {ROLE_LABELS[role].toLowerCase()}s can see this page.</p>
       </div>
     );
   }

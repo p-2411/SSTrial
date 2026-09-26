@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import type { LabelExtraction } from '@label-extractor/shared';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { saveFile } from '@/lib/saveFile';
 
 /**
  * The raw structured result, for people wiring it into other systems: copy it, or download it as
@@ -23,12 +24,7 @@ export function JsonDisclosure({ data, fileName }: { data: LabelExtraction; file
 
   function download() {
     // The data is already here, so build the file in the browser rather than asking the API again.
-    const url = URL.createObjectURL(new Blob([`${json}\n`], { type: 'application/json' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${fileName.replace(/\.[^.]+$/, '')}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
+    saveFile(new Blob([`${json}\n`], { type: 'application/json' }), `${fileName.replace(/\.[^.]+$/, '')}.json`);
   }
 
   return (

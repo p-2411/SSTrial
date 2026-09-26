@@ -1,7 +1,7 @@
 import { ChevronDown, Download, FileJson, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
 import { errorMessage } from '@/api/client';
-import { downloadExport } from '@/api/uploads';
+import { fetchExport } from '@/api/uploads';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -10,16 +10,18 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { saveFile } from '@/lib/saveFile';
 
 async function save(format: 'csv' | 'json') {
   try {
-    await downloadExport(format);
+    const { blob, fileName } = await fetchExport(format);
+    saveFile(blob, fileName);
   } catch (error) {
     toast.error("Couldn't export", { description: errorMessage(error) });
   }
 }
 
-/** Downloads every completed extraction, as CSV or JSON (see downloadExport). */
+/** Downloads every completed extraction, as CSV or JSON (see fetchExport). */
 export function ExportMenu() {
   return (
     <DropdownMenu>

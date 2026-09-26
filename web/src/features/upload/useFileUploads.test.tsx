@@ -81,6 +81,21 @@ describe('useFileUploads', () => {
     expect(mocked.putFileToStorage).toHaveBeenCalledTimes(5);
   });
 
+  it('is busy while a file is on its way, but not for a file that failed', async () => {
+    let fail!: (error: Error) => void;
+    mocked.putFileToStorage.mockImplementationOnce(() => new Promise((_resolve, reject) => (fail = reject)));
+    const { result } = renderUploads();
+    expect(result.current.busy).toBe(false);
+
+    act(() => result.current.addFiles([png()]));
+    await waitFor(() => expect(mocked.putFileToStorage).toHaveBeenCalled());
+    expect(result.current.busy).toBe(true);
+
+    await act(async () => fail(new Error('The upload was interrupted.')));
+    await waitFor(() => expect(result.current.pending[0]?.phase).toBe('failed'));
+    expect(result.current.busy).toBe(false);
+  });
+
   it('skips a file the server already has, and hands the existing upload to the caller', async () => {
     const existing = summary({ id: 'existing', status: 'completed' });
     mocked.createUpload.mockResolvedValueOnce({ kind: 'duplicate', upload: existing });

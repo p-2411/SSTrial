@@ -16,7 +16,7 @@ import { NotFoundPage } from './NotFoundPage';
  *   /status       system status: the queue, the worker, health checks, throughput and failures
  *   /logs         the activity log: what happened to each upload and to the system
  * The upload routes accept ?status=… to filter the list (see statusFilters.ts), and /logs accepts
- * ?level=…&type=…&upload=… (see logFilters.ts). Desktop layout only.
+ * ?type=…&type=…&upload=… (see logFilters.ts). Desktop layout only.
  */
 export const router = createBrowserRouter([
   { path: SIGN_IN_PATH, element: <SignInPage /> },

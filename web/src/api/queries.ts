@@ -116,10 +116,21 @@ export function useUploadDetail(id: string) {
   });
 }
 
+/** Fetches one upload's detail afresh, whether or not anything is showing it, and caches it. */
+export function fetchUpload(queryClient: QueryClient, id: string): Promise<UploadDetail> {
+  return queryClient.fetchQuery({ queryKey: uploadKeys.detail(id), queryFn: () => getUpload(id), staleTime: 0 });
+}
+
+/** Whether a save was refused because someone else saved a change to the upload first. */
+export function isEditConflict(error: unknown): boolean {
+  return error instanceof ApiRequestError && error.code === 'EDIT_CONFLICT';
+}
+
 /**
- * Save corrections to an upload's data. The cached detail is replaced with the saved one, and the
- * lists refresh (the upload's confidence there may change). If someone else saved first, the
- * detail is fetched again so their version shows.
+ * Save corrections to an upload's data, or confirm fields as right. The cached detail is replaced
+ * with the saved one, and the lists refresh (the upload's confidence there may change). When
+ * someone else saved first (isEditConflict), the caller decides what to do about it: whether their
+ * change matters depends on which field it touched.
  */
 export function useEditResult(uploadId: string) {
   const queryClient = useQueryClient();
@@ -128,9 +139,6 @@ export function useEditResult(uploadId: string) {
     onSuccess: async (upload) => {
       storeUpload(queryClient, upload);
       await refreshUploadLists(queryClient);
-    },
-    onError: async (error) => {
-      if (error instanceof ApiRequestError && error.code === 'EDIT_CONFLICT') await refreshUpload(queryClient, uploadId);
     },
   });
 }

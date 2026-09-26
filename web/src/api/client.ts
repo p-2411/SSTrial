@@ -19,18 +19,27 @@ export class ApiRequestError extends Error {
   }
 }
 
-interface AuthHooks {
+export interface AuthHooks {
   /** The signed-in user's access token, or null. Asked for on every request, so it's never stale. */
   getAccessToken(): Promise<string | null>;
   /** The API stopped accepting the sign-in (expired or revoked). */
   onUnauthorized(): void;
 }
 
-let authHooks: AuthHooks = { getAccessToken: async () => null, onUnauthorized: () => {} };
+const NOBODY: AuthHooks = { getAccessToken: async () => null, onUnauthorized: () => {} };
 
-/** Set by AuthProvider once Supabase Auth has loaded. Until then (and in tests) requests carry no token. */
-export function setAuthHooks(hooks: AuthHooks): void {
+let authHooks = NOBODY;
+
+/**
+ * Makes requests as whoever `hooks` says is signed in. AuthProvider connects Supabase Auth once it
+ * has loaded; until then (and in tests) requests carry no token. Returns a function that
+ * disconnects it again, so an unmounted provider doesn't leave its sign-in behind for the next one.
+ */
+export function connectApi(hooks: AuthHooks): () => void {
   authHooks = hooks;
+  return () => {
+    if (authHooks === hooks) authHooks = NOBODY; // unless something else has connected since
+  };
 }
 
 /** The header that tells our API who is asking, if anyone is signed in. */

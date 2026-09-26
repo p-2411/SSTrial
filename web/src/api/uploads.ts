@@ -97,20 +97,11 @@ function storageErrorMessage(status: number, responseText: string): string {
 }
 
 /**
- * Downloads every completed extraction as CSV or JSON. Fetched, not linked: a plain link can't send
- * the sign-in token. Saved under the file name the server chose.
+ * Every completed extraction as a CSV or JSON file, with the file name the server chose. Fetched,
+ * not linked: a plain link can't send the sign-in token. Saving it is up to the caller (saveFile).
  */
-export async function downloadExport(format: 'csv' | 'json'): Promise<void> {
+export async function fetchExport(format: 'csv' | 'json'): Promise<{ blob: Blob; fileName: string }> {
   const response = await apiFetch(`/api/exports/uploads.${format}`);
   const fileName = /filename="([^"]+)"/.exec(response.headers.get('content-disposition') ?? '')?.[1] ?? `uploads.${format}`;
-  const url = URL.createObjectURL(await response.blob());
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  // In the page while clicked (some browsers ignore detached links), and the file kept a moment
-  // longer: revoking it straight away can cancel the download in Firefox and Safari.
-  document.body.append(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return { blob: await response.blob(), fileName };
 }

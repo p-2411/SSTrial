@@ -10,3 +10,13 @@ export const TONE_CLASSES: Record<Tone, string> = {
   warning: 'border-warning-border bg-warning-soft text-warning',
   danger: 'border-danger-border bg-danger-soft text-danger',
 };
+
+/**
+ * A small solid marker in the same hue (a status dot). Warning's is its border colour, the bright
+ * amber: its text colour is a dark brown that wouldn't read as a warning at that size.
+ */
+export const TONE_DOT_CLASSES: Record<Tone, string> = {
+  success: 'bg-success',
+  warning: 'bg-warning-border',
+  danger: 'bg-danger',
+};

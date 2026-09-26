@@ -1,12 +1,13 @@
 import { QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CurrentMember } from '@label-extractor/shared';
+import { apiRequest } from '@/api/client';
 import { createTestQueryClient, jsonResponse } from '@/test/render';
 import type { AuthClient } from './authClient';
-import { AuthProvider } from './AuthProvider';
+import { AuthProvider, useAuth } from './AuthProvider';
 import { RequireAuth, RequireRole } from './guards';
 import { SignInPage } from './SignInPage';
 
@@ -46,8 +47,18 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function renderApp(url = '/') {
-  const loadClient = async () => auth;
+/** A page with a way to sign out, as the app's sidebar has. */
+function UploadsPage() {
+  const { signOut } = useAuth();
+  return (
+    <>
+      <p>Uploads page</p>
+      <button onClick={() => void signOut()}>Sign out</button>
+    </>
+  );
+}
+
+function renderApp(url = '/', loadClient: () => Promise<AuthClient> = async () => auth) {
   return render(
     <QueryClientProvider client={createTestQueryClient()}>
       <AuthProvider loadClient={loadClient}>
@@ -58,7 +69,7 @@ function renderApp(url = '/') {
               path="/"
               element={
                 <RequireAuth>
-                  <p>Uploads page</p>
+                  <UploadsPage />
                 </RequireAuth>
               }
             />
@@ -109,13 +120,47 @@ describe('signing in', () => {
     expect(auth.token).toBeNull();
   });
 
-  it('returns to the sign-in page when signed out elsewhere', async () => {
+  it('recovers from a failed start once the server is back, without a reload', async () => {
+    const loadClient = vi.fn(async () => auth);
+    loadClient.mockRejectedValueOnce(new Error("Can't reach the server. Check your connection and try again."));
+    renderApp('/', loadClient);
+    expect(await screen.findByText(/Can't reach the server/)).toBeInTheDocument();
+
+    await signIn('right');
+    expect(await screen.findByText('Uploads page')).toBeInTheDocument();
+    expect(loadClient).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('signing out', () => {
+  it('returns to the sign-in page, saying why, when the session ends elsewhere', async () => {
     auth.token = 'token';
     renderApp();
     expect(await screen.findByText('Uploads page')).toBeInTheDocument();
 
-    await auth.signOut(); // e.g. in another tab
+    await act(() => auth.signOut()); // e.g. in another tab, or the token expired
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.getByText('Your session ended. Sign in again.')).toBeInTheDocument();
+  });
+
+  it("doesn't explain a sign-out the person asked for", async () => {
+    auth.token = 'token';
+    renderApp();
+    await userEvent.click(await screen.findByRole('button', { name: 'Sign out' }));
+
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('stops sending the token once unmounted', async () => {
+    auth.token = 'token';
+    const { unmount } = renderApp();
+    expect(await screen.findByText('Uploads page')).toBeInTheDocument();
+    unmount();
+
+    await apiRequest('/api/uploads');
+    const [, init] = vi.mocked(fetch).mock.calls.at(-1) as unknown as [string, RequestInit];
+    expect((init.headers as Record<string, string>).authorization).toBeUndefined();
   });
 });
 

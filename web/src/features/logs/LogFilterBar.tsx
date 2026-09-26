@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import { Link } from 'react-router';
 import { ChevronDown, ListFilter, X } from 'lucide-react';
-import { LOG_EVENT_TYPE_IDS, LOG_EVENT_TYPES, type LogEventType } from '@label-extractor/shared';
+import { LOG_EVENT_TYPES, type LogEventType } from '@label-extractor/shared';
 import type { LogFilters } from '@/api/logs';
 import { Button } from '@/components/ui/button';
 import {
@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { uploadPath } from '@/routes';
-import { inCatalogueOrder } from './logFilters';
+import { describeFilter, inCatalogueOrder, sameTypes, SHORTCUTS, TYPE_MENU } from './logFilters';
 
 interface LogFilterBarProps {
   filters: LogFilters;
@@ -35,54 +35,6 @@ export function LogFilterBar({ filters, onChange, uploadName }: LogFilterBarProp
   );
 }
 
-/** Which heading each type sits under in the menu. Keyed by type, so a new one needs a place here. */
-const TYPE_GROUP = {
-  'upload.created': 'Uploads',
-  'upload.duplicate': 'Uploads',
-  'upload.queued': 'Uploads',
-  'upload.rejected': 'Uploads',
-  'upload.discarded': 'Uploads',
-  'upload.retry_requested': 'Uploads',
-  'upload.edited': 'Uploads',
-  'extraction.started': 'Extraction',
-  'extraction.completed': 'Extraction',
-  'extraction.retry_scheduled': 'Extraction',
-  'extraction.failed': 'Extraction',
-  'extraction.abandoned': 'Extraction',
-  'ratelimit.paused': 'Extraction',
-  'process.started': 'System',
-} satisfies Record<LogEventType, string>;
-
-/** The menu's sections of event types, in shared's order. */
-const TYPE_MENU: Array<{ heading: string; types: LogEventType[] }> = [];
-for (const type of LOG_EVENT_TYPE_IDS) {
-  const heading = TYPE_GROUP[type];
-  const section = TYPE_MENU.find((candidate) => candidate.heading === heading);
-  if (section) section.types.push(type);
-  else TYPE_MENU.push({ heading, types: [type] });
-}
-
-/**
- * Choices at the top of the menu, each a whole set of types. A type always has the same level, so
- * "warnings and errors" is just the types that are warnings or errors. Everything is no filter.
- */
-const SHORTCUTS: Array<{ label: string; types: LogEventType[] }> = [
-  { label: 'Everything', types: [] },
-  { label: 'Warnings and errors', types: LOG_EVENT_TYPE_IDS.filter((type) => LOG_EVENT_TYPES[type].level !== 'info') },
-  { label: 'Errors only', types: LOG_EVENT_TYPE_IDS.filter((type) => LOG_EVENT_TYPES[type].level === 'error') },
-];
-
-/** Both lists are in the catalogue's order, so comparing them in order is enough. */
-const sameTypes = (a: LogEventType[], b: LogEventType[]) => a.length === b.length && a.every((type, i) => type === b[i]);
-
-/** The button's summary of the choice: "Show everything", "Show errors only", "Show 3 types of event"… */
-function describe(types: LogEventType[]): string {
-  const shortcut = SHORTCUTS.find((candidate) => sameTypes(candidate.types, types));
-  if (shortcut) return midSentence(shortcut.label);
-  if (types.length === 1) return midSentence(LOG_EVENT_TYPES[types[0]!].label);
-  return `${types.length} types of event`;
-}
-
 /**
  * Which types of event to show: any number of them, ticked in the menu (which stays open while you
  * tick), or a shortcut at the top that picks a whole set at once.
@@ -97,7 +49,7 @@ function ShowMenu({ types, onChange }: { types: LogEventType[]; onChange: (types
         <Button variant="outline" size="sm" className="h-9">
           <ListFilter data-icon="inline-start" aria-hidden />
           {/* The space keeps the accessible name "Show everything" rather than "Showeverything". */}
-          <span className="font-normal">Show</span> {describe(types)}
+          <span className="font-normal">Show</span> {describeFilter(types)}
           <ChevronDown data-icon="inline-end" aria-hidden />
         </Button>
       </DropdownMenuTrigger>
@@ -131,12 +83,6 @@ function ShowMenu({ types, onChange }: { types: LogEventType[]; onChange: (types
       </DropdownMenuContent>
     </DropdownMenu>
   );
-}
-
-/** A label as it reads after "Show": "Errors only" → "errors only", but "AI requests paused" stays. */
-function midSentence(label: string): string {
-  const firstWord = label.split(' ')[0]!;
-  return firstWord === firstWord.toUpperCase() ? label : label.charAt(0).toLowerCase() + label.slice(1);
 }
 
 function UploadChip({ id, name, onClear }: { id: string; name: string | null; onClear: () => void }) {

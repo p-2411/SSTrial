@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { Plus, X } from 'lucide-react';
 import {
+  FIELD_LABELS,
   NET_QUANTITY_UNITS,
   type Ingredient,
   type NetQuantity,
@@ -9,39 +10,64 @@ import {
 } from '@label-extractor/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { TONE_CLASSES } from '@/lib/tone';
 import { cn } from '@/lib/utils';
+import {
+  addAllergen,
+  allergensChanges,
+  ingredientDrafts,
+  ingredientsChanges,
+  netWeightChanges,
+  textChanges,
+  type IngredientDraft,
+} from './fieldChanges';
 
 /**
- * In-place editors for extracted fields. Each turns what the person typed into a change for
- * PATCH …/result; the server validates the whole result, the same way it validates model output.
+ * In-place editors for extracted fields. Each keeps the person's draft and turns it into a change
+ * for PATCH …/result (see fieldChanges.ts); the server validates the whole result, the same way it
+ * validates model output.
  */
 
-interface EditorProps<T> {
-  value: T;
-  onSave: (changes: ResultChanges) => void;
+/** Someone else saved a different value for the field while it was open here. */
+export interface EditConflict {
+  /** Their value, as text. */
+  theirs: string;
+  /** Carry on with this draft: saving it replaces their value. */
+  onKeepMine: () => void;
+  /** Drop this draft for their value. */
+  onUseTheirs: () => void;
+}
+
+/** How saving is going, for the form around an editor. */
+export interface EditorFormState {
   onCancel: () => void;
   saving: boolean;
   /** Why the last save was refused, to show under the editor. */
   error: string | null;
+  conflict: EditConflict | null;
 }
 
-/** Save and Cancel, Escape to cancel, and the reason if a save was refused. */
+interface EditorProps<T> extends EditorFormState {
+  value: T;
+  onSave: (changes: ResultChanges) => void;
+}
+
+/**
+ * Save and Cancel, Escape to cancel, and the reason if a save was refused. While someone else's
+ * change is waiting to be seen, Save waits for the person to choose between theirs and their own.
+ */
 function EditorForm({
   onSubmit,
   onCancel,
   saving,
   error,
+  conflict,
   children,
-}: {
-  onSubmit: () => void;
-  onCancel: () => void;
-  saving: boolean;
-  error: string | null;
-  children: ReactNode;
-}) {
+}: EditorFormState & { onSubmit: () => void; children: ReactNode }) {
+  const canSave = !saving && !conflict;
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    onSubmit();
+    if (canSave) onSubmit();
   };
   const escape = (event: KeyboardEvent) => {
     if (event.key === 'Escape') {
@@ -52,13 +78,28 @@ function EditorForm({
   return (
     <form className="grid gap-2" onSubmit={submit} onKeyDown={escape}>
       {children}
+      {conflict && (
+        <div role="alert" className={cn('grid gap-1.5 rounded-md border px-2.5 py-2 text-xs', TONE_CLASSES.warning)}>
+          <p>
+            Someone else changed this: <span className="font-semibold">{conflict.theirs}</span>
+          </p>
+          <div className="flex gap-1.5">
+            <Button type="button" size="xs" variant="outline" onClick={conflict.onKeepMine}>
+              Keep mine
+            </Button>
+            <Button type="button" size="xs" variant="ghost" onClick={conflict.onUseTheirs}>
+              Use theirs
+            </Button>
+          </div>
+        </div>
+      )}
       {error && (
         <p role="alert" className="text-xs text-danger">
           {error}
         </p>
       )}
       <div className="flex gap-1.5">
-        <Button type="submit" size="xs" disabled={saving}>
+        <Button type="submit" size="xs" disabled={!canSave}>
           {saving ? 'Saving…' : 'Save'}
         </Button>
         <Button type="button" size="xs" variant="ghost" onClick={onCancel} disabled={saving}>
@@ -72,25 +113,25 @@ function EditorForm({
 /** Product name or brand. Emptied means the label doesn't show one. */
 export function TextEditor({
   field,
-  label,
-  ...props
-}: EditorProps<string | null> & { field: 'productName' | 'brand'; label: string }) {
-  const [text, setText] = useState(props.value ?? '');
+  value,
+  onSave,
+  ...form
+}: EditorProps<string | null> & { field: 'productName' | 'brand' }) {
+  const [text, setText] = useState(value ?? '');
   return (
-    <EditorForm {...props} onSubmit={() => props.onSave({ [field]: text.trim() || null })}>
-      <Input aria-label={label} value={text} onChange={(event) => setText(event.target.value)} autoFocus />
+    <EditorForm {...form} onSubmit={() => onSave(textChanges(field, text))}>
+      <Input aria-label={FIELD_LABELS[field]} value={text} onChange={(event) => setText(event.target.value)} autoFocus />
       <p className="text-xs text-muted-foreground">Leave it empty if the label doesn't show one.</p>
     </EditorForm>
   );
 }
 
 /** Amount and unit. The pack's printed wording is kept as it was. Emptied means none on the label. */
-export function NetWeightEditor(props: EditorProps<NetQuantity | null>) {
-  const [amount, setAmount] = useState(props.value ? String(props.value.value) : '');
-  const [unit, setUnit] = useState<NetQuantityUnit>(props.value?.unit ?? 'g');
-  const save = () => props.onSave({ netWeight: amount.trim() === '' ? null : { value: Number(amount), unit } });
+export function NetWeightEditor({ value, onSave, ...form }: EditorProps<NetQuantity | null>) {
+  const [amount, setAmount] = useState(value ? String(value.value) : '');
+  const [unit, setUnit] = useState<NetQuantityUnit>(value?.unit ?? 'g');
   return (
-    <EditorForm {...props} onSubmit={save}>
+    <EditorForm {...form} onSubmit={() => onSave(netWeightChanges(amount, unit))}>
       <div className="flex gap-1.5">
         <Input
           aria-label="Amount"
@@ -120,21 +161,17 @@ export function NetWeightEditor(props: EditorProps<NetQuantity | null>) {
 }
 
 /** Allergens as chips: remove one with its ×, add one by typing it and pressing Enter. */
-export function AllergensEditor(props: EditorProps<string[]>) {
-  const [allergens, setAllergens] = useState(props.value);
+export function AllergensEditor({ value, onSave, ...form }: EditorProps<string[]>) {
+  const [allergens, setAllergens] = useState(value);
   const [draft, setDraft] = useState('');
-  const add = () => {
-    const allergen = draft.trim().toLowerCase();
-    if (allergen && !allergens.includes(allergen)) setAllergens([...allergens, allergen]);
-    setDraft('');
-  };
   const addOnEnter = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== 'Enter') return;
     event.preventDefault(); // Enter adds the allergen; it doesn't save the form
-    add();
+    setAllergens(addAllergen(allergens, draft));
+    setDraft('');
   };
   return (
-    <EditorForm {...props} onSubmit={() => props.onSave({ allergens: draft.trim() ? addDraft(allergens, draft) : allergens })}>
+    <EditorForm {...form} onSubmit={() => onSave(allergensChanges(allergens, draft))}>
       {allergens.length > 0 && (
         <ul className="flex flex-wrap gap-1.5">
           {allergens.map((allergen) => (
@@ -166,42 +203,26 @@ export function AllergensEditor(props: EditorProps<string[]>) {
   );
 }
 
-/** Saving with something still typed in the box: count it too, rather than silently drop it. */
-function addDraft(allergens: string[], draft: string): string[] {
-  const allergen = draft.trim().toLowerCase();
-  return allergens.includes(allergen) ? allergens : [...allergens, allergen];
-}
-
-interface Row {
+/** A draft row, keyed so React keeps each row's inputs as rows are added and removed. */
+interface Row extends IngredientDraft {
   key: number;
-  ingredient: Ingredient;
-  percent: string;
 }
 
 /**
  * Ingredients as editable rows: name and percentage, remove, add. Sub-ingredients and allergen
  * links stay as extracted (new rows have none), so they're carried through untouched.
  */
-export function IngredientsEditor(props: EditorProps<Ingredient[]>) {
-  const [rows, setRows] = useState<Row[]>(() =>
-    props.value.map((ingredient, key) => ({ key, ingredient, percent: ingredient.percent === null ? '' : String(ingredient.percent) })),
-  );
-  const [nextKey, setNextKey] = useState(props.value.length);
+export function IngredientsEditor({ value, onSave, ...form }: EditorProps<Ingredient[]>) {
+  const [rows, setRows] = useState<Row[]>(() => ingredientDrafts(value).map((draft, key) => ({ ...draft, key })));
+  const [nextKey, setNextKey] = useState(value.length);
   const update = (key: number, change: (row: Row) => Row) => setRows(rows.map((row) => (row.key === key ? change(row) : row)));
   const add = () => {
     setRows([...rows, { key: nextKey, ingredient: { name: '', percent: null, subIngredients: [], allergens: [] }, percent: '' }]);
     setNextKey(nextKey + 1);
   };
-  const save = () =>
-    props.onSave({
-      // A row left without a name is dropped rather than refused.
-      ingredients: rows
-        .filter((row) => row.ingredient.name.trim() !== '')
-        .map((row) => ({ ...row.ingredient, name: row.ingredient.name.trim(), percent: row.percent.trim() === '' ? null : Number(row.percent) })),
-    });
 
   return (
-    <EditorForm {...props} onSubmit={save}>
+    <EditorForm {...form} onSubmit={() => onSave(ingredientsChanges(rows))}>
       <ol className="grid gap-1.5">
         {rows.map((row, index) => (
           <li key={row.key} className="grid grid-cols-[1.75rem_minmax(0,1fr)_5rem_auto] items-center gap-1.5 text-sm">
@@ -236,7 +257,7 @@ export function IngredientsEditor(props: EditorProps<Ingredient[]>) {
           </li>
         ))}
       </ol>
-      <Button type="button" variant="outline" size="xs" className={cn('justify-self-start')} onClick={add}>
+      <Button type="button" variant="outline" size="xs" className="justify-self-start" onClick={add}>
         <Plus data-icon="inline-start" aria-hidden />
         Add ingredient
       </Button>

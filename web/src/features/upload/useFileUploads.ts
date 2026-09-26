@@ -170,10 +170,11 @@ export function useFileUploads({ onDuplicate }: FileUploadsOptions = {}) {
     dispatch({ type: 'removed', localId });
   }, []);
 
-  // Leaving the page mid-upload would silently lose files, so ask first.
-  useWarnBeforeUnload(pending.some((u) => u.phase === 'waiting' || u.phase === 'uploading' || u.phase === 'confirming'));
+  /** Whether any file is still on its way. Leaving the page (or signing out) now would silently lose it. */
+  const busy = pending.some((u) => u.phase === 'waiting' || u.phase === 'uploading' || u.phase === 'confirming');
+  useWarnBeforeUnload(busy);
 
-  return { pending, addFiles, retry, dismiss };
+  return { pending, busy, addFiles, retry, dismiss };
 }
 
 export type FileUploads = ReturnType<typeof useFileUploads>;
