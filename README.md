@@ -88,7 +88,7 @@ Whoever uploaded a product, or any admin, can delete it from the detail panel (o
 ### Monitoring
 
 - **System page** (`/system` in the app, admins only), with two parts:
-  - **Status strip** (from `GET /api/ops`): uploads waiting, retrying and processing; whether labels are being read (the worker is running); the last 24 hours; and the system's own checks, as "All OK" (each one's detail on hover) or which failed and why.
+  - **Status strip** (from `GET /api/ops`): uploads waiting, retrying and processing; the last 24 hours; and the system's checks (database, queue, and whether a worker has checked in within the last 3 minutes), as "All OK" with each one's detail on hover, or which failed and why ("Database and workers down").
   - **Activity log** (from `GET /api/logs`), underneath: every step of every upload (created, queued, each extraction attempt, retries, failures and why), plus rate-limit pauses and process starts. Search its messages, narrow it to any mix of event types (with shortcuts for warnings and errors), or to a span of days, or to one upload with `?upload=<id>` in the address, and it updates live. It loads a page at a time, and each event's details only when opened. A product's events are kept for as long as it exists, and for 30 days after it's deleted; the system's own, for 30 days.
 - **`GET /api/health`** on the API (database, queue) and on the worker (plus its job loop) answers 200 or 503, naming which check failed but not the error's details (the System page shows those). Railway uses it on deploy.
 

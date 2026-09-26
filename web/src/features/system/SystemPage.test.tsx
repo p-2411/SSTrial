@@ -34,22 +34,21 @@ describe('SystemPage', () => {
     expect(stat('Waiting')).toHaveTextContent('3');
     expect(stat('Retrying')).toHaveTextContent('1');
     expect(stat('Processing')).toHaveTextContent('2');
-    expect(stat('Label reading')).toHaveTextContent('Running');
     expect(stat('Read (24h)')).toHaveTextContent('40');
     expect(stat('Failed (24h)')).toHaveTextContent('5% of reads');
     expect(stat('Typical time')).toHaveTextContent('7s');
     expect(screen.getByRole('region', { name: 'Activity log' })).toBeInTheDocument();
   });
 
-  it("sums the system's checks up as All OK, with each check's detail on hover", async () => {
+  it("sums the system's checks, workers included, up as All OK, with each one's detail on hover", async () => {
     renderWith(healthy);
 
     const checks = (await screen.findByText('Systems')).parentElement!;
     expect(checks).toHaveTextContent('All OK');
-    expect(checks).toHaveAttribute('title', 'Database: OK, 3 ms\nQueue: OK, 4 ms');
+    expect(checks).toHaveAttribute('title', 'Database: OK, 3 ms\nQueue: OK, 4 ms\nWorkers: OK, seen just now');
   });
 
-  it('names a failing check, and says when labels have stopped being read', async () => {
+  it('names each failing check, workers included, and why', async () => {
     renderWith({
       ...healthy,
       health: { status: 'unhealthy', checks: { database: { status: 'error', latencyMs: 3000, error: 'Timed out after 3000ms' } } },
@@ -57,10 +56,9 @@ describe('SystemPage', () => {
     });
 
     const checks = (await screen.findByText('Systems')).parentElement!;
-    expect(checks).toHaveTextContent('Database down');
+    expect(checks).toHaveTextContent('Database and workers down');
     expect(checks).toHaveTextContent('Timed out after 3000ms');
-    expect(stat('Label reading')).toHaveTextContent('Stopped');
-    expect(stat('Label reading')).toHaveTextContent('Never seen');
+    expect(checks).toHaveTextContent('No worker has started.');
   });
 
   it('names every check that fails', async () => {

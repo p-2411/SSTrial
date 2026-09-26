@@ -9,22 +9,16 @@ type Tone = 'ok' | 'bad';
 
 /**
  * Is the system healthy, and is work flowing? One row of figures above the activity log: what's
- * waiting, retrying and being read now; whether labels are being read at all; the last 24 hours;
- * and whether the system's own checks pass (the detail on hover, or in plain view when one fails).
+ * waiting, retrying and being read now; the last 24 hours; and whether the system's own checks
+ * pass, workers included (the detail on hover, or in plain view when one fails).
  */
 export function StatusStrip({ status, now }: { status: OpsStatusResponse; now: number }) {
   const { queue, worker, last24h, health } = status;
   return (
-    <Card aria-label="System status" role="region" className="grid grid-cols-8 gap-0 divide-x divide-border/70 py-0">
+    <Card aria-label="System status" role="region" className="grid grid-cols-7 gap-0 divide-x divide-border/70 py-0">
       <Stat label="Waiting" value={queue.waiting} />
       <Stat label="Retrying" value={queue.retrying} />
       <Stat label="Processing" value={queue.processing} />
-      <Stat
-        label="Label reading"
-        value={worker.healthy ? 'Running' : 'Stopped'}
-        tone={worker.healthy ? 'ok' : 'bad'}
-        note={worker.lastSeenAt ? `Seen ${formatRelativeTime(worker.lastSeenAt, now)}` : 'Never seen'}
-      />
       <Stat label="Read (24h)" value={last24h.completed} />
       <Stat
         label="Failed (24h)"
@@ -32,20 +26,48 @@ export function StatusStrip({ status, now }: { status: OpsStatusResponse; now: n
         note={formatOptional(last24h.failureRate, (rate) => `${Math.round(rate * 100)}% of reads`)}
       />
       <Stat label="Typical time" value={formatOptional(last24h.medianSecondsToResult, formatDuration)} note="Upload to read" />
-      <Checks checks={health.checks} />
+      <Checks checks={systemChecks(health.checks, worker, now)} />
     </Card>
   );
 }
 
+interface Check {
+  name: string;
+  ok: boolean;
+  /** How it went: shown on hover. */
+  detail: string;
+  /** What's wrong, when it isn't OK: shown under the figure. */
+  problem?: string;
+}
+
 /**
- * The system's own checks as one figure: all OK, or which failed, by name ("Database and queue
- * down"), and why. Each check's detail on hover.
+ * The API's own health checks (database, queue), plus the workers that read labels: OK while one
+ * has checked in within the last few minutes (see OpsStore.recordWorkerHeartbeat).
  */
-function Checks({ checks }: { checks: Record<string, HealthCheckResult> }) {
-  const failing = Object.entries(checks).filter(([, check]) => check.status !== 'ok');
-  const detail = Object.entries(checks)
-    .map(([name, check]) => `${capitalise(name)}: ${check.status === 'ok' ? `OK, ${check.latencyMs} ms` : check.error}`)
-    .join('\n');
+function systemChecks(checks: Record<string, HealthCheckResult>, worker: OpsStatusResponse['worker'], now: number): Check[] {
+  const seen = worker.lastSeenAt && formatRelativeTime(worker.lastSeenAt, now);
+  return [
+    ...Object.entries(checks).map(([name, check]) => ({
+      name,
+      ok: check.status === 'ok',
+      detail: check.status === 'ok' ? `OK, ${check.latencyMs} ms` : (check.error ?? 'Failing'),
+      problem: check.error,
+    })),
+    {
+      name: 'workers',
+      ok: worker.healthy,
+      detail: worker.healthy ? `OK, seen ${seen}` : seen ? `Last seen ${seen}` : 'Never seen',
+      problem: seen ? `No worker seen since ${seen}.` : 'No worker has started.',
+    },
+  ];
+}
+
+/**
+ * The checks as one figure: all OK, or which failed, by name ("Database and workers down"), and
+ * why. Each check's detail on hover.
+ */
+function Checks({ checks }: { checks: Check[] }) {
+  const failing = checks.filter((check) => !check.ok);
   const ok = failing.length === 0;
   return (
     <Stat
@@ -54,12 +76,12 @@ function Checks({ checks }: { checks: Record<string, HealthCheckResult> }) {
         // The circled tick or cross the checks each had on the old status page.
         <span className="inline-flex items-center gap-1.5">
           {ok ? <CheckCircle2 className="size-5" aria-hidden /> : <XCircle className="size-5" aria-hidden />}
-          {ok ? 'All OK' : `${capitalise(formatList(failing.map(([name]) => name), 'and'))} down`}
+          {ok ? 'All OK' : `${capitalise(formatList(failing.map((check) => check.name), 'and'))} down`}
         </span>
       }
       tone={ok ? 'ok' : 'bad'}
-      note={ok ? undefined : failing.map(([, check]) => check.error).join(' ')}
-      title={detail}
+      note={ok ? undefined : failing.map((check) => check.problem).join(' ')}
+      title={checks.map((check) => `${capitalise(check.name)}: ${check.detail}`).join('\n')}
     />
   );
 }
