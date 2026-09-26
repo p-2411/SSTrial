@@ -1,4 +1,4 @@
-import { DOUBTFUL_SCORE, type ConfidenceField, type ExtractionConfidence, type LabelExtraction } from '@label-extractor/shared';
+import { DOUBTFUL_SCORE, type LabelField, type ExtractionConfidence, type LabelExtraction } from '@label-extractor/shared';
 
 /**
  * Plain checks that catch the model being confidently wrong: where the extracted data contradicts
@@ -7,7 +7,7 @@ import { DOUBTFUL_SCORE, type ConfidenceField, type ExtractionConfidence, type L
  */
 export function applyConfidenceChecks(result: LabelExtraction, confidence: ExtractionConfidence): ExtractionConfidence {
   const checked: ExtractionConfidence = structuredClone(confidence);
-  const flag = (field: ConfidenceField, reason: string) => {
+  const flag = (field: LabelField, reason: string) => {
     checked[field].score = Math.min(checked[field].score, DOUBTFUL_SCORE);
     checked[field].reasons.push(reason);
   };

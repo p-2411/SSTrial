@@ -1,7 +1,7 @@
 import {
   FIELD_LABELS,
   labelExtractionSchema,
-  type ConfidenceField,
+  type LabelField,
   type CurrentMember,
   type EditResultRequest,
   type LabelExtraction,
@@ -57,7 +57,7 @@ export async function editResult(
 
   // Only fields a person changed count as edited: not a change that leaves a field as it was, and
   // not a field that changed as a consequence (an ingredient losing an allergen removed from the list).
-  const edited = (Object.keys(changes) as ConfidenceField[]).filter((field) => !sameValue(result[field], current[field]));
+  const edited = (Object.keys(changes) as LabelField[]).filter((field) => !sameValue(result[field], current[field]));
   const checked = (request.checked ?? []).filter((field) => !edited.includes(field));
   if (edited.length === 0 && checked.length === 0) return { outcome: 'saved', upload };
 
@@ -108,6 +108,6 @@ function sameValue(a: unknown, b: unknown): boolean {
 /** A schema problem, for the person who made it: which field, and what's wrong. */
 function describeProblem(issue: { path: PropertyKey[]; message: string } | undefined): string {
   const field = issue?.path[0];
-  const label = typeof field === 'string' && field in FIELD_LABELS ? FIELD_LABELS[field as ConfidenceField] : 'A value';
+  const label = typeof field === 'string' && field in FIELD_LABELS ? FIELD_LABELS[field as LabelField] : 'A value';
   return `${label} isn't valid: ${issue?.message ?? 'check it and try again'}.`;
 }

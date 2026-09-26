@@ -1,6 +1,6 @@
 import type postgres from 'postgres';
 import type {
-  ConfidenceField,
+  LabelField,
   ExtractionConfidence,
   FieldReviewKind,
   LabelExtraction,
@@ -9,7 +9,7 @@ import type {
   UploadStatus,
 } from '@label-extractor/shared';
 import {
-  CONFIDENCE_FIELDS,
+  LABEL_FIELDS,
   extractionConfidenceSchema,
   labelExtractionSchema,
   storedErrorCode,
@@ -68,7 +68,7 @@ export interface StoredFieldReview {
   at: Date;
 }
 
-export type StoredFieldReviews = Partial<Record<ConfidenceField, StoredFieldReview>>;
+export type StoredFieldReviews = Partial<Record<LabelField, StoredFieldReview>>;
 
 /** Only the code is stored; the shared catalogue turns it into the message users see. */
 interface UploadFailure {
@@ -394,7 +394,7 @@ function toStoredReviews(reviews: StoredFieldReviews): postgres.JSONValue {
 function readStoredReviews(value: unknown): StoredFieldReviews {
   const reviews: StoredFieldReviews = {};
   if (typeof value !== 'object' || value === null) return reviews;
-  for (const field of CONFIDENCE_FIELDS) {
+  for (const field of LABEL_FIELDS) {
     const review = (value as Record<string, unknown>)[field] as { kind?: unknown; by?: unknown; at?: unknown } | undefined;
     const at = typeof review?.at === 'string' ? new Date(review.at) : null;
     if ((review?.kind === 'edited' || review?.kind === 'checked') && typeof review.by === 'string' && at && !Number.isNaN(at.getTime())) {

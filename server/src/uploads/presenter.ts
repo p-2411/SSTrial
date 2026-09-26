@@ -1,6 +1,6 @@
 import {
   overallConfidence,
-  type ConfidenceField,
+  type LabelField,
   type FieldReviews,
   UPLOAD_FILTER_IDS,
   UPLOAD_FILTERS,
@@ -67,8 +67,8 @@ export function peopleIn(record: UploadRecord): string[] {
   return [...new Set(ids.filter((id): id is string => id !== null))];
 }
 
-function reviewedFields(reviews: StoredFieldReviews): ConfidenceField[] {
-  return Object.keys(reviews) as ConfidenceField[];
+function reviewedFields(reviews: StoredFieldReviews): LabelField[] {
+  return Object.keys(reviews) as LabelField[];
 }
 
 /** How many uploads each list view holds, from the per-status counts. */

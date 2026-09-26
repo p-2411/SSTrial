@@ -3,7 +3,7 @@ import { ShieldCheck, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   isVolumeUnit,
-  type ConfidenceField,
+  type LabelField,
   type Ingredient,
   type LabelExtraction,
   type ResultChanges,
@@ -37,11 +37,11 @@ export function CoreInformationCard({ upload }: { upload: UploadDetail & { resul
   const now = useNow();
   const review = useFieldReview(upload);
 
-  const stateOf = (field: ConfidenceField): ReviewState => ({
+  const stateOf = (field: LabelField): ReviewState => ({
     confidence: upload.fieldConfidence?.[field],
     review: upload.fieldReviews[field],
   });
-  const fieldProps = (field: ConfidenceField) => ({
+  const fieldProps = (field: LabelField) => ({
     state: stateOf(field),
     now,
     onEdit: () => review.edit(field),
@@ -162,18 +162,18 @@ export function CoreInformationCard({ upload }: { upload: UploadDetail & { resul
  */
 function useFieldReview(upload: UploadDetail & { result: LabelExtraction }) {
   const mutation = useEditResult(upload.id);
-  const [editing, setEditing] = useState<{ field: ConfidenceField; valueAtOpen: string } | null>(null);
+  const [editing, setEditing] = useState<{ field: LabelField; valueAtOpen: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const checking = useRef(false); // a double click mustn't send two checks
 
-  const current = (field: ConfidenceField) => JSON.stringify(upload.result[field]);
-  const close = (field: ConfidenceField) => setEditing((open) => (open?.field === field ? null : open));
-  const theyChangedIt = (field: ConfidenceField) => {
+  const current = (field: LabelField) => JSON.stringify(upload.result[field]);
+  const close = (field: LabelField) => setEditing((open) => (open?.field === field ? null : open));
+  const theyChangedIt = (field: LabelField) => {
     close(field);
     toast.error('Someone else just changed this', { description: 'Showing their version. Make your change again if it still applies.' });
   };
 
-  const save = async (field: ConfidenceField, changes: ResultChanges) => {
+  const save = async (field: LabelField, changes: ResultChanges) => {
     if (editing?.field === field && current(field) !== editing.valueAtOpen) return theyChangedIt(field);
     setError(null);
     try {
@@ -185,7 +185,7 @@ function useFieldReview(upload: UploadDetail & { result: LabelExtraction }) {
     }
   };
 
-  const check = async (field: ConfidenceField) => {
+  const check = async (field: LabelField) => {
     if (checking.current) return;
     checking.current = true;
     try {
@@ -202,11 +202,11 @@ function useFieldReview(upload: UploadDetail & { result: LabelExtraction }) {
 
   return {
     editing: editing?.field ?? null,
-    edit: (field: ConfidenceField) => {
+    edit: (field: LabelField) => {
       setError(null);
       setEditing({ field, valueAtOpen: current(field) });
     },
-    check: (field: ConfidenceField) => void check(field),
+    check: (field: LabelField) => void check(field),
     editorProps: {
       onSave: (changes: ResultChanges) => {
         if (editing) void save(editing.field, changes);

@@ -5,7 +5,7 @@ import type {
   ResponseInputContent,
 } from 'openai/resources/responses/responses';
 import { z } from 'zod';
-import { CONFIDENCE_FIELDS, labelExtractionSchema, type ExtractionConfidence } from '@label-extractor/shared';
+import { LABEL_FIELDS, labelExtractionSchema, type ExtractionConfidence } from '@label-extractor/shared';
 import { ExtractionError } from './errors.ts';
 import { classifyOpenAIError } from './openai-errors.ts';
 import type { ExtractedLabel, LabelExtractor, LabelFile } from './extractor.ts';
@@ -141,8 +141,8 @@ function findRefusal(response: ModelResponse): string | null {
 
 const modelFieldConfidence = z.object({ score: z.number(), reason: z.string().nullable() });
 const modelConfidence = z.object(
-  Object.fromEntries(CONFIDENCE_FIELDS.map((field) => [field, modelFieldConfidence])) as Record<
-    (typeof CONFIDENCE_FIELDS)[number],
+  Object.fromEntries(LABEL_FIELDS.map((field) => [field, modelFieldConfidence])) as Record<
+    (typeof LABEL_FIELDS)[number],
     typeof modelFieldConfidence
   >,
 );
@@ -155,7 +155,7 @@ function parseConfidence(value: unknown): ExtractionConfidence | null {
   const parsed = modelConfidence.safeParse(value);
   if (!parsed.success) return null;
   return Object.fromEntries(
-    CONFIDENCE_FIELDS.map((field) => {
+    LABEL_FIELDS.map((field) => {
       const { score, reason } = parsed.data[field];
       const reasonText = reason?.trim();
       return [field, { score: Math.round(Math.min(100, Math.max(0, score))), reasons: reasonText ? [reasonText] : [] }];

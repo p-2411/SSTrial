@@ -1,3 +1,5 @@
+import { formatList } from './text.ts';
+
 /**
  * Which files we accept, and the metadata checks that run *before* anything is uploaded.
  *
@@ -137,9 +139,4 @@ function unsupportedTypeMessage(name: string, mimeType: string | null): string {
   }
   const problem = extension ? `"${extension}" files aren't supported.` : `This file type isn't supported.`;
   return `${problem} Upload a ${SUPPORTED_TYPES_LABEL} file.`;
-}
-
-function formatList(items: string[]): string {
-  if (items.length <= 1) return items.join('');
-  return `${items.slice(0, -1).join(', ')} or ${items.at(-1)}`;
 }

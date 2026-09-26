@@ -1,6 +1,5 @@
 import { z } from 'zod';
-import { CONFIDENCE_FIELDS } from './confidence.ts';
-import type { EditResultRequest } from './edits.ts';
+import { LABEL_FIELDS, type LabelField } from './fields.ts';
 import { LOG_EVENT_TYPE_IDS, type LogEventType } from './logs.ts';
 import { NET_QUANTITY_UNITS } from './units.ts';
 import { UPLOAD_FILTER_IDS, type UploadFilter } from './uploads.ts';
@@ -46,18 +45,24 @@ export const listLogsQuerySchema = z.object({
   cursor: z.string().regex(/^\d{1,19}$/).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
-export type ListLogsQuery = z.input<typeof listLogsQuerySchema>;
 
 /**
- * PATCH /api/uploads/:id/result. This checks the request's shape only; the edited result is then
- * validated as a whole by labelExtractionSchema, the same rules model output passes.
+ * PATCH /api/uploads/:id/result (RESULT_EDIT_PATH). This checks the request's shape only; the
+ * edited result is then validated as a whole by labelExtractionSchema, the same rules model output
+ * passes.
  */
 export const editResultRequestSchema = z.object({
+  /** The revision the edit was made against. A save against an older one is refused (409). */
   revision: z.number().int().min(0),
+  /** A person's corrections. Only the fields given change; each is re-validated like model output. */
   changes: z
     .strictObject({
       productName: z.string().nullable().optional(),
       brand: z.string().nullable().optional(),
+      /**
+       * The amount and unit. The pack's printed wording is kept if it states this amount;
+       * otherwise (it was misread too, or there was none) it becomes the amount.
+       */
       netWeight: z.object({ value: z.number(), unit: z.enum(NET_QUANTITY_UNITS) }).nullable().optional(),
       allergens: z.array(z.string()).optional(),
       ingredients: z
@@ -72,5 +77,8 @@ export const editResultRequestSchema = z.object({
         .optional(),
     })
     .optional(),
-  checked: z.array(z.enum(CONFIDENCE_FIELDS)).optional(),
-}) satisfies z.ZodType<EditResultRequest>;
+  /** Fields confirmed as right, unchanged. */
+  checked: z.array(z.enum(LABEL_FIELDS as [LabelField, ...LabelField[]])).optional(),
+});
+export type EditResultRequest = z.input<typeof editResultRequestSchema>;
+export type ResultChanges = NonNullable<EditResultRequest['changes']>;

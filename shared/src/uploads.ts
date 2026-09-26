@@ -4,12 +4,7 @@ import type { LabelExtraction } from './extraction.ts';
 import type { SupportedMimeType } from './files.ts';
 
 /**
- * Lifecycle of an upload:
- *
- *   uploading ──(browser confirms upload)──► queued ──(worker picks up)──► processing ──► completed
- *                                              ▲                               │
- *                                              └──────(transient error, retry)─┤
- *                                                                              └──► failed
+ * Where an upload is in its life. How it moves between these is in lifecycle.ts.
  *
  * `uploading` rows exist between "API issued a signed URL" and "browser confirmed the upload".
  * They're hidden from the list; the browser shows its own in-flight uploads instead.

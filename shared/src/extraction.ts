@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { CONFIDENCE_FIELDS, type ExtractionConfidence } from './confidence.ts';
+import type { ExtractionConfidence } from './confidence.ts';
+import { LABEL_FIELDS, type LabelField } from './fields.ts';
 import { NET_QUANTITY_UNITS } from './units.ts';
 
 /**
@@ -130,15 +131,12 @@ export function isEmptyExtraction(extraction: LabelExtraction): boolean {
   );
 }
 
-const fieldConfidenceSchema = z.object({
-  score: z.number().int().min(0).max(100),
-  reasons: z.array(z.string()),
-});
+/** An object with the same schema for every label field: for per-field data like confidence. */
+export function perLabelField<Schema extends z.ZodType>(schema: Schema) {
+  return z.object(Object.fromEntries(LABEL_FIELDS.map((field) => [field, schema])) as Record<LabelField, Schema>);
+}
 
 /** Confidence as stored with an upload (see confidence.ts). */
-export const extractionConfidenceSchema: z.ZodType<ExtractionConfidence> = z.object(
-  Object.fromEntries(CONFIDENCE_FIELDS.map((field) => [field, fieldConfidenceSchema])) as Record<
-    (typeof CONFIDENCE_FIELDS)[number],
-    typeof fieldConfidenceSchema
-  >,
+export const extractionConfidenceSchema: z.ZodType<ExtractionConfidence> = perLabelField(
+  z.object({ score: z.number().int().min(0).max(100), reasons: z.array(z.string()) }),
 );

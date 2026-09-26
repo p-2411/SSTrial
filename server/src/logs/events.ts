@@ -4,7 +4,7 @@ import {
   SUPPORTED_FILE_TYPES,
   SUPPORTED_TYPES_LABEL,
   uploadErrorMessage,
-  type ConfidenceField,
+  type LabelField,
   type SupportedMimeType,
   type UploadErrorCode,
 } from '@label-extractor/shared';
@@ -29,7 +29,7 @@ const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
 const attemptOf = (attempt: number) => `attempt ${attempt} of ${RETRY_POLICY.maxAttempts}`;
 const fileTypeLabel = (mimeType: SupportedMimeType) => SUPPORTED_FILE_TYPES[mimeType].label;
 /** ['brand', 'netWeight'] → "brand and net weight". */
-const fieldList = (fields: ConfidenceField[]) => {
+const fieldList = (fields: LabelField[]) => {
   const names = fields.map((field) => FIELD_LABELS[field].toLowerCase());
   return names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
 };
@@ -102,10 +102,10 @@ export const logEvents = {
   /** Someone corrected fields (`changes`, with before and after) and/or confirmed others (`checked`). */
   resultEdited(
     upload: UploadRef,
-    review: { by: string; changes: Partial<Record<ConfidenceField, { from: unknown; to: unknown }>>; checked: ConfidenceField[] },
+    review: { by: string; changes: Partial<Record<LabelField, { from: unknown; to: unknown }>>; checked: LabelField[] },
   ): NewLogEvent {
     const base = aboutUpload(upload);
-    const edited = Object.keys(review.changes) as ConfidenceField[];
+    const edited = Object.keys(review.changes) as LabelField[];
     const phrases = [
       edited.length > 0 && `changed the ${fieldList(edited)}`,
       review.checked.length > 0 && `confirmed the ${fieldList(review.checked)}`,

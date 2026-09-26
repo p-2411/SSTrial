@@ -510,6 +510,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       retryLater: (id, claim) => uploads.scheduleRetry(id, claim, 'LLM_TIMEOUT'),
       fail: (id, claim) => uploads.fail(id, claim, 'LLM_REFUSED'),
       abandon: (id) => uploads.failAbandoned(id, 'PROCESSING_TIMEOUT'),
+      review: (id) => uploads.saveReview(id, 0, SAMPLE_EXTRACTION, {}),
       // requeue takes the status the caller saw; pass the real one, so only the guard decides.
       rerun: (id, _claim, status) => uploads.requeue(id, status as 'failed' | 'completed'),
     };

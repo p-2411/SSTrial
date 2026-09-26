@@ -27,6 +27,8 @@ export const UPLOAD_TRANSITIONS = {
   fail: { from: ['processing'], to: 'failed' },
   /** Every attempt died without finishing (the dead-letter safety net). */
   abandon: { from: ['queued', 'processing'], to: 'failed' },
+  /** A person corrects or confirms the extracted data. It stays completed, one revision on. */
+  review: { from: ['completed'], to: 'completed' },
   /** Someone asked to run extraction again (see canRetryUpload for when that's offered). */
   rerun: { from: ['failed', 'completed'], to: 'queued' },
 } as const satisfies Record<string, { from: readonly UploadStatus[]; to: UploadStatus | null }>;
