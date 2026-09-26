@@ -21,11 +21,12 @@ import { requestUpload } from '../../uploads/intake.ts';
 import { loadUploadDetail } from '../../uploads/detail.ts';
 import { toUploadCounts, toUploadSummary } from '../../uploads/presenter.ts';
 import { retryUpload } from '../../uploads/retry.ts';
-import type { UploadIntake, UploadQueries, UploadRecord, UploadReviews } from '../../uploads/store.ts';
+import { deleteUpload } from '../../uploads/delete.ts';
+import type { UploadIntake, UploadQueries, UploadRecord, UploadRemoval, UploadReviews } from '../../uploads/store.ts';
 import { ApiError, notFound } from '../errors.ts';
 
 export interface UploadRoutesDeps {
-  uploads: UploadQueries & UploadIntake & UploadReviews;
+  uploads: UploadQueries & UploadIntake & UploadReviews & UploadRemoval;
   storage: FileStorage;
   /** The use cases record what they did to the activity log. */
   events: EventLog;
@@ -37,7 +38,7 @@ const idParams = z.object({ id: z.uuid() });
 
 /**
  * Upload endpoints: HTTP in, HTTP out. What each step does lives in uploads/ (intake, finalise,
- * edit, retry, detail); these handlers parse the request and turn the outcome into a response. The upload flow is
+ * edit, retry, delete, detail); these handlers parse the request and turn the outcome into a response. The upload flow is
  * three requests from the browser:
  *
  *   1. POST /api/uploads              → validate metadata, create row, return a signed upload URL
@@ -53,7 +54,7 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
   }
 
   async function detailResponse(upload: UploadRecord, request: FastifyRequest): Promise<UploadResponse> {
-    return { upload: await loadUploadDetail({ storage, members, log: request.log }, upload) };
+    return { upload: await loadUploadDetail({ storage, members, log: request.log, viewer: request.member! }, upload) };
   }
 
   // 1. Ask to upload a file ------------------------------------------------------------------
@@ -158,6 +159,20 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
             ? "This file can't be processed. Please upload a different file."
             : 'Only failed uploads, or completed ones whose result can no longer be read, can be run again.',
         );
+      case 'not-found':
+        throw notFound();
+    }
+  });
+
+  // Deleting an upload -------------------------------------------------------------------------
+  app.delete('/api/uploads/:id', async (request, reply) => {
+    const result = await deleteUpload({ uploads, storage, events }, uploadId(request.params), request.member!);
+
+    switch (result.outcome) {
+      case 'deleted':
+        return reply.status(204).send();
+      case 'forbidden':
+        throw new ApiError(403, 'FORBIDDEN', 'Only the person who uploaded this, or an admin, can delete it.');
       case 'not-found':
         throw notFound();
     }

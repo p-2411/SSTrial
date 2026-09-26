@@ -31,6 +31,7 @@ export const LOG_EVENT_TYPES = {
   'upload.discarded': { label: 'Unfinished upload discarded', level: 'info' },
   'upload.retry_requested': { label: 'Retry requested', level: 'info' },
   'upload.edited': { label: 'Extracted data reviewed', level: 'info' },
+  'upload.deleted': { label: 'Upload deleted', level: 'info' },
   // The worker, extracting
   'extraction.started': { label: 'Extraction started', level: 'info' },
   'extraction.completed': { label: 'Extraction completed', level: 'info' },
@@ -53,7 +54,7 @@ export function isLogEventType(value: string): value is LogEventType {
  * Events whose upload no longer exists once they've happened (its row is deleted), so there's
  * nothing to open. Earlier events of the same upload may still point at it.
  */
-export const UPLOAD_GONE_EVENT_TYPES: readonly LogEventType[] = ['upload.rejected', 'upload.discarded'];
+export const UPLOAD_GONE_EVENT_TYPES: readonly LogEventType[] = ['upload.rejected', 'upload.discarded', 'upload.deleted'];
 
 export interface LogEvent {
   /** Also the pagination cursor. A string: the database counts in 64-bit integers. */

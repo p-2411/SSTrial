@@ -1,5 +1,7 @@
 import {
   applyConfidenceChecks,
+  canDeleteUpload,
+  type CurrentMember,
   overallConfidence,
   type ExtractionConfidence,
   type LabelField,
@@ -45,7 +47,12 @@ export function toUploadSummary(record: UploadRecord): UploadSummary {
  * @param emails The email of each person the record mentions (uploader, reviewers), by user ID;
  *   see `peopleIn`. Someone whose account is gone reads as null.
  */
-export function toUploadDetail(record: UploadRecord, fileUrl: string | null, emails: ReadonlyMap<string, string>): UploadDetail {
+export function toUploadDetail(
+  record: UploadRecord,
+  fileUrl: string | null,
+  emails: ReadonlyMap<string, string>,
+  viewer: Pick<CurrentMember, 'id' | 'role'>,
+): UploadDetail {
   const emailOf = (userId: string | null) => (userId ? (emails.get(userId) ?? null) : null);
   return {
     ...toUploadSummary(record),
@@ -60,6 +67,7 @@ export function toUploadDetail(record: UploadRecord, fileUrl: string | null, ema
     revision: record.resultRevision,
     fileUrl,
     uploadedBy: emailOf(record.uploadedBy),
+    canDelete: canDeleteUpload(record.uploadedBy, viewer),
   };
 }
 

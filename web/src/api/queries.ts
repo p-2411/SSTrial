@@ -3,7 +3,7 @@ import { isActiveStatus, type EditResultRequest, type UploadDetail, type UploadF
 import { ApiRequestError } from './client.ts';
 import { isLiveConnected } from './liveConnection.ts';
 import { listLogs, type LogFilters } from './logs.ts';
-import { editResult, getOpsStatus, getUpload, getUploadCounts, listUploads, retryUpload } from './uploads.ts';
+import { deleteUpload, editResult, getOpsStatus, getUpload, getUploadCounts, listUploads, retryUpload } from './uploads.ts';
 
 /**
  * Server state lives in React Query: caching, polling and retries are handled here so
@@ -150,6 +150,21 @@ export function useRetryUpload() {
     mutationFn: retryUpload,
     onSuccess: async (upload) => {
       storeUpload(queryClient, upload);
+      await refreshUploadLists(queryClient);
+    },
+  });
+}
+
+/**
+ * Delete an upload. Its cached detail is dropped rather than refetched, so a panel still showing it
+ * (closing, say) keeps its last data instead of flashing "not found"; the lists refresh without it.
+ */
+export function useDeleteUpload() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: deleteUpload,
+    onSuccess: async (_nothing, id) => {
+      queryClient.removeQueries({ queryKey: uploadKeys.detail(id) });
       await refreshUploadLists(queryClient);
     },
   });

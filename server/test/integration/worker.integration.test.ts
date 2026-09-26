@@ -522,6 +522,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       fail: (id, claim) => uploads.fail(id, claim, 'LLM_REFUSED'),
       abandon: (id) => uploads.failAbandoned(id, 'PROCESSING_TIMEOUT'),
       review: (id) => uploads.saveReview(id, 0, SAMPLE_EXTRACTION, {}),
+      delete: (id) => uploads.remove(id),
       // requeue takes the status the caller saw; pass the real one, so only the guard decides.
       rerun: (id, _claim, status) => uploads.requeue(id, status as 'failed' | 'completed'),
     };
@@ -557,7 +558,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       if (!allowed) {
         expect(written).toBeNull();
         expect((await uploads.findById(id))?.status).toBe(status);
-      } else if (transition === 'discard') {
+      } else if (UPLOAD_TRANSITIONS[transition].to === null) {
         expect(await uploads.findById(id)).toBeNull();
       } else {
         // Checked on the returned row: a queued upload may be picked up by the running worker at once.

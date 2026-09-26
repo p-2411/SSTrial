@@ -49,6 +49,14 @@ The LLM sits behind a `LabelExtractor` interface. Every failure becomes an `Extr
 - **The model's output is kept.** On the first edit it's copied to `original_result`, and every save goes to the activity log with the before and after values. `result` is what people see and export.
 - **A reviewed field is settled.** Editing a field, or confirming it as right, records who and when, and the field stops counting towards the upload's confidence score: the "check this" flag is for fields nobody has looked at yet. Without "mark as checked", a correct but low-scoring field would stay flagged for ever.
 
+## Deleting uploads
+
+- **Gone for good, history kept.** Deleting removes the file and the row; there's no trash or undo, which would mean another state, hidden rows everywhere, and a job to empty it. The activity log isn't tied to the row (no foreign key), so an upload's history stays, ending with who deleted it.
+- **Whoever uploaded it, or an admin.** People can remove their own mistakes, admins can clean up anything, and nobody deletes a colleague's work by accident. The rule is one function (`canDeleteUpload` in shared); the API enforces it and sends `canDelete` with the detail, so the button only shows to people it would work for.
+- **The file first, then the row.** If deleting the row fails, asking again finds it and deletes the already-missing file without complaint. The other order could leave a file with no upload, which nothing would ever clean up.
+- **Any time, even mid-extraction.** Deletion is a lifecycle transition like any other (`delete`, from any listed status), so the database guard applies. An attempt in progress needs no stopping: its writes are refused once the row is gone, exactly as when another attempt takes an upload over.
+- **Only from the detail panel.** There's no delete on list rows, where one misplaced click on a dense list would cost an upload; the detail asks for confirmation in place.
+
 ## 50,000 uploads at once
 
 1. **Ingest.** Bytes never pass through our servers; storage absorbs them. The API does two small JSON requests per file and is stateless, so it scales horizontally. At that volume I'd add a batch endpoint that signs many URLs per request.
@@ -72,7 +80,7 @@ The LLM sits behind a `LabelExtractor` interface. Every failure becomes an `Extr
 
 ## Activity log
 
-An `events` table records what happened to each upload (created, identical to an earlier file, queued, rejected, discarded, retried by hand, reviewed or edited, each extraction attempt started, completed, scheduled for retry, failed or abandoned) and to the system (rate-limit pauses, process starts). The Logs page (`/logs`) shows it newest first, grouped by day. One menu narrows it to any mix of event types, and `?upload=<id>` in the address narrows it to one upload. Each type has a fixed level, set once in the shared catalogue ("Extraction failed" is always an error), so there's no separate level filter: "Warnings and errors" and "Errors only" are shortcuts that tick the matching types. The filters are kept in the URL.
+An `events` table records what happened to each upload (created, identical to an earlier file, queued, rejected, discarded, retried by hand, reviewed or edited, deleted, each extraction attempt started, completed, scheduled for retry, failed or abandoned) and to the system (rate-limit pauses, process starts). The Logs page (`/logs`) shows it newest first, grouped by day. One menu narrows it to any mix of event types, and `?upload=<id>` in the address narrows it to one upload. Each type has a fixed level, set once in the shared catalogue ("Extraction failed" is always an error), so there's no separate level filter: "Warnings and errors" and "Errors only" are shortcuts that tick the matching types. The filters are kept in the URL.
 
 - **A table, not the stdout logs.** The processes still log to stdout (pino) for debugging: stack traces, raw provider errors. But those can't be queried per upload from the app, and they're only as good as the host's log search. Events are one readable sentence each, plus structured `data` (error code, attempt, duration, file name), so they work for the person running the system, not only for a developer.
 - **Written by the application, not by triggers.** A trigger on `uploads` would catch every status change atomically, but it can't know *why*: which attempt, whether the error is worth retrying, how long the AI took, that a result was reused, that every worker paused. The use cases and the worker know, so they record events through a small `EventLog` interface, and every message is worded in one file (`server/src/logs/events.ts`).

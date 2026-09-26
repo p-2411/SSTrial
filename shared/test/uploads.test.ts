@@ -1,3 +1,4 @@
+import { canDeleteUpload } from '../src/auth.ts';
 import { describe, expect, it } from 'vitest';
 import { isVolumeUnit, textShowsAmount } from '../src/units.ts';
 import { isActiveStatus, isUploadStatus, storedErrorCode, uploadErrorMessage } from '../src/uploads.ts';
@@ -45,5 +46,18 @@ describe('textShowsAmount', () => {
     ['Net 500 ml', 50, false],
   ])('%s states %s: %s', (text, amount, expected) => {
     expect(textShowsAmount(text, amount)).toBe(expected);
+  });
+});
+
+describe('canDeleteUpload', () => {
+  const uploader = { id: 'user-1', role: 'member' as const };
+  it.each([
+    ['the uploader', 'user-1', uploader, true],
+    ['another member', 'user-1', { id: 'user-2', role: 'member' as const }, false],
+    ['an admin', 'user-1', { id: 'user-3', role: 'admin' as const }, true],
+    ['a member, for an upload from before sign-in', null, uploader, false],
+    ['an admin, for an upload from before sign-in', null, { id: 'user-3', role: 'admin' as const }, true],
+  ])('%s: %s', (_label, uploaderId, person, expected) => {
+    expect(canDeleteUpload(uploaderId, person)).toBe(expected);
   });
 });

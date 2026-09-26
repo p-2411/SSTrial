@@ -30,6 +30,7 @@ export function detail(overrides: Partial<UploadDetail> = {}): UploadDetail {
     revision: 0,
     fileUrl: null,
     uploadedBy: null,
+    canDelete: false,
     ...overrides,
   };
 }

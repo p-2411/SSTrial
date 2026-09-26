@@ -23,8 +23,7 @@ const OPEN_WIDTH = 'w-[min(42rem,55cqw)]';
  * time the list around it updates (upload progress, the clock).
  */
 export const UploadDetailPanel = memo(function UploadDetailPanel() {
-  const navigate = useNavigate();
-  const { search } = useLocation();
+  const close = useCloseDetail();
   const id = useMatch(UPLOAD_PATH_PATTERN)?.params.id;
   const open = Boolean(id);
 
@@ -32,8 +31,6 @@ export const UploadDetailPanel = memo(function UploadDetailPanel() {
   // it's cleared once the closing animation ends.
   const [shownId, setShownId] = useState(id);
   if (id && id !== shownId) setShownId(id);
-
-  const close = () => navigate({ pathname: HOME_PATH, search });
 
   // Esc closes the panel, unless an open menu or popover (e.g. Export) is handling it. As an effect
   // event it always sees the latest filter, so the listener isn't re-attached when the filter changes.
@@ -83,3 +80,10 @@ export const UploadDetailPanel = memo(function UploadDetailPanel() {
     </aside>
   );
 });
+
+/** Closes the panel: back to the list, keeping its status filter. */
+export function useCloseDetail(): () => void {
+  const navigate = useNavigate();
+  const { search } = useLocation();
+  return () => void navigate({ pathname: HOME_PATH, search });
+}

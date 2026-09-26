@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Link, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,6 +13,7 @@ const uploads: Record<string, UploadDetail> = Object.fromEntries(
     ['abc', 'granola-label.png', 'Maple Pecan Crunch'],
     ['def', 'oat-milk.png', 'Barista Oat Milk'],
     ['nameless', 'back-of-pack.png', null],
+    ['mine', 'my-label.png', 'My Crackers'],
   ].map(([id, fileName, productName]) => [
     id,
     detail({
@@ -20,9 +21,14 @@ const uploads: Record<string, UploadDetail> = Object.fromEntries(
       fileName: fileName!,
       productName,
       result: { productName: productName ?? null, brand: null, ingredients: [], allergens: [], netWeight: null },
+      // Only "mine" may be deleted by whoever is signed in here (the server decides; see canDelete).
+      canDelete: id === 'mine',
     }),
   ]),
 );
+
+/** What the fake API answers a DELETE with. */
+let deleteResponse: () => Response;
 
 /** Shows the current URL, and a link to another upload (standing in for a list row). */
 function Harness() {
@@ -47,11 +53,16 @@ function renderAt(url: string) {
 }
 
 beforeEach(() => {
+  deleteResponse = () => new Response(null, { status: 204 });
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (url: string) => jsonResponse({ upload: uploads[url.split('/').pop()!] })),
+    vi.fn(async (url: string, init?: RequestInit) =>
+      init?.method === 'DELETE' ? deleteResponse() : jsonResponse({ upload: uploads[url.split('/').pop()!] }),
+    ),
   );
 });
+
+const deleteCalls = () => vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'DELETE');
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -111,5 +122,58 @@ describe('UploadDetailPanel', () => {
     await closePanel();
 
     expect(screen.getByTestId('url')).toHaveTextContent('/?status=completed');
+  });
+
+  describe('deleting', () => {
+    it('is offered only to those who may delete the upload', async () => {
+      renderAt('/uploads/abc');
+      await screen.findByRole('complementary', { name: 'Maple Pecan Crunch' });
+      expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('link', { name: 'Open oat milk' }));
+      await screen.findByRole('complementary', { name: 'Barista Oat Milk' });
+      expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+    });
+
+    it('asks first, then deletes and closes the panel, keeping the status filter', async () => {
+      renderAt('/uploads/mine?status=completed');
+      await screen.findByRole('complementary', { name: 'My Crackers' });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+      const question = screen.getByRole('group', { name: /Delete my-label.png\?/ });
+      expect(question).toHaveTextContent('removed for good');
+      expect(deleteCalls()).toHaveLength(0);
+
+      await userEvent.click(within(question).getByRole('button', { name: 'Delete' }));
+
+      expect(deleteCalls().map(([url]) => url)).toEqual(['/api/uploads/mine']);
+      await waitFor(() => expect(screen.getByTestId('url')).toHaveTextContent('/?status=completed'));
+    });
+
+    it('keeps the upload when the person changes their mind', async () => {
+      renderAt('/uploads/mine');
+      await screen.findByRole('complementary', { name: 'My Crackers' });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Keep it' }));
+
+      expect(deleteCalls()).toHaveLength(0);
+      expect(screen.queryByRole('group', { name: /Delete my-label.png/ })).not.toBeInTheDocument();
+      expect(screen.getByTestId('url')).toHaveTextContent('/uploads/mine');
+    });
+
+    it('says why when the server refuses, and stays open', async () => {
+      deleteResponse = () =>
+        jsonResponse({ error: { code: 'FORBIDDEN', message: 'Only the person who uploaded this, or an admin, can delete it.' } }, 403);
+      renderAt('/uploads/mine');
+      await screen.findByRole('complementary', { name: 'My Crackers' });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+      const question = screen.getByRole('group', { name: /Delete my-label.png\?/ });
+      await userEvent.click(within(question).getByRole('button', { name: 'Delete' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Only the person who uploaded this, or an admin, can delete it.');
+      expect(screen.getByTestId('url')).toHaveTextContent('/uploads/mine');
+    });
   });
 });

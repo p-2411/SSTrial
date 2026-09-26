@@ -116,6 +116,16 @@ export const logEvents = {
     };
   },
 
+  uploadDeleted(upload: UploadRef, by: string): NewLogEvent {
+    const base = aboutUpload(upload);
+    return {
+      ...base,
+      type: 'upload.deleted',
+      message: `${by} deleted ${upload.fileName}.`,
+      data: { ...base.data, by },
+    };
+  },
+
   // ---- The worker, extracting -------------------------------------------------------------
 
   extractionStarted(upload: UploadRecord): NewLogEvent {

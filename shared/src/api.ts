@@ -29,7 +29,10 @@ export interface UploadCountsResponse {
   counts: Record<UploadFilter, number>;
 }
 
-/** GET /api/uploads/:id, POST …/complete, POST …/retry, PATCH …/result (RESULT_EDIT_PATH) */
+/**
+ * GET /api/uploads/:id, POST …/complete, POST …/retry, PATCH …/result (RESULT_EDIT_PATH).
+ * (DELETE /api/uploads/:id answers 204 with no body.)
+ */
 export interface UploadResponse {
   upload: UploadDetail;
 }

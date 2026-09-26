@@ -78,6 +78,10 @@ Every field gets a score out of 100 for how sure the extraction is, with the rea
 
 Any field can be corrected in place in the detail panel: the product name, brand, net weight (amount and unit), allergens, and ingredients (name and percentage, add or remove rows). A field that scored under 85 can also be marked as checked. A reviewed field shows who reviewed it instead of its score, and stops counting towards the upload's confidence. Edits are validated like model output, the model's original output is kept, and two people saving at once can't overwrite each other: the second is told, keeps their draft, and chooses whether it still applies. Exports use the edited data.
 
+### Deleting
+
+Whoever uploaded a file, or any admin, can delete it from the detail panel, after confirming. The file and its extracted data go for good; the activity log keeps what happened to it, and who deleted it. Uploads from before sign-in have no uploader, so only admins can delete those. It works mid-extraction too: that attempt stands down once the upload is gone.
+
 ### Monitoring
 
 Both pages are for admins only.
@@ -183,6 +187,7 @@ check the token: 503 `AUTH_UNAVAILABLE`, so an Auth outage doesn't sign everyone
 | `GET` | `/api/uploads/:id` | One upload with its extracted data and a preview URL |
 | `POST` | `/api/uploads/:id/retry` | Run extraction again, for failures that could succeed and results that can't be read |
 | `PATCH` | `/api/uploads/:id/result` | Correct fields (`changes`) or confirm them (`checked`), made against `revision`. 422 for an invalid value, 409 if someone saved since |
+| `DELETE` | `/api/uploads/:id` | Delete the upload and its file: 204. Only its uploader or an admin (403 otherwise); the detail says which as `canDelete` |
 | `GET` | `/api/events` | Server-sent events announcing upload changes and new activity-log events. Ends when the access token runs out (or after 15 minutes), and the browser reconnects with its current token |
 | `GET` | `/api/logs?type=&type=&upload=&cursor=&limit=` | Admins only. One page of the activity log, newest first, with `nextCursor`. One `type` per type of event wanted; none means every type |
 | `GET` | `/api/health` | Public. Health checks: 200 or 503 |

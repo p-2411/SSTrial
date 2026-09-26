@@ -47,6 +47,11 @@ export async function editResult(id: string, request: EditResultRequest): Promis
   return (await apiRequest<UploadResponse>(RESULT_EDIT_PATH(id), { method: 'PATCH', body: request })).upload;
 }
 
+/** Deletes an upload and its file for good (the API answers 204, with nothing to read). */
+export async function deleteUpload(id: string): Promise<void> {
+  await apiFetch(`/api/uploads/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
 export async function retryUpload(id: string): Promise<UploadDetail> {
   return (await apiRequest<UploadResponse>(`/api/uploads/${encodeURIComponent(id)}/retry`, { method: 'POST' })).upload;
 }

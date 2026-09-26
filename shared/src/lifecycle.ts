@@ -10,7 +10,8 @@ import type { UploadStatus } from './uploads.ts';
  *       │                     ▲                 │    │
  *    discard                  └───retryLater────┘   fail ──► failed
  *       ▼
- *   (deleted)       plus: abandon (queued|processing → failed), rerun (failed|completed → queued)
+ *   (deleted)       plus: abandon (queued|processing → failed), rerun (failed|completed → queued),
+ *                   review (completed → completed), delete (any listed status → deleted)
  */
 export const UPLOAD_TRANSITIONS = {
   /** The file arrived and is a supported type: queue it for extraction. */
@@ -31,6 +32,12 @@ export const UPLOAD_TRANSITIONS = {
   review: { from: ['completed'], to: 'completed' },
   /** Someone asked to run extraction again (see canRetryUpload for when that's offered). */
   rerun: { from: ['failed', 'completed'], to: 'queued' },
+  /**
+   * Someone deleted it (see canDeleteUpload for who may). From any status the list shows, even
+   * mid-extraction: that attempt's writes are refused once the row is gone. An upload still being
+   * uploaded isn't listed anywhere, and settles itself (the finalise job).
+   */
+  delete: { from: ['queued', 'processing', 'completed', 'failed'], to: null },
 } as const satisfies Record<string, { from: readonly UploadStatus[]; to: UploadStatus | null }>;
 
 export type UploadTransition = keyof typeof UPLOAD_TRANSITIONS;
@@ -39,3 +46,8 @@ export type UploadTransition = keyof typeof UPLOAD_TRANSITIONS;
 export function canTransition(transition: UploadTransition, status: UploadStatus): boolean {
   return (UPLOAD_TRANSITIONS[transition].from as readonly UploadStatus[]).includes(status);
 }
+
+/** The transitions after which the upload still exists (every one but discard and delete). */
+export type UploadTransitionKeepingRow = {
+  [T in UploadTransition]: (typeof UPLOAD_TRANSITIONS)[T]['to'] extends null ? never : T;
+}[UploadTransition];

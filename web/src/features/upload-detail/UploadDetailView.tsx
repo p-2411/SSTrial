@@ -10,6 +10,7 @@ import { formatFileFacts } from '@/lib/format';
 import { useNow } from '@/lib/useNow';
 import { cn } from '@/lib/utils';
 import { CoreInformationCard } from './CoreInformationCard';
+import { DeleteUpload } from './DeleteUpload';
 import { JsonDisclosure } from './JsonDisclosure';
 import { SourceDocumentCard } from './SourceDocumentCard';
 import { StatusNotice } from './StatusNotice';
@@ -77,26 +78,30 @@ function Detail({ upload }: { upload: UploadDetail }) {
           </h2>
           <StatusPill status={upload.status} className="mt-1.5 shrink-0" />
         </div>
-        {/* One row: a long file name truncates (full name in its tooltip) rather than wrapping. */}
-        <dl className="flex gap-x-5 text-sm">
-          <Fact label="File">
-            {/* The file name only when the heading isn't already showing it. */}
-            {productName ? (
-              <>
-                <span className="truncate" title={upload.fileName}>
-                  {upload.fileName}
-                </span>
-                <span className="shrink-0 text-muted-foreground">{fileFacts}</span>
-              </>
-            ) : (
-              fileFacts
-            )}
-          </Fact>
-          <Fact label="Uploaded" className="shrink-0">
-            <RelativeTime iso={upload.createdAt} now={now} />
-            {upload.uploadedBy && <span className="text-muted-foreground"> by {upload.uploadedBy}</span>}
-          </Fact>
-        </dl>
+        {/* The facts on one row: a long file name truncates (full name in its tooltip) rather than
+            wrapping. Delete sits at the row's end; its confirmation wraps onto a line of its own. */}
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          <dl className="flex min-w-0 flex-1 gap-x-5 text-sm">
+            <Fact label="File">
+              {/* The file name only when the heading isn't already showing it. */}
+              {productName ? (
+                <>
+                  <span className="truncate" title={upload.fileName}>
+                    {upload.fileName}
+                  </span>
+                  <span className="shrink-0 text-muted-foreground">{fileFacts}</span>
+                </>
+              ) : (
+                fileFacts
+              )}
+            </Fact>
+            <Fact label="Uploaded" className="shrink-0">
+              <RelativeTime iso={upload.createdAt} now={now} />
+              {upload.uploadedBy && <span className="text-muted-foreground"> by {upload.uploadedBy}</span>}
+            </Fact>
+          </dl>
+          {upload.canDelete && <DeleteUpload upload={upload} />}
+        </div>
       </header>
 
       <StatusNotice upload={upload} />

@@ -3,7 +3,7 @@ import {
   canTransition,
   LOG_EVENT_TYPES,
   UPLOAD_TRANSITIONS,
-  type UploadTransition,
+  type UploadTransitionKeepingRow,
   type HealthReport,
   type LabelExtraction,
   type LogEventType,
@@ -131,6 +131,13 @@ export class InMemoryUploadStore implements UploadStore {
     if (row && options?.cancelFinalise) this.finaliseCancelled.push(id);
     return row;
   }
+  async remove(id: string) {
+    const row = this.rows.get(id);
+    if (!row || !canTransition('delete', row.status)) return null;
+    this.rows.delete(id);
+    this.finaliseCancelled.push(id);
+    return row;
+  }
   async discardUnfinished(id: string, options?: SettleOptions) {
     const row = this.rows.get(id);
     if (!row || !canTransition('discard', row.status)) return null;
@@ -194,7 +201,7 @@ export class InMemoryUploadStore implements UploadStore {
   /** A lifecycle transition (shared/src/lifecycle.ts) and, when `claimToken` is given, only if it's current. */
   private transition(
     id: string,
-    transition: Exclude<UploadTransition, 'discard'>,
+    transition: UploadTransitionKeepingRow,
     changes: Partial<UploadRecord>,
     claimToken?: string,
   ) {
@@ -333,8 +340,10 @@ export const ADMIN: CurrentMember = { id: '00000000-0000-4000-8000-00000000ad01'
 export const MEMBER: CurrentMember = { id: '00000000-0000-4000-8000-00000000be01', email: 'member@example.com', role: 'member' };
 export const TEST_PUBLIC_CONFIG: PublicConfig = { supabaseUrl: 'http://supabase.test', supabasePublishableKey: 'sb_publishable_test' };
 
-/** Every request is the admin, so tests about other things don't have to sign in. */
-const signedInAsAdmin: Authenticator = { authenticate: async () => ({ outcome: 'signed-in', member: ADMIN, expiresAt: null }) };
+/** Every request is from this member. */
+export function signedInAs(member: CurrentMember): Authenticator {
+  return { authenticate: async () => ({ outcome: 'signed-in', member, expiresAt: null }) };
+}
 
 export const HEALTHY: HealthReport = { status: 'ok', checks: { database: { status: 'ok', latencyMs: 1 } } };
 
@@ -356,7 +365,8 @@ export function testAppDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     ops: { snapshot: async () => EMPTY_OPS_SNAPSHOT },
     events: new InMemoryEventStore(),
     logger: silentLogger,
-    authenticator: signedInAsAdmin,
+    // Every request is the admin, so tests about other things don't have to sign in.
+    authenticator: signedInAs(ADMIN),
     members: {
       emailsOf: async (ids: readonly string[]) =>
         new Map([ADMIN, MEMBER].filter((member) => ids.includes(member.id)).map((member) => [member.id, member.email])),

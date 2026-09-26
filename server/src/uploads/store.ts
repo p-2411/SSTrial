@@ -14,6 +14,7 @@ import {
   type UploadErrorCode,
   type UploadStatus,
   type UploadTransition,
+  type UploadTransitionKeepingRow,
 } from '@label-extractor/shared';
 import type { UploadJobs } from './jobs.ts';
 
@@ -170,8 +171,17 @@ export interface UploadReviews {
   saveReview(id: string, revision: number, result: LabelExtraction, fieldReviews: StoredFieldReviews): Promise<UploadRecord | null>;
 }
 
+/** Removing an upload someone asked to delete. */
+export interface UploadRemoval {
+  /**
+   * Deletes the upload and cancels its finalise job, if still pending, atomically. Only from the
+   * statuses the `delete` transition allows; null if it's gone already or not deletable.
+   */
+  remove(id: string): Promise<UploadRecord | null>;
+}
+
 /** The uploads table. Each consumer depends on the role it needs. */
-export type UploadStore = UploadQueries & UploadIntake & UploadAttempts & UploadReviews;
+export type UploadStore = UploadQueries & UploadIntake & UploadAttempts & UploadReviews & UploadRemoval;
 
 export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadStore {
   /**
@@ -187,7 +197,7 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
   const allowedFrom = (transition: UploadTransition) =>
     sql`status = any(${[...UPLOAD_TRANSITIONS[transition].from]}::upload_status[])`;
   /** The status a lifecycle transition leads to. */
-  const statusAfter = (transition: Exclude<UploadTransition, 'discard'>) => UPLOAD_TRANSITIONS[transition].to;
+  const statusAfter = (transition: UploadTransitionKeepingRow) => UPLOAD_TRANSITIONS[transition].to;
 
   return {
     async create(upload) {
@@ -268,6 +278,15 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
           await jobs.enqueueExtraction(id, tx);
           if (options?.cancelFinalise) await jobs.cancelFinalise(id, tx);
         }
+        return record;
+      });
+    },
+
+    remove(id) {
+      return sql.begin(async (tx) => {
+        const record = await oneRecord(tx`delete from uploads where id = ${id} and ${allowedFrom('delete')} returning *`);
+        // Normally long settled; this covers an upload deleted before its finalise job ran.
+        if (record) await jobs.cancelFinalise(id, tx);
         return record;
       });
     },

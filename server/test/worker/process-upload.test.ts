@@ -336,6 +336,21 @@ describe('processUpload — shared rate limiting', () => {
   });
 });
 
+describe('processUpload — an upload deleted during its extraction', () => {
+  it('stands down without writing anything', async () => {
+    const deletedWhile: LabelExtractor = {
+      async extract() {
+        await uploads.remove(UPLOAD_ID); // someone deletes it while the model is reading it
+        return { result: SAMPLE_EXTRACTION, confidence: null };
+      },
+    };
+
+    await expect(run(deletedWhile)).resolves.toMatchObject({ status: 'skipped' });
+    expect(uploads.rows.has(UPLOAD_ID)).toBe(false);
+    expect(events.types).toEqual(['extraction.started']); // no completion for an upload that's gone
+  });
+});
+
 describe('processUpload — an attempt taken over by another worker', () => {
   /**
    * An extractor that, while "calling the LLM", lets another worker take the upload over — what

@@ -1,4 +1,4 @@
-import type { UploadDetail } from '@label-extractor/shared';
+import type { CurrentMember, UploadDetail } from '@label-extractor/shared';
 import type { MemberStore } from '../auth/members.ts';
 import type { FileStorage } from '../infra/storage.ts';
 import type { Logger } from '../infra/logger.ts';
@@ -13,6 +13,8 @@ export interface DetailDeps {
   /** To name who uploaded the file and who reviewed its fields. */
   members: Pick<MemberStore, 'emailsOf'>;
   log: Pick<Logger, 'warn'>;
+  /** Who's asking: what they may do with it (delete it, say) depends on who they are. */
+  viewer: Pick<CurrentMember, 'id' | 'role'>;
 }
 
 /**
@@ -32,5 +34,5 @@ export async function loadUploadDetail(deps: DetailDeps, upload: UploadRecord): 
         }),
     deps.members.emailsOf(peopleIn(upload)),
   ]);
-  return toUploadDetail(upload, fileUrl, emails);
+  return toUploadDetail(upload, fileUrl, emails, deps.viewer);
 }

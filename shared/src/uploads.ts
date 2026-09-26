@@ -137,4 +137,6 @@ export interface UploadDetail extends UploadSummary {
   revision: number;
   /** Email of whoever uploaded it; null for uploads from before sign-in existed. */
   uploadedBy: string | null;
+  /** Whether the person asking may delete it (see canDeleteUpload). */
+  canDelete: boolean;
 }

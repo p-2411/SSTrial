@@ -9,6 +9,14 @@ export function isRole(value: string): value is Role {
   return (ROLES as readonly string[]).includes(value);
 }
 
+/**
+ * Whether this person may delete an upload: whoever uploaded it, or any admin. Uploads from before
+ * sign-in existed have no uploader, so only admins can delete those.
+ */
+export function canDeleteUpload(uploaderId: string | null, person: { id: string; role: Role }): boolean {
+  return person.role === 'admin' || (uploaderId !== null && uploaderId === person.id);
+}
+
 /** GET /api/me — the signed-in person. */
 export interface CurrentMember {
   id: string;

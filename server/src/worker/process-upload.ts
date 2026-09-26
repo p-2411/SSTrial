@@ -151,10 +151,13 @@ async function recordFailure(
   return { status: 'failed', code: error.code };
 }
 
-/** A claim-guarded write was refused: another attempt took over, and whatever it stores stands. */
+/**
+ * A claim-guarded write was refused: another attempt took over (whatever it stores stands), or the
+ * upload was deleted meanwhile.
+ */
 function lostClaim(log: Logger): JobOutcome {
-  log.warn('Another attempt took over this upload; discarding this attempt');
-  return { status: 'skipped', reason: 'Another attempt took over this upload' };
+  log.warn('Another attempt took over this upload, or it was deleted; discarding this attempt');
+  return { status: 'skipped', reason: 'Another attempt took over this upload, or it was deleted' };
 }
 
 /**
