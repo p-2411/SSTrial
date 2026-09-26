@@ -4,7 +4,7 @@ import { SignInPage } from '@/auth/SignInPage';
 import { PageSpinner } from '@/components/PageSpinner';
 import { loadSystemPage } from '@/features/system/loadSystemPage';
 import { UploadsPage } from '@/features/uploads-list/UploadsPage';
-import { loadPageCode } from '@/lib/loadPageCode';
+import { importWithReload } from '@/lib/importWithReload';
 import { FORMER_SYSTEM_PATHS, HOME_PATH, SIGN_IN_PATH, SYSTEM_PATH, UPLOAD_PATH_PATTERN } from '@/routes';
 import { AppShell } from './AppShell';
 import { NotFoundPage } from './NotFoundPage';
@@ -16,7 +16,7 @@ import { RouteError } from './RouteError';
  *   /             upload + list
  *   /uploads/:id  the same page, with that upload's details in a panel beside the list
  *   /system       how the system is running, then the activity log (admins only)
- * /system accepts the log's filters, ?q=…&type=…&upload=… (see logFilters.ts); the old /status
+ * /system accepts the log's filters, ?q=…&type=…&upload=… (see activityLogFilters.ts); the old /status
  * and /logs addresses lead there, filters and all. Desktop layout only.
  *
  * A page that fails shows RouteError in its place. Pages inside the shell have their own, so the
@@ -50,10 +50,10 @@ export const routes: RouteObject[] = [
         errorElement: <RouteError />,
         children: [
           // Its own chunk, loaded on first visit (see loadSystemPage). After a deploy an open tab's
-          // chunks are gone; loadPageCode reloads it onto the new build.
+          // chunks are gone; importWithReload reloads it onto the new build.
           {
             path: SYSTEM_PATH,
-            lazy: async () => ({ Component: (await loadPageCode(loadSystemPage, { reload: openAfreshWhereGoing })).SystemPage }),
+            lazy: async () => ({ Component: (await importWithReload(loadSystemPage, { reload: openAfreshWhereGoing })).SystemPage }),
             // Opened directly, the shell shows while the page's code loads, with this in its place.
             hydrateFallbackElement: <PageSpinner className="flex-1" />,
           },

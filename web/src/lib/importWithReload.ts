@@ -10,12 +10,14 @@ interface Options {
 }
 
 /**
- * Loads a page's code, which is split out of the main bundle and fetched on first visit (the
- * System page). After a deploy, a tab opened before it still asks for the old build's files, which
- * are gone, so the load fails. Rather than crash, the page reloads, which fetches the new build. Only once: if the load fails again right after that reload, the file is
- * really missing (or the network is down), and the error is let through instead of looping.
+ * Imports code split out of the main bundle and fetched when first needed (the System page, the
+ * date menu's calendar). After a deploy, a tab opened before it still asks for the old build's
+ * files, which are gone, so the import fails. Rather than crash, the page reloads, which fetches
+ * the new build. Only once: if the import fails again right after that reload, the file is really
+ * missing (or the network is down), and the error is let through (to RouteError, or an
+ * ErrorBoundary) instead of looping.
  */
-export async function loadPageCode<Code>(load: () => Promise<Code>, options: Options = {}): Promise<Code> {
+export async function importWithReload<Code>(load: () => Promise<Code>, options: Options = {}): Promise<Code> {
   try {
     return await load();
   } catch (error) {

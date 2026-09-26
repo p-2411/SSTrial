@@ -254,7 +254,7 @@ export function useDeleteUpload() {
  * The activity log, newest first, filtered and paged by the server ("Load more" fetches older
  * events). Live: new events arrive through the update stream, which refetches it (useLiveUpdates).
  */
-export function useLogs(filters: LogFilters) {
+export function useActivityLog(filters: LogFilters) {
   return useInfiniteQuery({
     queryKey: logKeys.list(filters),
     queryFn: ({ pageParam }) => listLogs(filters, pageParam),

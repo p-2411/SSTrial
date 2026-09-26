@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { loadPageCode } from './loadPageCode';
+import { importWithReload } from './importWithReload';
 
 /** Session storage as the browser gives it, in memory. */
 function memoryStorage(): Pick<Storage, 'getItem' | 'setItem'> {
@@ -9,16 +9,16 @@ function memoryStorage(): Pick<Storage, 'getItem' | 'setItem'> {
 
 const failedImport = () => Promise.reject(new TypeError('Failed to fetch dynamically imported module'));
 
-describe('loadPageCode', () => {
+describe('importWithReload', () => {
   it("returns the page's code when it loads", async () => {
     const reload = vi.fn();
-    await expect(loadPageCode(async () => ({ Page: 'ok' }), { storage: memoryStorage(), reload })).resolves.toEqual({ Page: 'ok' });
+    await expect(importWithReload(async () => ({ Page: 'ok' }), { storage: memoryStorage(), reload })).resolves.toEqual({ Page: 'ok' });
     expect(reload).not.toHaveBeenCalled();
   });
 
   it('reloads the page when the code is gone (a newer build was deployed), instead of failing', async () => {
     const reload = vi.fn();
-    const loading = loadPageCode(failedImport, { storage: memoryStorage(), reload, now: () => 1_000 });
+    const loading = importWithReload(failedImport, { storage: memoryStorage(), reload, now: () => 1_000 });
 
     await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
     // It never settles: the reload replaces the page, so nothing should render the error meanwhile.
@@ -30,15 +30,15 @@ describe('loadPageCode', () => {
   it("lets the error through if it just reloaded for this, so a file that's really missing can't loop", async () => {
     const storage = memoryStorage();
     const reload = vi.fn();
-    void loadPageCode(failedImport, { storage, reload, now: () => 1_000 });
+    void importWithReload(failedImport, { storage, reload, now: () => 1_000 });
     await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
 
     // After the reload, the same failure a few seconds later: show it.
-    await expect(loadPageCode(failedImport, { storage, reload, now: () => 5_000 })).rejects.toThrow('Failed to fetch');
+    await expect(importWithReload(failedImport, { storage, reload, now: () => 5_000 })).rejects.toThrow('Failed to fetch');
     expect(reload).toHaveBeenCalledOnce();
 
     // Much later (another deploy), reloading is worth trying again.
-    void loadPageCode(failedImport, { storage, reload, now: () => 120_000 });
+    void importWithReload(failedImport, { storage, reload, now: () => 120_000 });
     await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(2));
   });
 
@@ -50,7 +50,7 @@ describe('loadPageCode', () => {
       },
       setItem: () => {},
     };
-    await expect(loadPageCode(failedImport, { storage, reload })).rejects.toThrow('Failed to fetch');
+    await expect(importWithReload(failedImport, { storage, reload })).rejects.toThrow('Failed to fetch');
     expect(reload).not.toHaveBeenCalled();
   });
 });

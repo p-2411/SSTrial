@@ -3,7 +3,7 @@ import { OPS_REFRESH_MS, useOpsStatus } from '@/api/queries';
 import { InlineError } from '@/components/InlineError';
 import { StaleDataNotice } from '@/components/StaleDataNotice';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ActivityLog } from '@/features/logs/ActivityLog';
+import { ActivityLog } from '@/features/activity/log/ActivityLog';
 import { useNow } from '@/lib/useNow';
 import { StatusStrip } from './StatusStrip';
 

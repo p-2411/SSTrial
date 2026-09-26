@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { readLogFilters } from './logFilters.ts';
+import { readActivityLogFilters } from './activityLogFilters.ts';
 
 const UPLOAD = '9e1b7c2a-0000-4000-8000-000000000001';
 
-describe('readLogFilters', () => {
+describe('readActivityLogFilters', () => {
   it('reads the search, the types, the days and the upload from the URL, the types in the catalogue order', () => {
     expect(
-      readLogFilters(
+      readActivityLogFilters(
         new URLSearchParams(`q=+oat+milk+&type=extraction.failed&type=upload.rejected&from=2026-09-01&to=2026-09-26&upload=${UPLOAD}`),
       ),
     ).toEqual({
@@ -20,7 +20,7 @@ describe('readLogFilters', () => {
 
   it('drops values the server would refuse, and repeats, rather than failing the whole page', () => {
     expect(
-      readLogFilters(new URLSearchParams('type=upload.exploded&type=extraction.failed&type=extraction.failed&from=2026-02-30&to=soon&upload=not-an-id')),
+      readActivityLogFilters(new URLSearchParams('type=upload.exploded&type=extraction.failed&type=extraction.failed&from=2026-02-30&to=soon&upload=not-an-id')),
     ).toEqual({
       search: '',
       types: ['extraction.failed'],
@@ -28,10 +28,10 @@ describe('readLogFilters', () => {
       to: null,
       upload: null,
     });
-    expect(readLogFilters(new URLSearchParams(`q=${'a'.repeat(201)}`)).search).toHaveLength(200);
+    expect(readActivityLogFilters(new URLSearchParams(`q=${'a'.repeat(201)}`)).search).toHaveLength(200);
   });
 
   it('reads days written the wrong way round as the days between them', () => {
-    expect(readLogFilters(new URLSearchParams('from=2026-09-26&to=2026-09-01'))).toMatchObject({ from: '2026-09-01', to: '2026-09-26' });
+    expect(readActivityLogFilters(new URLSearchParams('from=2026-09-26&to=2026-09-01'))).toMatchObject({ from: '2026-09-01', to: '2026-09-26' });
   });
 });

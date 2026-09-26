@@ -3,7 +3,7 @@ import { ScrollText } from 'lucide-react';
 import { LOG_RETENTION_DAYS, type LogEvent } from '@label-extractor/shared';
 import { errorMessage } from '@/api/client';
 import { isFiltered, type LogFilters } from '@/api/logs';
-import { useLogs } from '@/api/queries';
+import { useActivityLog } from '@/api/queries';
 import { EmptyState } from '@/components/EmptyState';
 import { FadeWhileLoading } from '@/components/FadeWhileLoading';
 import { InlineError } from '@/components/InlineError';
@@ -13,9 +13,9 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useNow } from '@/lib/useNow';
 import { groupByDay } from './groupByDay';
-import { LogEventRow } from './LogEventRow';
-import { LogFilterBar } from './LogFilterBar';
-import { NO_LOG_FILTERS, useLogFilters } from './logFilters';
+import { NO_ACTIVITY_LOG_FILTERS, useActivityLogFilters } from './activityLogFilters';
+import { ActivityLogFilterBar } from './ActivityLogFilterBar';
+import { ActivityLogRow } from './ActivityLogRow';
 
 /**
  * The activity log, on the System page: what happened to each upload and to the system, newest
@@ -23,8 +23,8 @@ import { NO_LOG_FILTERS, useLogFilters } from './logFilters';
  * the URL. Live: new events appear as they're written (see useLiveUpdates).
  */
 export function ActivityLog() {
-  const [filters, setFilters] = useLogFilters();
-  const log = useLogs(filters);
+  const [filters, setFilters] = useActivityLogFilters();
+  const log = useActivityLog(filters);
   // Only for the "Today" and "Yesterday" headings, so once a minute is plenty.
   const now = useNow(60_000);
 
@@ -39,7 +39,7 @@ export function ActivityLog() {
           Activity log
         </CardTitle>
         <div className="col-span-full pt-1">
-          <LogFilterBar filters={filters} onChange={setFilters} uploadName={filters.upload ? fileNameIn(events) : null} />
+          <ActivityLogFilterBar filters={filters} onChange={setFilters} uploadName={filters.upload ? fileNameIn(events) : null} />
         </div>
       </CardHeader>
 
@@ -58,7 +58,7 @@ export function ActivityLog() {
               </h3>
               <ul>
                 {day.events.map((event) => (
-                  <LogEventRow key={event.id} event={event} />
+                  <ActivityLogRow key={event.id} event={event} />
                 ))}
               </ul>
             </section>
@@ -76,7 +76,7 @@ export function ActivityLog() {
         </div>
       )}
 
-      {events?.length === 0 && <NoEvents filters={filters} onClearFilters={() => setFilters(NO_LOG_FILTERS)} />}
+      {events?.length === 0 && <NoEvents filters={filters} onClearFilters={() => setFilters(NO_ACTIVITY_LOG_FILTERS)} />}
     </Card>
   );
 }

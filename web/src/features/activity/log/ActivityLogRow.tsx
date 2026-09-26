@@ -3,7 +3,7 @@ import { ArrowUpRight } from 'lucide-react';
 import { UPLOAD_GONE_EVENT_TYPES, type LogEvent, type LogLevel } from '@label-extractor/shared';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
-import { EVENT_ACTION_CLASS, EventDetails, EventDetailsTrigger } from '@/features/activity/EventDetails';
+import { EVENT_ACTION_CLASS, EventDetails, EventDetailsTrigger } from '../EventDetails';
 import { formatDateTimeWithSeconds, formatTimeOfDay } from '@/lib/format';
 import { TONE_CLASSES, type Tone } from '@/lib/tone';
 import { cn } from '@/lib/utils';
@@ -16,7 +16,7 @@ const LEVEL_BADGE: Record<LogLevel, { label: string; tone: Tone } | null> = {
   error: { label: 'Error', tone: 'danger' },
 };
 
-/** Details opened from the Logs page are fetched through the log's own endpoint. */
+/** Details opened from the activity log are fetched through the log's own endpoint. */
 const FROM_THE_LOG = {};
 
 /**
@@ -26,7 +26,7 @@ const FROM_THE_LOG = {};
  * the sentence leaves out), fetched only when opened. The two actions have fixed columns, so they
  * line up down the log.
  */
-export function LogEventRow({ event }: { event: LogEvent }) {
+export function ActivityLogRow({ event }: { event: LogEvent }) {
   const badge = LEVEL_BADGE[event.level];
   // Rejected and discarded uploads are deleted, so there's nothing to open.
   const uploadId = event.uploadId !== null && !UPLOAD_GONE_EVENT_TYPES.includes(event.type) ? event.uploadId : null;

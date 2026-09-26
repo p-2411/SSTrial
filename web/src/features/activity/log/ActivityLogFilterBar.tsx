@@ -3,10 +3,10 @@ import { X } from 'lucide-react';
 import { LOG_EVENT_TYPE_IDS } from '@label-extractor/shared';
 import type { LogFilters } from '@/api/logs';
 import { Button } from '@/components/ui/button';
-import { ActivityFilterBar } from '@/features/activity/ActivityFilterBar';
+import { ActivityFilterBar } from '../ActivityFilterBar';
 import { uploadPath } from '@/routes';
 
-interface LogFilterBarProps {
+interface ActivityLogFilterBarProps {
   filters: LogFilters;
   onChange: (changes: Partial<LogFilters>, options?: NavigateOptions) => void;
   /** The file name of the upload the log is narrowed to, once its events have loaded. */
@@ -17,7 +17,7 @@ interface LogFilterBarProps {
  * The log's filters: words to search for, which types of event to show, which days, and the
  * upload it's narrowed to, if any (a chip, removable).
  */
-export function LogFilterBar({ filters, onChange, uploadName }: LogFilterBarProps) {
+export function ActivityLogFilterBar({ filters, onChange, uploadName }: ActivityLogFilterBarProps) {
   return (
     <ActivityFilterBar
       filters={filters}

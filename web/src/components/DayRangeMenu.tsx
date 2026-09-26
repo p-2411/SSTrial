@@ -4,12 +4,12 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ANY_TIME, DAY_PRESETS, describeDayRange, sameRange, toDay, type DayRange } from '@/lib/dayRange';
-import { loadPageCode } from '@/lib/loadPageCode';
+import { importWithReload } from '@/lib/importWithReload';
 import { cn } from '@/lib/utils';
 
 // The calendar (react-day-picker) is only fetched when someone opens the menu: most never pick a
 // range by hand, and the presets need none of it.
-const DayRangeCalendar = lazy(() => loadPageCode(() => import('./DayRangeCalendar')));
+const DayRangeCalendar = lazy(() => importWithReload(() => import('./DayRangeCalendar')));
 
 interface DayRangeMenuProps {
   range: DayRange;
@@ -65,7 +65,7 @@ export function DayRangeMenu({ range, onChange, label }: DayRangeMenuProps) {
             );
           })}
         </div>
-        {/* If the calendar's code can't be fetched (see loadPageCode), the spans on the left still work. */}
+        {/* If the calendar's code can't be fetched (see importWithReload), the spans on the left still work. */}
         <ErrorBoundary fallback={() => <CalendarUnavailable />}>
           <Suspense
             fallback={

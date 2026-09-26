@@ -3,7 +3,7 @@ import type { NavigateOptions } from 'react-router';
 import { logFilterParams, NO_ACTIVITY_FILTERS, type LogFilters } from '@/api/logs';
 import { MAX_SEARCH_LENGTH } from '@/components/SearchInput';
 import { isDay } from '@/lib/dayRange';
-import { inCatalogueOrder } from '@/features/activity/eventTypes';
+import { inCatalogueOrder } from '../eventTypes';
 
 /**
  * The activity log's filters live in the URL (?q=oat+milk&type=extraction.failed&type=…&from=…
@@ -13,9 +13,9 @@ import { inCatalogueOrder } from '@/features/activity/eventTypes';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export const NO_LOG_FILTERS: LogFilters = { ...NO_ACTIVITY_FILTERS, upload: null };
+export const NO_ACTIVITY_LOG_FILTERS: LogFilters = { ...NO_ACTIVITY_FILTERS, upload: null };
 
-export function readLogFilters(params: URLSearchParams): LogFilters {
+export function readActivityLogFilters(params: URLSearchParams): LogFilters {
   const upload = params.get('upload');
   const day = (name: string) => {
     const value = params.get(name);
@@ -38,10 +38,10 @@ export function readLogFilters(params: URLSearchParams): LogFilters {
  * it (unless `replace`, as for a search being typed). Changes apply to the URL as it is then, so a
  * change made after a pause can't undo one made meanwhile.
  */
-export function useLogFilters(): [LogFilters, (changes: Partial<LogFilters>, options?: NavigateOptions) => void] {
+export function useActivityLogFilters(): [LogFilters, (changes: Partial<LogFilters>, options?: NavigateOptions) => void] {
   const [params, setParams] = useSearchParams();
   return [
-    readLogFilters(params),
-    (changes, options) => setParams((current) => logFilterParams({ ...readLogFilters(current), ...changes }), options),
+    readActivityLogFilters(params),
+    (changes, options) => setParams((current) => logFilterParams({ ...readActivityLogFilters(current), ...changes }), options),
   ];
 }
