@@ -6,7 +6,7 @@ Upload photos or PDFs of product labels; a background worker reads each one with
 
 - **Stack:** TypeScript end to end. React + Vite with Tailwind v4 and shadcn/ui (web), Fastify (API), pg-boss (Postgres-backed queue), Supabase (Postgres, Storage, Auth), OpenAI Responses API with structured outputs.
 - **Look and feel:** built on the same UI stack as the SupplyScope app (Tailwind v4, shadcn/ui on Radix, Lucide icons, Sonner toasts) and styled with SupplyScope's brand. See [DECISIONS.md](DECISIONS.md#trade-offs).
-- **Design decisions** (queue choice, failure handling, 50k uploads, trade-offs): [DECISIONS.md](DECISIONS.md)
+- **Design decisions** (queue choice, failure handling, 50k uploads, performance, trade-offs): [DECISIONS.md](DECISIONS.md)
 
 ## Topology
 
@@ -76,7 +76,7 @@ from a status that table allows.
 
 ### Confidence scores
 
-Every field gets a score out of 100 for how sure the extraction is, with the reasons for any doubt. The model scores each field in the same call, and those scores are stored as given. Plain checks cap a score at 60 when a product name, brand, net weight or ingredient list wasn't found (every product needs them, so a person must fill it in or confirm it's absent), or when the data contradicts itself (the net amount missing from its printed text, a declared allergen no ingredient contains, percentages over 100%); they run whenever the upload is read, so they describe the data as it is now, edits included. The detail panel shows each field's score, fine (85+), check (60–84) or low, and the card's footer gives the upload's overall confidence (its least certain unchecked field): green when high, amber or red when a field is worth checking. A completed upload below 85 shows "Check (72%)" in place of "Completed", in the list and the detail. A reading with no scores (from before scoring, or saved in a shape that can't be read) has every field at 60, "Not scored: check it against the label.", so each is checked before it can be submitted. How it works and its limits: [DECISIONS.md](DECISIONS.md#trade-offs).
+Every field gets a score out of 100 for how sure the extraction is, with the reasons for any doubt. The model scores each field in the same call, and those scores are stored as given. Plain checks cap a score at 60 when a product name, brand, net weight or ingredient list wasn't found (every product needs them, so a person must fill it in or confirm it's absent), or when the data contradicts itself (the net amount missing from its printed text, a declared allergen no ingredient contains, percentages over 100%); they run whenever the upload is read, so they describe the data as it is now, edits included. The detail panel shows each field's score, fine (85+), check (60–84) or low, and the card's footer gives the upload's overall confidence (its least certain unchecked field): green when high, amber or red when a field is worth checking. A completed upload below 85 shows "Check (72%)" in place of "Completed", in the list and the detail. A reading in Review with no scores (saved in a shape that can't be read, say) has every field at 60, "Not scored: check it against the label.", so each is checked before it can be submitted; a product that was never scored (from before scoring) shows no score. How it works and its limits: [DECISIONS.md](DECISIONS.md#trade-offs).
 
 ### Reviewing and editing
 
@@ -124,7 +124,7 @@ docker compose up --build
 
 ```bash
 npm test                  # all unit tests (shared, server, web). No network, no LLM, no Docker needed.
-npm run test:integration -w server   # real pg-boss worker against local Postgres (needs `supabase start`)
+npm run test:integration -w server   # real pg-boss worker and members table against local Postgres (needs `supabase start`)
 ```
 
 The LLM is never called from tests. The worker depends on a `LabelExtractor` interface, and the OpenAI extractor takes an injected "create response" function that tests replace with canned responses.
@@ -139,8 +139,8 @@ The LLM is never called from tests. The worker depends on a `LabelExtractor` int
 
 ```
 shared/          Types and rules used by all three: file rules, upload lifecycle, label fields, confidence
-                 bands and checks, units, roles and who may do what, the event catalogue, list limits,
-                 the HTTP contract. Its Zod schemas
+                 bands and checks, units, roles and who may do what, the event catalogue, search and
+                 page limits, the HTTP contract. Its Zod schemas
                  (extraction.ts, requests.ts) are only loaded by the server; the web build fails if
                  Zod gets bundled
 server/
@@ -160,21 +160,29 @@ server/
                  live change feed (Postgres NOTIFY → server-sent events)
   scripts/       create-user.ts (accounts and roles), and one-off data changes, committed so they're
                  reviewable and re-runnable
-  test/          Unit tests (with in-memory fakes) and the integration test
+  test/          Unit tests (with in-memory fakes) and the integration tests
 web/src/
-  app/           Router, app shell (sidebar and top bar), 404 page
+  app/           Router, app shell (sidebar and top bar), 404 page, the error page a failed route shows
   auth/          Supabase Auth in the browser, the sign-in page, and the route guards
   api/           API client, React Query hooks and cache refreshing, live updates (polling as fallback)
   features/      upload (dropzone + upload manager), uploads-list (Uploading and Review tabs, Products),
-                 upload-detail (side panel), system (the System page), logs (its activity log),
-                 activity (what the activity log and each product's history share: filters, details)
-  components/    Small shared pieces (status pill, file-type tile, row layout, segmented tabs, errors)
+                 upload-detail (side panel), system (the System page), activity (what the activity
+                 log and each product's history share: filters, event rows, details) with activity/log
+                 (the System page's activity log)
+  components/    Small shared pieces: status pill, file-type tile, row layout, segmented tabs, and the
+                 states every page uses (EmptyState, StaleDataNotice, InlineError, LoadMoreButton,
+                 PageSpinner, ErrorBoundary, ConfirmDialog)
   components/ui/ shadcn/ui components, generated by the shadcn CLI and lightly adapted
-  lib/           Plain helpers: formatting, what an upload's state means, status colours, quantities
+  lib/           Plain helpers: formatting, what an upload's state means, status colours, quantities,
+                 day ranges, selection, and importWithReload (reloads onto a new build if a page's
+                 code is gone after a deploy)
+  test/          Test helpers: a fake API (stubbed fetch), rendering with the app's providers, fixtures
   routes.ts      Every path in the app
   index.css      Tailwind theme: SupplyScope's brand tokens mapped onto shadcn's variables
 supabase/        Local config and the SQL migrations
 ```
+
+**Loading, empty and error states** work the same way on every list. A first load shows skeleton rows, and a new search keeps the last results up, faded, until its own arrive. An empty list says so and offers the way out ("No products match", with "Clear filters"); an empty Uploading or Review tab isn't shown. A first load that fails says why, with "Try again"; a failed refresh keeps what's shown and says it may be out of date; a failed "Load more" says so beside the button. A page that fails to render shows "Reload" and a way home, with the sidebar still there, and the detail panel fails on its own. Confirmations stay open, and say why, if the request fails.
 
 ## API
 
@@ -195,7 +203,7 @@ else, so nobody learns of someone else's unsubmitted upload by being refused it.
 | `POST` | `/api/uploads/submit` | Submit `{ ids }` (up to 100) to Products: answers `{ submitted }`, those that went in. Only the asker's own, with nothing left to check |
 | `POST` | `/api/uploads/check` | Mark every flagged field of `{ ids }` (up to 100) as checked: answers `{ checked }`. Each is recorded like any other check |
 | `GET` | `/api/uploads/:id` | One upload with its extracted data and a preview URL |
-| `POST` | `/api/uploads/:id/retry` | Run extraction again, for any failure but a missing file, and for results that can't be read. Only its uploader or an admin (403 otherwise) |
+| `POST` | `/api/uploads/:id/retry` | Run extraction again, for any failure but a missing file, and for results that can't be read. Only its uploader or an admin (403 otherwise); the detail says whether the asker may as `canRetry` |
 | `GET` | `/api/uploads/:id/history?q=&type=&from=&to=&cursor=&limit=` | One page of what happened to one upload, newest first, with `nextCursor`: its upload, each attempt to read it, and who edited, checked or reverted it. Searched and filtered like the activity log. Anyone who can see the upload |
 | `GET` | `/api/uploads/:id/history/:eventId` | One entry's details, fetched when it's opened: the data as it was read, or what an edit or revert changed (404 for an entry the history offers no details for). Anyone who can see the upload |
 | `POST` | `/api/uploads/:id/revert` | Admins only (403 otherwise). Puts a completed upload's data back to a version from its history (`{ revision, versionId }`); the revert is itself recorded and can be undone. A product stays in Products, even if the version has fields nobody had checked |
@@ -209,7 +217,7 @@ else, so nobody learns of someone else's unsubmitted upload by being refused it.
 | `GET` | `/api/exports/uploads.csv` | Products as CSV, one row per product (streamed): those named with `id=` (repeated, up to 100), or else every one matching `q`, `from` and `to` |
 | `GET` | `/api/exports/uploads.json` | The same, as JSON with the full structured data |
 
-Errors are always `{ "error": { "code", "message" } }`, with a message written for users.
+Lists take `limit` (uploads 50 by default, up to 100; the log 50, up to 200; a history 20, up to 200) and `q` up to 200 characters, set in `shared/src/lists.ts`. Errors are always `{ "error": { "code", "message" } }`, with a message written for users.
 
 ## Scope cuts
 

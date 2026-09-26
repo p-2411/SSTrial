@@ -2,9 +2,9 @@
 
 ## 50,000 uploads arriving at once
 
-- **Ingest never touches our servers.** Files go straight to Supabase Storage with signed URLs; the API only handles two small, stateless requests per file, so it scales horizontally (one person can have at most 200 under way, picked 50 at a time).
+- **Ingest never touches our servers.** Files go straight to Supabase Storage with signed URLs; the API only handles two small, stateless requests per file, so it scales horizontally (one person can have at most 200 under way, in batches of up to 50).
 - **The queue absorbs the burst.** 50,000 jobs is a small Postgres table. They wait durably, and nothing is lost if workers are busy or restarting.
-- **Throughput is set by the LLM's rate limit, not by us.** At 500 requests a minute (a setting, `OPENAI_REQUESTS_PER_MINUTE`), 50,000 labels take about 100 minutes regardless of however many workers run. This is due to the OpenAI rate limits. A token bucket shared by all workers paces them to that limit. Identical files are recognised by their SHA-256 and read once.
+- **Throughput is set by the LLM's rate limit, not by us.** At 500 requests a minute (a setting, `OPENAI_REQUESTS_PER_MINUTE`), 50,000 labels take about 100 minutes however many workers run. This is due to the OpenAI rate limits. A token bucket shared by all workers paces them to that limit. Identical files are recognised by their SHA-256 and read once.
 - **For bulk imports** I'd use OpenAI's Batch API (about half the cost, a separate quota), with queue priorities so people's own uploads skip the backlog.
 
 ## Why a Postgres queue (pg-boss)
@@ -25,6 +25,14 @@ It also gives us, for free:
 - **Output is never trusted.** Every answer is validated with Zod before it's stored: valid data or nothing.
 - **Crashed or hung workers.** If a job's heartbeats stop, another worker takes it within about a minute. A claim token stops the replaced worker overwriting its successor, and if the last attempt dies, a dead-letter handler marks the upload failed, so nothing stays "processing" forever.
 - **Manual retry** is offered for any failure but a missing file, such as after credit is topped up.
+
+## Performance
+
+- **The database searches, filters and pages every list.** Keyset cursors keep a deep page as quick as the first, and event details load only when opened.
+- **Every list has an index to match.** Partial indexes fit the exact filter and order of Products, each person's own lists and the System page's figures; product and log searches use trigram indexes. I checked the upload queries with EXPLAIN on 60,000 local products.
+- **Bulk actions take one pass.** Deleting 100 products is one read, one storage request and one transaction, not 100 of each.
+- **Pushed, not polled.** Server-sent events say what changed; polling is only the fallback while the stream is down.
+- **Less work in the browser.** A new search keeps the last results up while it loads, off-screen rows skip layout (`content-visibility`), and the System page, calendar and PDF preview load on first use.
 
 ## Trade-offs
 
