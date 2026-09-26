@@ -13,12 +13,20 @@ import { PendingUploadRow } from '@/features/upload/PendingUploadRow';
 import type { PendingUpload } from '@/features/upload/useFileUploads';
 import { useNow } from '@/lib/useNow';
 import { useSelection, type Selection } from '@/lib/useSelection';
+import { cn } from '@/lib/utils';
 import { ListSkeleton } from './ListSkeleton';
 import { ReviewActions } from './ReviewActions';
 import { UploadRow } from './UploadRow';
 import { useUploadAnnouncements } from './useUploadAnnouncements';
 
 type Tab = 'uploading' | 'review';
+
+/**
+ * How tall a tab's list grows before it scrolls: about six rows, the last one cut off so it's plain
+ * there's more. The tabs and Review's actions stay put above it, and Products stays in view below
+ * however many uploads are on their way.
+ */
+const LIST_MAX_HEIGHT = 'max-h-[27.5rem]';
 
 interface YourUploadsProps {
   /** Files still on their way from this browser. */
@@ -34,7 +42,7 @@ interface YourUploadsProps {
  * A tab is only there while it has something in it (or its list couldn't load, to say so), and the
  * card only while it has a tab. Until both lists have first loaded, the card holds their place
  * with a skeleton, so the page below doesn't jump when they arrive; it goes if both are empty.
- * Nobody else sees these (see canViewUpload).
+ * Each tab's list scrolls past LIST_MAX_HEIGHT. Nobody else sees these (see canViewUpload).
  */
 export function YourUploads({ pending, onRetry, onDismiss }: YourUploadsProps) {
   const uploadingList = useUploadList('upload');
@@ -164,8 +172,10 @@ function ListState({ list, rows, children }: { list: ReturnType<typeof useUpload
   return (
     <>
       {list.isRefetchError && <StaleDataNotice what="your uploads" error={list.error} onRetry={() => void list.refetch()} retrying={list.isRefetching} />}
-      {children}
-      <LoadMoreButton query={list} className="border-t border-border/70 p-3" />
+      <div className={cn('overflow-y-auto [scrollbar-gutter:stable]', LIST_MAX_HEIGHT)}>
+        {children}
+        <LoadMoreButton query={list} className="border-t border-border/70 p-3" />
+      </div>
     </>
   );
 }
