@@ -44,7 +44,8 @@ export function DeleteUpload({ upload }: { upload: Pick<UploadDetail, 'id' | 'fi
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogTrigger asChild>
-        <Button variant="outline" size="sm" className="justify-self-start text-danger hover:border-danger-border hover:bg-danger-soft hover:text-danger">
+        {/* Full width, outlined in red with no fill: plainly destructive, without shouting. */}
+        <Button variant="outline" className="w-full border-danger bg-transparent text-danger hover:bg-transparent hover:text-danger">
           <Trash2 data-icon="inline-start" aria-hidden />
           Delete upload
         </Button>
