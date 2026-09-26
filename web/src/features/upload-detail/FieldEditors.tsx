@@ -257,7 +257,8 @@ export function IngredientsEditor({ value, onSave, ...form }: EditorProps<Ingred
           </li>
         ))}
       </ol>
-      <Button type="button" variant="outline" size="xs" className="justify-self-start" onClick={add}>
+      {/* Room above and below, so it reads as part of neither the list nor Save and Cancel. */}
+      <Button type="button" variant="outline" size="xs" className="my-2 justify-self-start" onClick={add}>
         <Plus data-icon="inline-start" aria-hidden />
         Add ingredient
       </Button>

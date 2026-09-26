@@ -13,8 +13,8 @@ interface ReviewState {
 
 /**
  * One field of the extracted data: a marker coloured by confidence, the label, the value (or its
- * editor), and on the right its score, or, once a person has reviewed it, nothing: who reviewed it
- * shows under the value instead. Edit appears on hover and focus; a field that still needs
+ * editor), and on the right its score ("95% confident"), or, once a person has reviewed it,
+ * nothing: who reviewed it shows under the value instead. Edit appears on hover and focus; a field that still needs
  * checking also offers "Mark as checked".
  *
  * As a `row` (the default) it's a term and its value, for a <dl>. As a `block` it's a section of

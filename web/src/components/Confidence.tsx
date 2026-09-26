@@ -1,24 +1,19 @@
-import { confidenceBand, needsChecking, type ConfidenceBand } from '@label-extractor/shared';
-import { TONE_CLASSES, TONE_DOT_CLASSES, type Tone } from '@/lib/tone';
+import { CONFIDENT_SCORE, confidenceBand, type ConfidenceBand } from '@label-extractor/shared';
+import { TONE_DOT_CLASSES, type Tone } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 
 /**
  * How confidence looks. The band decides it, not the exact number: a model's own score ranks
- * fields well but isn't a calibrated probability (see shared/src/confidence.ts). A band with no
- * tone needs no attention, so its score stays quiet.
+ * fields well but isn't a calibrated probability (see shared/src/confidence.ts). It's plain text,
+ * never a pill: quiet grey when nothing needs attention, amber or red when something does.
  */
-const BANDS: Record<ConfidenceBand, { word: string | null; spoken: string; tone: Tone | null }> = {
-  ok: { word: null, spoken: '', tone: null },
-  check: { word: 'Check', spoken: ', check this field', tone: 'warning' },
-  low: { word: 'Low', spoken: ', low', tone: 'danger' },
+const BANDS: Record<ConfidenceBand, { tone: Tone | null; text: string; spoken: string }> = {
+  ok: { tone: null, text: 'text-muted-foreground', spoken: '' },
+  check: { tone: 'warning', text: 'font-medium text-warning', spoken: ', worth checking' },
+  low: { tone: 'danger', text: 'font-medium text-danger', spoken: ', low' },
 };
 
-const pill = 'inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-xs font-medium tabular-nums';
-
-function pillClass(score: number): string {
-  const { tone } = BANDS[confidenceBand(score)];
-  return cn(pill, tone ? TONE_CLASSES[tone] : 'border-transparent text-muted-foreground');
-}
+const MEANING = `How sure the AI is that it read this correctly. Below ${CONFIDENT_SCORE}% it's worth checking.`;
 
 /**
  * The colour of a field's marker dot: amber or red by band, and green when there's nothing to
@@ -29,21 +24,21 @@ export function confidenceDotClass(score: number | null): string {
   return TONE_DOT_CLASSES[tone ?? 'success'];
 }
 
-/** One field's score: quiet when it's fine, a labelled amber or red pill when it needs a look. */
-export function ConfidenceScore({ score }: { score: number }) {
+/** A score, saying what it is: "95% confident", with what that means on hover. */
+export function ConfidenceScore({ score, className }: { score: number; className?: string }) {
   const band = BANDS[confidenceBand(score)];
   return (
-    <span className={pillClass(score)}>
-      <span className="sr-only">
-        Confidence {score} out of 100{band.spoken}
-      </span>
-      <span aria-hidden>{band.word ? `${band.word} ${score}` : score}</span>
+    <span className={cn('shrink-0 text-xs whitespace-nowrap tabular-nums', band.text, className)} title={MEANING}>
+      {score}% confident
+      {band.spoken && <span className="sr-only">{band.spoken}</span>}
     </span>
   );
 }
 
-/** An upload's overall score in the list, shown only when some field needs checking. */
+/**
+ * An upload's overall score in the list: its least certain field that nobody has reviewed yet.
+ * Nothing when there's no score (never scored, or every field reviewed).
+ */
 export function UploadConfidence({ score }: { score: number | null }) {
-  if (score === null || !needsChecking(score)) return null;
-  return <span className={pillClass(score)}>Confidence {score}</span>;
+  return score === null ? null : <ConfidenceScore score={score} />;
 }

@@ -182,7 +182,7 @@ describe('reviewing', () => {
       upload({ fieldReviews: { netWeight: { kind: 'checked', by: 'alice@example.com', at: new Date().toISOString() } } }),
     );
     expect(within(card).getByText(/Checked by alice@example\.com/)).toBeInTheDocument();
-    expect(within(card).queryByText(/Confidence 58/)).not.toBeInTheDocument();
+    expect(within(card).queryByText(/58% confident/)).not.toBeInTheDocument();
     expect(within(card).queryByRole('button', { name: 'Mark net weight as checked' })).not.toBeInTheDocument();
   });
 

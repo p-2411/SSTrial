@@ -50,7 +50,8 @@ export const UploadRow = memo(function UploadRow({ upload, now }: { upload: Uplo
           )}
         </div>
         <div className="flex flex-col items-end gap-1.5">
-          <div className="flex items-center gap-1.5">
+          {/* The confidence is plain text beside the status: it qualifies it, so it doesn't compete with it. */}
+          <div className="flex items-center gap-2.5">
             <UploadConfidence score={upload.confidence} />
             <StatusPill status={upload.status} />
           </div>

@@ -88,16 +88,17 @@ describe('CoreInformationCard', () => {
     it('scores every field, and says why for any that need checking', () => {
       const card = renderCard(full, confidence);
 
-      expect(within(card).getByText('Confidence 97 out of 100')).toBeInTheDocument();
-      expect(within(card).getByText('Confidence 72 out of 100, check this field')).toBeInTheDocument();
-      expect(within(card).getByText('Confidence 45 out of 100, low')).toBeInTheDocument();
+      expect(within(card).getByText('97% confident')).toHaveClass('text-muted-foreground');
+      expect(within(card).getByText('72% confident')).toHaveTextContent('72% confident, worth checking');
+      expect(within(card).getByText('72% confident')).toHaveClass('text-warning');
+      expect(within(card).getByText('45% confident')).toHaveClass('text-danger');
       expect(within(card).getByText('Partly hidden by a fold.')).toBeInTheDocument();
       expect(within(card).getByText('No ingredient contains milk.')).toBeInTheDocument();
     });
 
     it('shows no scores for an extraction that was never scored', () => {
       const card = renderCard(full, null);
-      expect(within(card).queryByText(/^Confidence/)).not.toBeInTheDocument();
+      expect(within(card).queryByText(/confident/)).not.toBeInTheDocument();
     });
   });
 });

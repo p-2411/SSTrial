@@ -47,13 +47,20 @@ describe('UploadRow', () => {
     expect(lines).toEqual({ first: 'back-of-pack.pngPNG, 1 KB', second: 'No product name on label' });
   });
 
-  it('flags a completed upload that needs checking with its confidence, and says nothing otherwise', () => {
+  it('says how confident the extraction is, flagging a score that needs checking', () => {
     renderRow(summary({ confidence: 58 }));
-    expect(screen.getByText('Confidence 58')).toBeInTheDocument();
+    const score = screen.getByText('58% confident');
+    expect(score).toHaveClass('text-danger');
+    expect(score).toHaveTextContent('58% confident, low'); // what a screen reader hears
   });
 
-  it.each([92, null])('shows no confidence for a score of %s', (confidence) => {
-    renderRow(summary({ confidence }));
-    expect(screen.queryByText(/Confidence/)).not.toBeInTheDocument();
+  it('keeps a confident score quiet', () => {
+    renderRow(summary({ confidence: 92 }));
+    expect(screen.getByText('92% confident')).toHaveClass('text-muted-foreground');
+  });
+
+  it('shows no confidence when there is none to show (never scored, or every field reviewed)', () => {
+    renderRow(summary({ confidence: null }));
+    expect(screen.queryByText(/confident/)).not.toBeInTheDocument();
   });
 });
