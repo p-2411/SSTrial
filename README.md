@@ -75,7 +75,7 @@ from a status that table allows.
 
 ### Confidence scores
 
-Every field gets a score out of 100 for how sure the extraction is, with the reasons for any doubt. The model scores each field in the same call, and those scores are stored as given. Plain checks cap a score at 60 when the data contradicts itself (the net amount missing from its printed text, a declared allergen no ingredient contains, percentages over 100%); they run whenever the upload is read, so they describe the data as it is now, edits included. The detail panel shows each field's score, fine (85+), check (60–84) or low, and the card's footer gives the upload's overall confidence (its least certain unchecked field): green when high, amber or red when a field is worth checking. A completed upload below 85 shows "Check (72%)" in place of "Completed", in the list and the detail. How it works and its limits: [DECISIONS.md](DECISIONS.md#trade-offs).
+Every field gets a score out of 100 for how sure the extraction is, with the reasons for any doubt. The model scores each field in the same call, and those scores are stored as given. Plain checks cap a score at 60 when a product name, brand, net weight or ingredient list wasn't found (every product needs them, so a person must fill it in or confirm it's absent), or when the data contradicts itself (the net amount missing from its printed text, a declared allergen no ingredient contains, percentages over 100%); they run whenever the upload is read, so they describe the data as it is now, edits included. The detail panel shows each field's score, fine (85+), check (60–84) or low, and the card's footer gives the upload's overall confidence (its least certain unchecked field): green when high, amber or red when a field is worth checking. A completed upload below 85 shows "Check (72%)" in place of "Completed", in the list and the detail. How it works and its limits: [DECISIONS.md](DECISIONS.md#trade-offs).
 
 ### Reviewing and editing
 
@@ -87,11 +87,10 @@ Whoever uploaded a file, or any admin, can delete it from the detail panel, afte
 
 ### Monitoring
 
-Both pages are for admins only.
-
-- **System status page** (`/status` in the app, from `GET /api/ops`): uploads waiting, retrying and processing; whether the worker is running; health checks; and the last 24 hours. Why particular uploads failed is in the activity log, which can be searched and filtered.
-- **Activity log** (`/logs` in the app, from `GET /api/logs`): every step of every upload (created, queued, each extraction attempt, retries, failures and why), plus rate-limit pauses and process starts. Search its messages, narrow it to any mix of event types (with shortcuts for warnings and errors), or to a span of days, or to one upload with `?upload=<id>` in the address, and it updates live. It loads a page at a time, and each event's details only when opened. A product's events are kept for as long as it exists, and for 30 days after it's deleted; the system's own, for 30 days.
-- **`GET /api/health`** on the API (database, queue) and on the worker (plus its job loop) answers 200 or 503, naming which check failed but not the error's details (the status page shows those). Railway uses it on deploy.
+- **System page** (`/system` in the app, admins only), with two parts:
+  - **Status strip** (from `GET /api/ops`): uploads waiting, retrying and processing; whether labels are being read (the worker is running); the last 24 hours; and the system's own checks, as "All OK" (each one's detail on hover) or which failed and why.
+  - **Activity log** (from `GET /api/logs`), underneath: every step of every upload (created, queued, each extraction attempt, retries, failures and why), plus rate-limit pauses and process starts. Search its messages, narrow it to any mix of event types (with shortcuts for warnings and errors), or to a span of days, or to one upload with `?upload=<id>` in the address, and it updates live. It loads a page at a time, and each event's details only when opened. A product's events are kept for as long as it exists, and for 30 days after it's deleted; the system's own, for 30 days.
+- **`GET /api/health`** on the API (database, queue) and on the worker (plus its job loop) answers 200 or 503, naming which check failed but not the error's details (the System page shows those). Railway uses it on deploy.
 
 ## Running locally
 
@@ -164,7 +163,7 @@ web/src/
   auth/          Supabase Auth in the browser, the sign-in page, and the route guards
   api/           API client, React Query hooks and cache refreshing, live updates (polling as fallback)
   features/      upload (dropzone + upload manager), uploads-list (Uploading and Review tabs, Products),
-                 upload-detail (side panel), system-status, logs (the activity log)
+                 upload-detail (side panel), system (the System page), logs (its activity log)
   components/    Small shared pieces (status pill, file-type tile, row layout, segmented tabs, errors)
   components/ui/ shadcn/ui components, generated by the shadcn CLI and lightly adapted
   lib/           Plain helpers: formatting, what an upload's state means, status colours, quantities

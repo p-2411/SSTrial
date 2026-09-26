@@ -37,16 +37,14 @@ function renderSidebar(role: CurrentMember['role']) {
 describe('AppSidebar', () => {
   it('shows admins how the system is running', () => {
     renderSidebar('admin');
-    expect(screen.getByRole('link', { name: 'System status' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Activity log' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Status & activity' })).toHaveAttribute('href', '/system');
     expect(screen.getByText('Admin')).toBeInTheDocument();
   });
 
   it('keeps members to uploads', () => {
     renderSidebar('member');
     expect(screen.getByRole('link', { name: 'Uploads' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'System status' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Activity log' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Status & activity' })).not.toBeInTheDocument();
   });
 
   it('says who is signed in, and signs them out', async () => {

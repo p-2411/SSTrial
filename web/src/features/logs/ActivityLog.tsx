@@ -17,11 +17,11 @@ import { LogFilterBar } from './LogFilterBar';
 import { NO_LOG_FILTERS, useLogFilters } from './logFilters';
 
 /**
- * Route: /logs — the activity log: what happened to each upload and to the system, newest first,
- * grouped by day. Searchable, and filtered by type of event, by day and by upload, all in the URL. Live:
- * new events appear as they're written (see useLiveUpdates).
+ * The activity log, on the System page: what happened to each upload and to the system, newest
+ * first, grouped by day. Searchable, and filtered by type of event, by day and by upload, all in
+ * the URL. Live: new events appear as they're written (see useLiveUpdates).
  */
-export function LogsPage() {
+export function ActivityLog() {
   const [filters, setFilters] = useLogFilters();
   const log = useLogs(filters);
   // Only for the "Today" and "Yesterday" headings, so once a minute is plenty.
@@ -32,65 +32,62 @@ export function LogsPage() {
   const { isPending, isError, error, refetch, isRefetching, isPlaceholderData } = log;
 
   return (
-    // A <div>, not <main>: the app shell's SidebarInset is already the page's <main>.
-    <div className="min-h-0 flex-1 overflow-y-auto p-6 [scrollbar-gutter:stable_both-edges]">
-      <Card aria-labelledby="logs-heading" role="region" className="mx-auto max-w-5xl gap-0 py-0">
-        <CardHeader className="gap-3 border-b border-border/70 py-4">
-          <CardTitle id="logs-heading" className="text-base font-semibold">
-            Activity log
-          </CardTitle>
-          <div className="col-span-full pt-1">
-            <LogFilterBar filters={filters} onChange={setFilters} uploadName={filters.upload ? fileNameIn(events) : null} />
-          </div>
-        </CardHeader>
+    <Card aria-labelledby="logs-heading" role="region" className="gap-0 py-0">
+      <CardHeader className="gap-3 border-b border-border/70 py-4">
+        <CardTitle id="logs-heading" className="text-base font-semibold">
+          Activity log
+        </CardTitle>
+        <div className="col-span-full pt-1">
+          <LogFilterBar filters={filters} onChange={setFilters} uploadName={filters.upload ? fileNameIn(events) : null} />
+        </div>
+      </CardHeader>
 
-        {/* Refresh failed but we still have events: keep showing them, and say they may be out of date. */}
-        {isError && events && (
-          <p role="status" className={cn('border-b px-5 py-2 text-sm', TONE_CLASSES.warning)}>
-            Couldn't refresh the log, so recent events may be missing. {errorMessage(error)}
-          </p>
-        )}
+      {/* Refresh failed but we still have events: keep showing them, and say they may be out of date. */}
+      {isError && events && (
+        <p role="status" className={cn('border-b px-5 py-2 text-sm', TONE_CLASSES.warning)}>
+          Couldn't refresh the log, so recent events may be missing. {errorMessage(error)}
+        </p>
+      )}
 
-        {/* Every row has a line beneath it, so each day's heading is ruled above and below. Only the
-            very last row goes without: the card's edge, or "Load older events", follows it. */}
-        {/* While a new search or filter loads, the last results stay, faded, rather than blinking out. */}
-        {days.map((day) => (
-          <section
-            key={day.key}
-            aria-label={day.label}
-            aria-busy={isPlaceholderData || undefined}
-            className={cn('transition-opacity last-of-type:[&_li:last-child]:border-b-0', isPlaceholderData && 'opacity-60')}
-          >
-            <h3 className="border-b border-border/70 bg-muted/40 px-5 py-1.5 text-xs font-semibold text-muted-foreground">
-              {day.label}
-            </h3>
-            <ul>
-              {day.events.map((event) => (
-                <LogEventRow key={event.id} event={event} />
-              ))}
-            </ul>
-          </section>
-        ))}
+      {/* Every row has a line beneath it, so each day's heading is ruled above and below. Only the
+          very last row goes without: the card's edge, or "Load older events", follows it. */}
+      {/* While a new search or filter loads, the last results stay, faded, rather than blinking out. */}
+      {days.map((day) => (
+        <section
+          key={day.key}
+          aria-label={day.label}
+          aria-busy={isPlaceholderData || undefined}
+          className={cn('transition-opacity last-of-type:[&_li:last-child]:border-b-0', isPlaceholderData && 'opacity-60')}
+        >
+          <h3 className="border-b border-border/70 bg-muted/40 px-5 py-1.5 text-xs font-semibold text-muted-foreground">
+            {day.label}
+          </h3>
+          <ul>
+            {day.events.map((event) => (
+              <LogEventRow key={event.id} event={event} />
+            ))}
+          </ul>
+        </section>
+      ))}
 
-        {log.hasNextPage && (
-          <div className="border-t border-border/70 p-3 text-center">
-            <Button variant="ghost" size="sm" onClick={() => void log.fetchNextPage()} loading={log.isFetchingNextPage}>
-              Load older events
-            </Button>
-          </div>
-        )}
+      {log.hasNextPage && (
+        <div className="border-t border-border/70 p-3 text-center">
+          <Button variant="ghost" size="sm" onClick={() => void log.fetchNextPage()} loading={log.isFetchingNextPage}>
+            Load older events
+          </Button>
+        </div>
+      )}
 
-        {isPending && <LogSkeleton />}
+      {isPending && <LogSkeleton />}
 
-        {isError && !events && (
-          <div className="p-4">
-            <InlineError title="Couldn't load the activity log" message={errorMessage(error)} onRetry={() => void refetch()} retrying={isRefetching} />
-          </div>
-        )}
+      {isError && !events && (
+        <div className="p-4">
+          <InlineError title="Couldn't load the activity log" message={errorMessage(error)} onRetry={() => void refetch()} retrying={isRefetching} />
+        </div>
+      )}
 
-        {events?.length === 0 && <EmptyState filters={filters} onClearFilters={() => setFilters(NO_LOG_FILTERS)} />}
-      </Card>
-    </div>
+      {events?.length === 0 && <EmptyState filters={filters} onClearFilters={() => setFilters(NO_LOG_FILTERS)} />}
+    </Card>
   );
 }
 

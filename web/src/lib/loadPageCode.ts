@@ -11,9 +11,8 @@ interface Options {
 
 /**
  * Loads a page's code, which is split out of the main bundle and fetched on first visit (the
- * System status page, the Activity log). After a deploy, a tab opened before it still asks for the
- * old build's files, which are gone, so the load fails. Rather than crash, the page reloads, which
- * fetches the new build. Only once: if the load fails again right after that reload, the file is
+ * System page). After a deploy, a tab opened before it still asks for the old build's files, which
+ * are gone, so the load fails. Rather than crash, the page reloads, which fetches the new build. Only once: if the load fails again right after that reload, the file is
  * really missing (or the network is down), and the error is let through instead of looping.
  */
 export async function loadPageCode<Code>(load: () => Promise<Code>, options: Options = {}): Promise<Code> {

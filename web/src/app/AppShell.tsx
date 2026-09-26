@@ -5,7 +5,7 @@ import { useLiveUpdates } from '@/api/useLiveUpdates';
 import { Separator } from '@/components/ui/separator';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { FileUploadsProvider } from '@/features/upload/FileUploadsProvider';
-import { LOGS_PATH, STATUS_PATH, uploadPath } from '@/routes';
+import { SYSTEM_PATH, uploadPath } from '@/routes';
 import { AppSidebar } from './AppSidebar';
 
 /**
@@ -38,13 +38,9 @@ export function AppShell() {
   );
 }
 
-/** The top bar's title on the System pages. Everywhere else is the label extraction feature. */
+/** The top bar's title on the System page. Everywhere else is the label extraction feature. */
 function useSystemPageTitle(): string | null {
-  const onStatusPage = useMatch(STATUS_PATH) !== null;
-  const onLogsPage = useMatch(LOGS_PATH) !== null;
-  if (onStatusPage) return 'System status';
-  if (onLogsPage) return 'Activity log';
-  return null;
+  return useMatch(SYSTEM_PATH) !== null ? 'System' : null;
 }
 
 function TopBar() {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, matchPath, useLocation } from 'react-router';
-import { Activity, ChevronsUpDown, Files, LogOut, ScanText, ScrollText, type LucideIcon } from 'lucide-react';
+import { Activity, ChevronsUpDown, Files, LogOut, ScanText, type LucideIcon } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -26,14 +26,13 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { loadLogsPage } from '@/features/logs/loadLogsPage';
-import { loadSystemStatusPage } from '@/features/system-status/loadSystemStatusPage';
+import { loadSystemPage } from '@/features/system/loadSystemPage';
 import { useFileUploadsContext } from '@/features/upload/FileUploadsProvider';
-import { HOME_PATH, LOGS_PATH, STATUS_PATH, UPLOAD_PATH_PATTERN } from '@/routes';
+import { HOME_PATH, SYSTEM_PATH, UPLOAD_PATH_PATTERN } from '@/routes';
 
 /**
  * The app shell's dark sidebar, following the SupplyScope product layout. It holds destinations
- * only (Uploads for everyone; System status and the activity log for admins), then who is signed
+ * only (Uploads for everyone; the System page, status and activity log, for admins), then who is signed
  * in. Filtering the upload list is not a destination, so its status tabs live in the list itself.
  */
 export function AppSidebar() {
@@ -73,14 +72,7 @@ export function AppSidebar() {
             <SidebarGroupLabel className="text-sidebar-foreground/60">System</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu className="gap-1">
-                <NavItem
-                  to={STATUS_PATH}
-                  icon={Activity}
-                  label="System status"
-                  active={pathname === STATUS_PATH}
-                  preload={loadSystemStatusPage}
-                />
-                <NavItem to={LOGS_PATH} icon={ScrollText} label="Activity log" active={pathname === LOGS_PATH} preload={loadLogsPage} />
+                <NavItem to={SYSTEM_PATH} icon={Activity} label="Status & activity" active={pathname === SYSTEM_PATH} preload={loadSystemPage} />
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

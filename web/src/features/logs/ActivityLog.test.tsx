@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ListLogsResponse, LogEvent } from '@label-extractor/shared';
 import { jsonResponse, renderWithProviders } from '@/test/render';
-import { LogsPage } from './LogsPage.tsx';
+import { ActivityLog } from './ActivityLog.tsx';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -48,9 +48,9 @@ function stubRoutes(responses: Record<string, unknown>): string[] {
   return requested;
 }
 
-const renderPage = (url = '/logs') => renderWithProviders(<LogsPage />, { url });
+const renderPage = (url = '/system') => renderWithProviders(<ActivityLog />, { url });
 
-describe('LogsPage', () => {
+describe('ActivityLog', () => {
   it('shows events newest first under their day, with warnings and errors marked', async () => {
     stubLogs({
       events: [
@@ -132,7 +132,7 @@ describe('LogsPage', () => {
 
   it('filters by the days in the URL, asking for the viewer’s own midnights', async () => {
     const requested = stubLogs({ events: [], nextCursor: null });
-    renderPage('/logs?from=2026-09-01&to=2026-09-26');
+    renderPage('/system?from=2026-09-01&to=2026-09-26');
 
     expect(await screen.findByRole('button', { name: 'Dates: Sep 1 – Sep 26' })).toBeInTheDocument();
     const params = new URLSearchParams({ from: new Date(2026, 8, 1).toISOString(), to: new Date(2026, 8, 27).toISOString() });
@@ -171,7 +171,7 @@ describe('LogsPage', () => {
       { events: [event({ id: '2', message: 'Reading rice.pdf.' }), event({ id: '1', message: 'Reading oat-milk.png.' })], nextCursor: null },
       { events: [event({ id: '1', message: 'Reading oat-milk.png.' })], nextCursor: null },
     );
-    renderPage('/logs?type=extraction.started');
+    renderPage('/system?type=extraction.started');
     await screen.findByText('Reading rice.pdf.');
 
     await user.type(screen.getByRole('searchbox', { name: 'Search the activity log' }), ' oat milk ');
@@ -186,7 +186,7 @@ describe('LogsPage', () => {
   it('says when nothing mentions the search, and clears it along with the filters', async () => {
     const user = userEvent.setup();
     const requested = stubLogs({ events: [], nextCursor: null });
-    renderPage('/logs?q=barley');
+    renderPage('/system?q=barley');
 
     expect(await screen.findByText('No events mention “barley”')).toBeInTheDocument();
     expect(screen.getByRole('searchbox', { name: 'Search the activity log' })).toHaveValue('barley');
@@ -201,7 +201,7 @@ describe('LogsPage', () => {
   it('applies the filters in the URL, naming the upload, and can drop the upload filter', async () => {
     const user = userEvent.setup();
     const requested = stubLogs({ events: [event({ id: '1', type: 'extraction.failed', level: 'error', message: 'oat-milk.png failed.' })], nextCursor: null });
-    renderPage(`/logs?type=extraction.failed&upload=${UPLOAD}`);
+    renderPage(`/system?type=extraction.failed&upload=${UPLOAD}`);
 
     expect(await screen.findByRole('link', { name: 'oat-milk.png' })).toHaveAttribute('href', `/uploads/${UPLOAD}`);
     expect(screen.getByRole('button', { name: 'Show extraction failed' })).toBeInTheDocument();
@@ -231,7 +231,7 @@ describe('LogsPage', () => {
   it('offers to clear the filters when nothing matches them', async () => {
     const user = userEvent.setup();
     const requested = stubLogs({ events: [], nextCursor: null });
-    renderPage('/logs?type=extraction.failed');
+    renderPage('/system?type=extraction.failed');
 
     expect(await screen.findByText('No events match these filters')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Show every event' }));
@@ -242,7 +242,7 @@ describe('LogsPage', () => {
 
   it('explains an upload with no history', async () => {
     stubLogs({ events: [], nextCursor: null });
-    renderPage(`/logs?upload=${UPLOAD}`);
+    renderPage(`/system?upload=${UPLOAD}`);
 
     expect(await screen.findByText('Nothing recorded for this upload')).toBeInTheDocument();
     expect(screen.getByText(/uploads from before the activity log existed have none/)).toBeInTheDocument();

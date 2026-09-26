@@ -63,7 +63,7 @@ export const eventDetailsKeys = {
 /** How often the activity log polls when the live update stream is down (it's live otherwise). */
 const LOG_POLL_INTERVAL_MS = 10_000;
 
-/** How often the System status page refreshes. */
+/** How often the System page's status strip refreshes. */
 export const OPS_REFRESH_MS = 15_000;
 
 /** Refetches every upload query: lists and details. For when changes may have been missed. */
@@ -266,7 +266,7 @@ export function useEventDetails(source: EventDetailsSource, eventId: string, ena
   });
 }
 
-/** Everything on the System status page. Refreshes on a timer: monitoring data changes by the minute. */
+/** The System page's status strip. Refreshes on a timer: monitoring data changes by the minute. */
 export function useOpsStatus() {
   return useQuery({
     queryKey: opsKeys.all,

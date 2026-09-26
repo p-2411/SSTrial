@@ -9,11 +9,11 @@ export const SIGN_IN_PATH = '/sign-in';
 /** The upload list (the home page). */
 export const HOME_PATH = '/';
 
-/** System status: the queue, the worker, health checks and throughput. */
-export const STATUS_PATH = '/status';
+/** The System page: how the system is running, and the activity log. Admins only. */
+export const SYSTEM_PATH = '/system';
 
-/** The activity log: what happened to each upload and to the system. */
-export const LOGS_PATH = '/logs';
+/** Where System status and the activity log used to be: they lead to the System page now. */
+export const FORMER_SYSTEM_PATHS = ['/status', '/logs'];
 
 /** One upload open in a panel beside the list; the pattern the router and useMatch use. */
 export const UPLOAD_PATH_PATTERN = '/uploads/:id';

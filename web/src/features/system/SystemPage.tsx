@@ -1,46 +1,32 @@
-import type { OpsStatusResponse } from '@label-extractor/shared';
 import { errorMessage } from '@/api/client';
 import { OPS_REFRESH_MS, useOpsStatus } from '@/api/queries';
 import { InlineError } from '@/components/InlineError';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ActivityLog } from '@/features/logs/ActivityLog';
 import { useNow } from '@/lib/useNow';
-import { HealthChecksCard } from './HealthChecksCard';
-import { Last24HoursCard } from './Last24HoursCard';
-import { QueueStats } from './QueueStats';
+import { StatusStrip } from './StatusStrip';
 
 /**
- * Route: /status — is the system healthy, and is work flowing? Everything comes from GET /api/ops,
- * refreshed every OPS_REFRESH_MS. What went wrong, and when, is on the activity log instead, which
- * can be searched and filtered.
+ * Route: /system — how the system is running, for admins: the status strip on top (from GET
+ * /api/ops, refreshed every OPS_REFRESH_MS), then the activity log, for what happened and why.
  */
-export function SystemStatusPage() {
+export function SystemPage() {
   const { data, isPending, isError, error, refetch, isRefetching } = useOpsStatus();
+  // Relative times ("2 minutes ago") move on at the same pace as the data.
+  const now = useNow(OPS_REFRESH_MS);
 
   return (
     // A <div>, not <main>: the app shell's SidebarInset is already the page's <main>. The
     // scrollbar's space is reserved so the page doesn't shift as its height changes.
     <div className="min-h-0 flex-1 overflow-y-auto p-6 [scrollbar-gutter:stable_both-edges]">
-      <div className="mx-auto grid max-w-5xl gap-5">
-        {isPending && <Skeleton className="h-96 w-full rounded-xl" />}
+      <div className="mx-auto grid max-w-5xl gap-4">
+        {isPending && <Skeleton aria-label="Loading the system status" className="h-[5.25rem] w-full rounded-xl" />}
         {isError && !data && (
           <InlineError title="Couldn't load the system status" message={errorMessage(error)} onRetry={() => void refetch()} retrying={isRefetching} />
         )}
-        {data && <Status data={data} />}
+        {data && <StatusStrip status={data} now={now} />}
+        <ActivityLog />
       </div>
     </div>
-  );
-}
-
-function Status({ data }: { data: OpsStatusResponse }) {
-  // Relative times ("2 minutes ago") move on at the same pace as the data.
-  const now = useNow(OPS_REFRESH_MS);
-  return (
-    <>
-      <QueueStats queue={data.queue} worker={data.worker} now={now} />
-      <div className="grid grid-cols-2 gap-4">
-        <HealthChecksCard checks={data.health.checks} />
-        <Last24HoursCard last24h={data.last24h} />
-      </div>
-    </>
   );
 }

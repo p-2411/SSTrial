@@ -2,7 +2,7 @@ import { screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { OpsStatusResponse } from '@label-extractor/shared';
 import { jsonResponse, renderWithProviders } from '@/test/render';
-import { SystemStatusPage } from './SystemStatusPage.tsx';
+import { SystemPage } from './SystemPage.tsx';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -14,35 +14,52 @@ const healthy: OpsStatusResponse = {
   last24h: { completed: 40, failed: 2, failureRate: 2 / 42, medianSecondsToResult: 7 },
 };
 
+/** Answers the status with `status`, and the activity log with nothing. */
 function renderWith(status: OpsStatusResponse) {
-  vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(status)));
-  renderWithProviders(<SystemStatusPage />);
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => (url.startsWith('/api/ops') ? jsonResponse(status) : jsonResponse({ events: [], nextCursor: null }))),
+  );
+  renderWithProviders(<SystemPage />, { url: '/system' });
 }
 
-/** The number on one of the queue's cards. */
-const stat = (label: string) => within(screen.getByText(label).parentElement!).getAllByText(/./)[1]!.textContent;
+/** A figure on the status strip, by its label. */
+const stat = (label: string) => within(screen.getByRole('region', { name: 'System status' })).getByText(label).parentElement!;
 
-describe('SystemStatusPage', () => {
-  it('shows the queue, the worker, health checks and the last 24 hours', async () => {
+describe('SystemPage', () => {
+  it('shows how work is flowing on one strip, above the activity log', async () => {
     renderWith(healthy);
 
-    expect(await screen.findByText('Running')).toBeInTheDocument();
-    expect(stat('Waiting')).toBe('3');
-    expect(stat('Retrying')).toBe('1');
-    expect(stat('Processing')).toBe('2');
-    expect(screen.getByText('database')).toBeInTheDocument(); // capitalised by CSS
-    expect(screen.getByText('5%')).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: 'System status' })).toBeInTheDocument();
+    expect(stat('Waiting')).toHaveTextContent('3');
+    expect(stat('Retrying')).toHaveTextContent('1');
+    expect(stat('Processing')).toHaveTextContent('2');
+    expect(stat('Label reading')).toHaveTextContent('Running');
+    expect(stat('Read (24h)')).toHaveTextContent('40');
+    expect(stat('Failed (24h)')).toHaveTextContent('5% of reads');
+    expect(stat('Typical time')).toHaveTextContent('7s');
+    expect(screen.getByRole('region', { name: 'Activity log' })).toBeInTheDocument();
   });
 
-  it('names a failing check, and says when the worker has gone quiet', async () => {
+  it("sums the system's checks up as All OK, with each check's detail on hover", async () => {
+    renderWith(healthy);
+
+    const checks = (await screen.findByText('Systems')).parentElement!;
+    expect(checks).toHaveTextContent('All OK');
+    expect(checks).toHaveAttribute('title', 'Database: OK, 3 ms\nQueue: OK, 4 ms');
+  });
+
+  it('names a failing check, and says when labels have stopped being read', async () => {
     renderWith({
       ...healthy,
       health: { status: 'unhealthy', checks: { database: { status: 'error', latencyMs: 3000, error: 'Timed out after 3000ms' } } },
       worker: { lastSeenAt: null, healthy: false },
     });
 
-    expect(await screen.findByText('Timed out after 3000ms')).toBeInTheDocument();
-    expect(screen.getByText('Not reporting')).toBeInTheDocument();
-    expect(screen.getByText('Never seen')).toBeInTheDocument();
+    const checks = (await screen.findByText('Systems')).parentElement!;
+    expect(checks).toHaveTextContent('Database down');
+    expect(checks).toHaveTextContent('Timed out after 3000ms');
+    expect(stat('Label reading')).toHaveTextContent('Stopped');
+    expect(stat('Label reading')).toHaveTextContent('Never seen');
   });
 });
