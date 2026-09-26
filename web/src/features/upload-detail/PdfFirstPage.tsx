@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PDFDocumentLoadingTask } from 'pdfjs-dist';
-import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { PreviewPlaceholder } from './PreviewPlaceholder';
 
 /** Pixel width to render the page at; CSS scales it down to the card, so it stays sharp on high-DPI screens. */
 const RENDER_WIDTH = 1600;
@@ -53,7 +53,7 @@ export function PdfFirstPage({ url, fileName, onError }: { url: string; fileName
 
   return (
     <>
-      {!ready && <Skeleton className="aspect-[3/4] w-full rounded-none" aria-label="Loading preview" />}
+      {!ready && <PreviewPlaceholder className="aspect-[3/4]" />}
       <canvas
         ref={canvasRef}
         role="img"

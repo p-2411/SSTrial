@@ -4,12 +4,15 @@ import type { UploadDetail } from '@label-extractor/shared';
 import { FileTypeTag } from '@/components/FileTypeTile';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 import { PdfFirstPage } from './PdfFirstPage';
+import { PreviewPlaceholder } from './PreviewPlaceholder';
 
 /**
  * The original file, so the user can check the extraction against the real label: a white header
  * bar with the file type and an "open in new tab" button, and the preview filling the card below.
- * Images show as they are; PDFs show their first page, drawn as an image.
+ * Images show as they are; PDFs show their first page, drawn as an image. Until either has loaded,
+ * a grey placeholder with a spinner holds its place, so the card appears whole from the start.
  *
  * The API issues a fresh signed URL on every poll; keeping the first one stops the preview
  * re-downloading every two seconds while the upload is processing.
@@ -39,8 +42,29 @@ export function SourceDocumentCard({ upload }: { upload: UploadDetail }) {
       ) : upload.mimeType === 'application/pdf' ? (
         <PdfFirstPage url={url} fileName={upload.fileName} onError={markFailed} />
       ) : (
-        <img className="block h-auto w-full" src={url} alt={`Original label: ${upload.fileName}`} onError={markFailed} />
+        <LabelImage url={url} fileName={upload.fileName} onError={markFailed} />
       )}
     </Card>
+  );
+}
+
+/** The label photo, shown once it has loaded; the placeholder stands in until then. */
+function LabelImage({ url, fileName, onError }: { url: string; fileName: string; onError: () => void }) {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <>
+      {!loaded && <PreviewPlaceholder className="aspect-[4/3]" />}
+      <img
+        // An image already in the browser's cache can finish before React listens for "load".
+        ref={(image) => {
+          if (image?.complete && image.naturalWidth > 0) setLoaded(true);
+        }}
+        className={cn('block h-auto w-full', !loaded && 'hidden')}
+        src={url}
+        alt={`Original label: ${fileName}`}
+        onLoad={() => setLoaded(true)}
+        onError={onError}
+      />
+    </>
   );
 }
