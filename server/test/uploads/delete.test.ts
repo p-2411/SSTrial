@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { UploadStatus } from '@label-extractor/shared';
 import { deleteUpload } from '../../src/uploads/delete.ts';
+import type { UploadRecord } from '../../src/uploads/store.ts';
 import { ADMIN, FILE_BYTES, InMemoryEventStore, InMemoryStorage, InMemoryUploadStore, MEMBER, SAMPLE_EXTRACTION } from '../fakes.ts';
 
 const ID = '4d1e7e7e-0000-4000-8000-000000000001';
@@ -16,7 +17,7 @@ beforeEach(() => {
   events = new InMemoryEventStore();
 });
 
-function seed(overrides: { status?: UploadStatus; uploadedBy?: string | null } = {}) {
+function seed(overrides: Partial<Pick<UploadRecord, 'status' | 'uploadedBy' | 'result' | 'error'>> = {}) {
   const upload = uploads.seed({ id: ID, status: 'completed', result: SAMPLE_EXTRACTION, fileName: 'label.png', uploadedBy: MEMBER.id, ...overrides });
   storage.put(upload.storagePath, FILE_BYTES.png);
   return upload;
@@ -25,7 +26,7 @@ function seed(overrides: { status?: UploadStatus; uploadedBy?: string | null } =
 const remove = (person = MEMBER) => deleteUpload({ uploads, storage, events }, ID, person);
 
 describe('deleteUpload', () => {
-  it('deletes the file and the upload, and records who deleted it', async () => {
+  it('deletes the product and its file, and records who deleted what', async () => {
     const upload = seed();
 
     await expect(remove()).resolves.toMatchObject({ outcome: 'deleted' });
@@ -34,9 +35,19 @@ describe('deleteUpload', () => {
     expect(events.events.at(-1)).toMatchObject({
       type: 'upload.deleted',
       uploadId: ID,
-      message: 'member@example.com deleted label.png.',
-      data: { fileName: 'label.png', by: 'member@example.com' },
+      message: `member@example.com deleted ${SAMPLE_EXTRACTION.productName} (label.png).`,
+      // The product's data stays in the log once it's gone.
+      data: { fileName: 'label.png', by: 'member@example.com', product: SAMPLE_EXTRACTION },
     });
+  });
+
+  it('names just the file for an upload that was never read', async () => {
+    seed({ status: 'failed', result: null, error: { code: 'LLM_TIMEOUT' } });
+
+    await remove();
+
+    expect(events.events.at(-1)).toMatchObject({ message: 'member@example.com deleted label.png.' });
+    expect(events.events.at(-1)!.data).not.toHaveProperty('product');
   });
 
   it("lets an admin delete anyone's upload, but not another member", async () => {

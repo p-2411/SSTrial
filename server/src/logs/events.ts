@@ -26,6 +26,12 @@ function aboutUpload(upload: UploadRef) {
   return { uploadId: upload.id, data: { fileName: upload.fileName } };
 }
 
+/** An upload by what it is: its product and file ("Maple Pecan Crunch (granola.png)") once read, else its file. */
+function named(upload: UploadRef & Pick<UploadRecord, 'result'>): string {
+  const product = upload.result?.productName;
+  return product ? `${product} (${upload.fileName})` : upload.fileName;
+}
+
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
 const attemptOf = (attempt: number) => `attempt ${attempt} of ${RETRY_POLICY.maxAttempts}`;
 const fileTypeLabel = (mimeType: SupportedMimeType) => SUPPORTED_FILE_TYPES[mimeType].label;
@@ -138,22 +144,25 @@ export const logEvents = {
 
   uploadSubmitted(upload: UploadRef & Pick<UploadRecord, 'result'>, by: string): NewLogEvent {
     const base = aboutUpload(upload);
-    const product = upload.result?.productName;
     return {
       ...base,
       type: 'upload.submitted',
-      message: `${by} added ${product ? `${product} (${upload.fileName})` : upload.fileName} to Products.`,
+      message: `${by} added ${named(upload)} to Products.`,
       data: { ...base.data, by },
     };
   },
 
-  uploadDeleted(upload: UploadRef, by: string): NewLogEvent {
+  /**
+   * A product deleted, its file with it (or an upload that was never read, just its file). The
+   * product's data goes into the event, so what was deleted can still be seen once it's gone.
+   */
+  uploadDeleted(upload: UploadRef & Pick<UploadRecord, 'result'>, by: string): NewLogEvent {
     const base = aboutUpload(upload);
     return {
       ...base,
       type: 'upload.deleted',
-      message: `${by} deleted ${upload.fileName}.`,
-      data: { ...base.data, by },
+      message: `${by} deleted ${named(upload)}.`,
+      data: { ...base.data, by, ...(upload.result && { product: upload.result }) },
     };
   },
 

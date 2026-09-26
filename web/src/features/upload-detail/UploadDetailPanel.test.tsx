@@ -184,20 +184,21 @@ describe('UploadDetailPanel', () => {
     it('is offered only to those who may delete the upload', async () => {
       renderAt('/uploads/abc');
       await screen.findByRole('complementary', { name: 'Maple Pecan Crunch' });
-      expect(screen.queryByRole('button', { name: 'Delete upload' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Delete product' })).not.toBeInTheDocument();
 
       await userEvent.click(screen.getByRole('link', { name: 'Open oat milk' }));
       await screen.findByRole('complementary', { name: 'Barista Oat Milk' });
-      expect(screen.queryByRole('button', { name: 'Delete upload' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Delete product' })).not.toBeInTheDocument();
     });
 
     it('asks first, then deletes and closes the panel, keeping the status filter', async () => {
       renderAt('/uploads/mine?status=completed');
       await screen.findByRole('complementary', { name: 'My Crackers' });
 
-      await userEvent.click(screen.getByRole('button', { name: 'Delete upload' }));
-      const dialog = screen.getByRole('alertdialog', { name: 'Delete my-label.png?' });
-      expect(dialog).toHaveTextContent('removed for good');
+      await userEvent.click(screen.getByRole('button', { name: 'Delete product' }));
+      const dialog = screen.getByRole('alertdialog', { name: 'Delete My Crackers?' });
+      // The product is what's deleted; its file goes with it.
+      expect(dialog).toHaveTextContent('Its data and its file, my-label.png, are removed for good');
       expect(deleteCalls()).toHaveLength(0);
 
       await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
@@ -210,7 +211,7 @@ describe('UploadDetailPanel', () => {
       renderAt('/uploads/mine');
       await screen.findByRole('complementary', { name: 'My Crackers' });
 
-      await userEvent.click(screen.getByRole('button', { name: 'Delete upload' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Delete product' }));
       await userEvent.click(screen.getByRole('button', { name: 'Keep it' }));
 
       expect(deleteCalls()).toHaveLength(0);
@@ -224,8 +225,8 @@ describe('UploadDetailPanel', () => {
       renderAt('/uploads/mine');
       await screen.findByRole('complementary', { name: 'My Crackers' });
 
-      await userEvent.click(screen.getByRole('button', { name: 'Delete upload' }));
-      const dialog = screen.getByRole('alertdialog', { name: 'Delete my-label.png?' });
+      await userEvent.click(screen.getByRole('button', { name: 'Delete product' }));
+      const dialog = screen.getByRole('alertdialog', { name: 'Delete My Crackers?' });
       await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
       expect(await within(dialog).findByRole('alert')).toHaveTextContent('Only the person who uploaded this, or an admin, can delete it.');

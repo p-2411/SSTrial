@@ -18,20 +18,23 @@ import { Button } from '@/components/ui/button';
 import { useCloseDetail } from './UploadDetailPanel';
 
 /**
- * Deleting the upload, offered to whoever may (its uploader or an admin: the server says, as
- * `canDelete`). It can't be undone, so it asks first, in a dialog that stays open until the delete
- * is done, or says why it was refused. Then the panel closes.
+ * Deleting the product, its file with it (or, for an upload that was never read, just the file),
+ * offered to whoever may (its uploader or an admin: the server says, as `canDelete`). It can't be
+ * undone, so it asks first, in a dialog that stays open until the delete is done, or says why it
+ * was refused. Then the panel closes.
  */
-export function DeleteUpload({ upload }: { upload: Pick<UploadDetail, 'id' | 'fileName'> }) {
+export function DeleteUpload({ upload }: { upload: Pick<UploadDetail, 'id' | 'fileName' | 'result'> }) {
   const remove = useDeleteUpload();
   const close = useCloseDetail();
   const [open, setOpen] = useState(false);
+  const product = upload.result?.productName ?? null;
+  const isProduct = upload.result !== null;
 
   const confirm = () =>
     remove.mutate(upload.id, {
       onSuccess: () => {
         setOpen(false);
-        toast(`Deleted ${upload.fileName}`);
+        toast(`Deleted ${product ?? upload.fileName}`);
         close();
       },
     });
@@ -48,14 +51,16 @@ export function DeleteUpload({ upload }: { upload: Pick<UploadDetail, 'id' | 'fi
             red fill on hover and focus says it's live. */}
         <Button variant="outline" className="w-full border-danger bg-transparent text-danger hover:bg-danger-soft hover:text-danger focus-visible:bg-danger-soft">
           <Trash2 data-icon="inline-start" aria-hidden />
-          Delete upload
+          {isProduct ? 'Delete product' : 'Delete upload'}
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete {upload.fileName}?</AlertDialogTitle>
+          <AlertDialogTitle>Delete {product ?? upload.fileName}?</AlertDialogTitle>
           <AlertDialogDescription>
-            Its file and extracted data are removed for good. The activity log keeps its history.
+            {isProduct
+              ? `Its data and its file, ${upload.fileName}, are removed for good. The activity log keeps its history.`
+              : 'Its file is removed for good. The activity log keeps its history.'}
           </AlertDialogDescription>
         </AlertDialogHeader>
         {remove.isError && (

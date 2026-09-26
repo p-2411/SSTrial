@@ -83,7 +83,7 @@ Any field can be corrected in place in the detail panel: the product name, brand
 
 ### Deleting
 
-Whoever uploaded a file, or any admin, can delete it from the detail panel, after confirming. The file and its extracted data go for good; the activity log keeps what happened to it, and who deleted it. Uploads from before sign-in have no uploader, so only admins can delete those. It works mid-extraction too: that attempt stands down once the upload is gone.
+Whoever uploaded a product, or any admin, can delete it from the detail panel (or several at once from Products), after confirming; its file goes with it. Both go for good, but the activity log keeps what happened to it, who deleted it, and the product's data (name, brand, ingredients and so on) in the event's details. Uploads from before sign-in have no uploader, so only admins can delete those. It works mid-extraction too: that attempt stands down once the upload is gone.
 
 ### Monitoring
 
