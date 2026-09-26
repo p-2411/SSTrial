@@ -4,9 +4,12 @@ Upload photos or PDFs of product labels; a background worker reads each one with
 
 ![The app: upload list on the left, extracted label data on the right](docs/screenshot.png)
 
+- **Live:** https://api-production-4ec2.up.railway.app (accounts are created by us: ask for a login).
+- **Run it locally:** [Running locally](#running-locally), about five commands. **Tests:** [Tests](#tests).
 - **Stack:** TypeScript end to end. React + Vite with Tailwind v4 and shadcn/ui (web), Fastify (API), pg-boss (Postgres-backed queue), Supabase (Postgres, Storage, Auth), OpenAI Responses API with structured outputs.
 - **Look and feel:** built on the same UI stack as the SupplyScope app (Tailwind v4, shadcn/ui on Radix, Lucide icons, Sonner toasts) and styled with SupplyScope's brand. See [DECISIONS.md](DECISIONS.md#trade-offs).
 - **Design decisions** (queue choice, failure handling, 50k uploads, performance, trade-offs): [DECISIONS.md](DECISIONS.md)
+- **Frontend states** (loading, empty, error): [how every list handles them](#loading-empty-and-error-states).
 
 ## Topology
 
@@ -38,7 +41,6 @@ flowchart LR
   W -- "activity log events" --> PG
 ```
 
-**Live:** https://api-production-4ec2.up.railway.app
 
 | Piece | What runs it | In production |
 |---|---|---|
@@ -182,7 +184,9 @@ web/src/
 supabase/        Local config and the SQL migrations
 ```
 
-**Loading, empty and error states** work the same way on every list. A first load shows skeleton rows, and a new search keeps the last results up, faded, until its own arrive. An empty list says so and offers the way out ("No products match", with "Clear filters"); an empty Uploading or Review tab isn't shown. A first load that fails says why, with "Try again"; a failed refresh keeps what's shown and says it may be out of date; a failed "Load more" says so beside the button. A page that fails to render shows "Reload" and a way home, with the sidebar still there, and the detail panel fails on its own. Confirmations stay open, and say why, if the request fails.
+### Loading, empty and error states
+
+They work the same way on every list. A first load shows skeleton rows, and a new search keeps the last results up, faded, until its own arrive. An empty list says so and offers the way out ("No products match", with "Clear filters"); an empty Uploading or Review tab isn't shown. A first load that fails says why, with "Try again"; a failed refresh keeps what's shown and says it may be out of date; a failed "Load more" says so beside the button. A page that fails to render shows "Reload" and a way home, with the sidebar still there, and the detail panel fails on its own. Confirmations stay open, and say why, if the request fails.
 
 **Sizing.** Nothing grows wider than its container, however long a file or product name: every stack is a single column that can shrink (`grid-cols-1`), text in a flex row has `min-w-0` and truncates or wraps, and a word too long for its line breaks (`index.css`). Where a window is too narrow for the list and the detail panel side by side (`--container-side-by-side`), the panel covers the list, and the list behind it is hidden from the keyboard and screen readers until it closes. Your uploads' tabs and Products scroll past six and a half rows (`ScrollingList`).
 
