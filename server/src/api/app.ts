@@ -50,12 +50,15 @@ export async function buildApp(deps: AppDeps) {
   await app.register(logRoutes, deps);
 
   if (deps.webDistDir) {
-    // Serve the single-page app; any non-API path falls back to index.html for client routing.
+    // Serve the single-page app: its files, and index.html for its own page routes.
     await app.register(fastifyStatic, { root: path.resolve(deps.webDistDir), wildcard: false });
   }
 
   app.setNotFoundHandler((request, reply) => {
-    if (deps.webDistDir && request.method === 'GET' && !request.url.startsWith('/api/')) {
+    // Only page routes get the app, which routes them itself. A missing *file* is a 404: after a
+    // deploy, a tab opened earlier asks for the old build's chunks, and answering with the page's
+    // HTML made the browser's import of them fail, crashing the page (the app reloads instead).
+    if (deps.webDistDir && request.method === 'GET' && !request.url.startsWith('/api/') && isPageRoute(request.url)) {
       return reply.sendFile('index.html');
     }
     throw notFound('Route');
@@ -65,3 +68,8 @@ export async function buildApp(deps: AppDeps) {
 }
 
 export type App = Awaited<ReturnType<typeof buildApp>>;
+
+/** A path the web app routes itself (/status, /uploads/:id…): anything that isn't a file name. */
+function isPageRoute(url: string): boolean {
+  return path.extname(new URL(url, 'http://localhost').pathname) === '';
+}
