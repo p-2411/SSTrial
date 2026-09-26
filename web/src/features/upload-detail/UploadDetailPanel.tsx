@@ -11,8 +11,9 @@ import { usePanelResize } from './usePanelResize';
 /**
  * One upload's details in a panel beside the list. Opening it slides it in and narrows the list to
  * make room rather than covering it, so the list stays usable: clicking another row just swaps
- * what the panel shows. Where there isn't room for both (under 44rem: a narrow or split-screen
- * window), it covers the list instead, at full width, so neither is squeezed.
+ * what the panel shows. Where there isn't room for both (a narrow or split-screen window: see
+ * --container-side-by-side), it covers the list instead, at full width, so neither is squeezed (and
+ * the list behind is hidden: see UploadsPage).
  *
  * The URL drives it (see useOpenUploadId): closing it (the × or Esc) goes back to the list. Focus
  * follows it in and back out (see usePanelFocus). Its left edge can be dragged to widen it (see
@@ -64,7 +65,7 @@ export const UploadDetailPanel = memo(function UploadDetailPanel() {
       className={cn(
         'relative w-0 shrink-0 overflow-hidden border-l bg-background shadow-[-12px_0_24px_-16px_rgb(0_0_0/0.12)] data-[open=true]:w-(--panel-width)',
         // Too narrow for the list and the panel side by side: the panel covers the list.
-        '@max-[44rem]/uploads:absolute @max-[44rem]/uploads:inset-y-0 @max-[44rem]/uploads:right-0 @max-[44rem]/uploads:z-30 @max-[44rem]/uploads:data-[open=true]:w-full',
+        '@max-side-by-side/uploads:absolute @max-side-by-side/uploads:inset-y-0 @max-side-by-side/uploads:right-0 @max-side-by-side/uploads:z-30 @max-side-by-side/uploads:data-[open=true]:w-full',
         // Slides open and closed, but follows a drag directly.
         !resizing && 'transition-[width] duration-300 ease-out motion-reduce:transition-none',
         !open && 'border-transparent shadow-none',
@@ -81,7 +82,7 @@ export const UploadDetailPanel = memo(function UploadDetailPanel() {
             title="Drag to resize. Double-click to reset."
             {...handleProps}
             className={cn(
-              'absolute inset-y-0 left-0 z-20 w-1.5 cursor-col-resize transition-colors outline-none @max-[44rem]/uploads:hidden',
+              'absolute inset-y-0 left-0 z-20 w-1.5 cursor-col-resize transition-colors outline-none @max-side-by-side/uploads:hidden',
               'hover:bg-brand/30 focus-visible:bg-brand/40',
               resizing && 'bg-brand/40',
             )}
@@ -100,7 +101,7 @@ export const UploadDetailPanel = memo(function UploadDetailPanel() {
           {/* 12px at the bottom: the floating Submit button (SubmitToProducts) keeps that distance
               whether floating or at the end. Never a sideways scrollbar: in a narrow panel one
               showed up under everything, as extra space. */}
-          <div className="h-full w-(--panel-width) overflow-x-hidden overflow-y-auto px-6 pt-6 pb-3 [scrollbar-gutter:stable] @max-[44rem]/uploads:w-[100cqw]">
+          <div className="h-full w-(--panel-width) overflow-x-hidden overflow-y-auto px-6 pt-6 pb-3 [scrollbar-gutter:stable] @max-side-by-side/uploads:w-[100cqw]">
             {/* One upload failing to render breaks only this panel, and the next upload starts afresh. */}
             <ErrorBoundary key={shownId} fallback={(retry) => <DetailFailed onRetry={retry} titleRef={titleRef} />}>
               <UploadDetailView id={shownId} titleRef={titleRef} />

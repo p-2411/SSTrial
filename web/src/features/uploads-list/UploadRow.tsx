@@ -67,10 +67,10 @@ export const UploadRow = memo(function UploadRow({
   );
   return (
     // content-visibility: the browser skips laying out rows scrolled out of view, which keeps a long
-    // list (after several "Load more"s) cheap. The intrinsic size is roughly one row's height.
+    // list (after several "Load more"s) cheap. Its stand-in size is about one row's height (--upload-row-height).
     <li
       className={cn(
-        'group/row relative border-b border-border/70 [contain-intrinsic-size:auto_4.25rem] [content-visibility:auto] last:border-b-0',
+        'group/row relative border-b border-border/70 [contain-intrinsic-size:auto_var(--upload-row-height)] [content-visibility:auto] last:border-b-0',
         selected && 'bg-muted/50',
       )}
     >

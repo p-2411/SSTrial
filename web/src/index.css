@@ -20,6 +20,18 @@
    mode. Scoped to a `.dark` class that nothing sets, they never apply. */
 @custom-variant dark (&:is(.dark *));
 
+/* The uploads page's layout. Below this width its row can't hold the list and the detail panel side
+   by side, so the panel covers the list instead (see UploadDetailPanel): `@max-side-by-side/uploads:`. */
+@theme {
+  --container-side-by-side: 44rem;
+}
+
+/* About one upload row's height: a skipped row's stand-in (UploadRow) and the unit a list's height
+   is capped in (ScrollingList). */
+:root {
+  --upload-row-height: 4.25rem;
+}
+
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
