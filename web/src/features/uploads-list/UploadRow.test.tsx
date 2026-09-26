@@ -49,18 +49,18 @@ describe('UploadRow', () => {
 
   it('says how confident the extraction is, flagging a score that needs checking', () => {
     renderRow(summary({ confidence: 58 }));
-    const score = screen.getByText('58% confident');
+    const score = screen.getByText('58%');
     expect(score).toHaveClass('text-danger');
-    expect(score).toHaveTextContent('58% confident, low'); // what a screen reader hears
+    expect(score).toHaveTextContent('Confidence 58%, low'); // what a screen reader hears
   });
 
   it('keeps a confident score quiet', () => {
     renderRow(summary({ confidence: 92 }));
-    expect(screen.getByText('92% confident')).toHaveClass('text-muted-foreground');
+    expect(screen.getByText('92%')).toHaveClass('text-muted-foreground');
   });
 
   it('shows no confidence when there is none to show (never scored, or every field reviewed)', () => {
     renderRow(summary({ confidence: null }));
-    expect(screen.queryByText(/confident/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Confidence/)).not.toBeInTheDocument();
   });
 });

@@ -25,38 +25,25 @@ export function confidenceDotClass(score: number | null): string {
 }
 
 /**
- * A score: "95%", with what it means on hover. Where scores repeat (a field each), the page says
- * once that they're confidence; `spelledOut` says it on the score itself ("95% confident"), for
- * where it stands alone.
+ * A score, as just the number: "95%". What it is shows on hover, and is read out to screen readers
+ * ("Confidence 95%").
  */
-export function ConfidenceScore({
-  score,
-  spelledOut = false,
-  title = MEANING,
-  className,
-}: {
-  score: number;
-  spelledOut?: boolean;
-  title?: string;
-  className?: string;
-}) {
+export function ConfidenceScore({ score, title = MEANING, className }: { score: number; title?: string; className?: string }) {
   const band = BANDS[confidenceBand(score)];
   return (
     <span className={cn('shrink-0 text-xs whitespace-nowrap tabular-nums', band.text, className)} title={title}>
-      {!spelledOut && <span className="sr-only">Confidence </span>}
-      {score}%{spelledOut && ' confident'}
-      {band.spoken && <span className="sr-only">{band.spoken}</span>}
+      <span className="sr-only">Confidence </span>
+      {score}%{band.spoken && <span className="sr-only">{band.spoken}</span>}
     </span>
   );
 }
 
-/** How an upload's overall score is worked out, for its tooltip. */
-export const OVERALL_MEANING = `The least certain field nobody has checked yet. ${MEANING}`;
-
 /**
- * An upload's overall score in the list, where it stands alone: "72% confident". Nothing when
- * there's no score (never scored, or every field reviewed).
+ * An upload's overall score, beside its status (in the list and the detail's header): its least
+ * certain field nobody has checked yet. Nothing when there's no score (never scored, or every
+ * field reviewed).
  */
-export function UploadConfidence({ score }: { score: number | null }) {
-  return score === null ? null : <ConfidenceScore score={score} spelledOut title={OVERALL_MEANING} />;
+export function UploadConfidence({ score, className }: { score: number | null; className?: string }) {
+  if (score === null) return null;
+  return <ConfidenceScore score={score} title={`The least certain field nobody has checked yet. ${MEANING}`} className={className} />;
 }

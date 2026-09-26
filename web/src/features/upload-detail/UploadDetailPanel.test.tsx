@@ -126,15 +126,16 @@ describe('UploadDetailPanel', () => {
     expect(screen.getByTestId('url')).toHaveTextContent('/?status=completed');
   });
 
-  it("names the upload's overall confidence once, beside its other facts", async () => {
+  it("shows the upload's overall confidence beside its status, as just the number", async () => {
     renderAt('/uploads/abc');
     const panel = await screen.findByRole('complementary', { name: 'Maple Pecan Crunch' });
-    expect(within(panel).getByText('Confidence', { selector: 'dt' })).toBeInTheDocument();
-    expect(within(panel).getByText('72%')).toHaveClass('text-warning');
+    const score = within(panel).getByText('72%');
+    expect(score).toHaveClass('text-warning');
+    expect(score.parentElement).toContainElement(within(panel).getByText('Completed'));
 
     await userEvent.click(screen.getByRole('link', { name: 'Open oat milk' }));
     const unscored = await screen.findByRole('complementary', { name: 'Barista Oat Milk' });
-    expect(within(unscored).queryByText('Confidence', { selector: 'dt' })).not.toBeInTheDocument();
+    expect(within(unscored).queryByText(/Confidence/)).not.toBeInTheDocument();
   });
 
   describe('deleting', () => {

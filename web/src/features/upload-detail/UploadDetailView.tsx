@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { UploadDetail } from '@label-extractor/shared';
 import { ApiRequestError, errorMessage } from '@/api/client';
 import { useUploadDetail } from '@/api/queries';
-import { ConfidenceScore, OVERALL_MEANING } from '@/components/Confidence';
+import { UploadConfidence } from '@/components/Confidence';
 import { InlineError } from '@/components/InlineError';
 import { RelativeTime } from '@/components/RelativeTime';
 import { StatusPill } from '@/components/StatusPill';
@@ -77,7 +77,11 @@ function Detail({ upload }: { upload: UploadDetail }) {
           <h2 id={DETAIL_TITLE_ID} className="min-w-0 text-2xl font-semibold break-words">
             {productName ?? upload.fileName}
           </h2>
-          <StatusPill status={upload.status} className="mt-1.5 shrink-0" />
+          {/* The overall confidence qualifies the status, so it sits right beside it. */}
+          <div className="mt-1.5 flex shrink-0 items-center gap-2.5">
+            <StatusPill status={upload.status} />
+            <UploadConfidence score={upload.confidence} className="text-sm" />
+          </div>
         </div>
         {/* The facts on one row: a long file name truncates (full name in its tooltip) rather than
             wrapping. */}
@@ -99,12 +103,6 @@ function Detail({ upload }: { upload: UploadDetail }) {
             <RelativeTime iso={upload.createdAt} now={now} />
             {upload.uploadedBy && <span className="text-muted-foreground"> by {upload.uploadedBy}</span>}
           </Fact>
-          {/* The upload's overall score. The card below has each field's, under its Confidence heading. */}
-          {upload.confidence !== null && (
-            <Fact label="Confidence" className="shrink-0">
-              <ConfidenceScore score={upload.confidence} title={OVERALL_MEANING} className="text-sm" />
-            </Fact>
-          )}
         </dl>
       </header>
 
