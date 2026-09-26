@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { CheckCircle2, XCircle } from 'lucide-react';
-import type { HealthCheckResult, OpsStatusResponse } from '@label-extractor/shared';
+import { formatList, type HealthCheckResult, type OpsStatusResponse } from '@label-extractor/shared';
 import { Card } from '@/components/ui/card';
 import { formatDuration, formatOptional, formatRelativeTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -37,7 +37,10 @@ export function StatusStrip({ status, now }: { status: OpsStatusResponse; now: n
   );
 }
 
-/** The system's own checks as one figure: all OK, or which failed and why. Each check's detail on hover. */
+/**
+ * The system's own checks as one figure: all OK, or which failed, by name ("Database and queue
+ * down"), and why. Each check's detail on hover.
+ */
 function Checks({ checks }: { checks: Record<string, HealthCheckResult> }) {
   const failing = Object.entries(checks).filter(([, check]) => check.status !== 'ok');
   const detail = Object.entries(checks)
@@ -51,7 +54,7 @@ function Checks({ checks }: { checks: Record<string, HealthCheckResult> }) {
         // The circled tick or cross the checks each had on the old status page.
         <span className="inline-flex items-center gap-1.5">
           {ok ? <CheckCircle2 className="size-5" aria-hidden /> : <XCircle className="size-5" aria-hidden />}
-          {ok ? 'All OK' : failing.length === 1 ? `${capitalise(failing[0]![0])} down` : `${failing.length} down`}
+          {ok ? 'All OK' : `${capitalise(formatList(failing.map(([name]) => name), 'and'))} down`}
         </span>
       }
       tone={ok ? 'ok' : 'bad'}

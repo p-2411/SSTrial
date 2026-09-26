@@ -62,4 +62,19 @@ describe('SystemPage', () => {
     expect(stat('Label reading')).toHaveTextContent('Stopped');
     expect(stat('Label reading')).toHaveTextContent('Never seen');
   });
+
+  it('names every check that fails', async () => {
+    renderWith({
+      ...healthy,
+      health: {
+        status: 'unhealthy',
+        checks: {
+          database: { status: 'error', latencyMs: 3000, error: 'Timed out.' },
+          queue: { status: 'error', latencyMs: 3000, error: 'Refused.' },
+        },
+      },
+    });
+
+    expect((await screen.findByText('Systems')).parentElement!).toHaveTextContent('Database and queue down');
+  });
 });
