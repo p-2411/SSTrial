@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { useState, type KeyboardEvent, type ReactNode, type SubmitEvent } from 'react';
 import { Plus, X } from 'lucide-react';
 import {
   FIELD_LABELS,
@@ -65,7 +65,7 @@ function EditorForm({
   children,
 }: EditorFormState & { onSubmit: () => void; children: ReactNode }) {
   const canSave = !saving && !conflict;
-  const submit = (event: FormEvent) => {
+  const submit = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (canSave) onSubmit();
   };

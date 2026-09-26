@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type SubmitEvent } from 'react';
 import { Navigate, useLocation } from 'react-router';
 import { ScanText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -19,7 +19,7 @@ export function SignInPage() {
     return <Navigate to={from ?? HOME_PATH} replace />;
   }
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+  async function onSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     setPending(true);
