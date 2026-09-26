@@ -429,8 +429,17 @@ describe('GET /api/uploads/:id — detail', () => {
     expect(detail.confidence).toBe(60);
   });
 
-  it('has no scores for uploads extracted before scoring existed', async () => {
+  it('asks for every field to be checked on uploads extracted before scoring existed', async () => {
     uploads.seed({ id: ID, status: 'completed', result: SAMPLE_EXTRACTION });
+    const detail = (await app.inject({ method: 'GET', url: `/api/uploads/${ID}` })).json().upload;
+    expect(detail.confidence).toBe(60);
+    expect(Object.values(detail.fieldConfidence)).toEqual(
+      Array(5).fill({ score: 60, reasons: ['Not scored: check it against the label.'] }),
+    );
+  });
+
+  it('has no scores for an upload that is not read yet', async () => {
+    uploads.seed({ id: ID, status: 'processing', uploadedBy: ADMIN.id });
     const detail = (await app.inject({ method: 'GET', url: `/api/uploads/${ID}` })).json().upload;
     expect(detail).toMatchObject({ confidence: null, fieldConfidence: null });
   });

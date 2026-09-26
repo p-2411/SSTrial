@@ -39,6 +39,18 @@ export function needsChecking(score: number): boolean {
   return confidenceBand(score) !== 'ok';
 }
 
+/**
+ * The scores a reading that wasn't scored is checked against: one from before scoring existed, or
+ * whose scores couldn't be read. With nothing to say which fields are sound, every one is doubtful,
+ * so a person looks at each before it can go into Products, and the checks (applyConfidenceChecks)
+ * still add their reasons, a missing required field among them.
+ */
+export function unscoredConfidence(): ExtractionConfidence {
+  return Object.fromEntries(
+    LABEL_FIELDS.map((field) => [field, { score: DOUBTFUL_SCORE, reasons: ['Not scored: check it against the label.'] }]),
+  ) as ExtractionConfidence;
+}
+
 /** A field a person has checked, or corrected: as certain as it gets. */
 const REVIEWED_SCORE = 100;
 

@@ -64,8 +64,23 @@ describe('POST /api/uploads/submit', () => {
     expect((await post('submit', [MEDIUM])).json()).toEqual({ submitted: [MEDIUM] });
   });
 
-  it("submits one that wasn't scored: there's nothing flagged to check", async () => {
-    uploads.seed({ id: READY, status: 'completed', submittedAt: null, result: SAMPLE_EXTRACTION, confidence: null, uploadedBy: ADMIN.id });
+  it("holds back one that wasn't scored until every field is checked, missing required fields flagged as usual", async () => {
+    // Say its scores were saved in a shape this version can't read: they read as not scored.
+    const unscored = { ...SAMPLE_EXTRACTION, brand: null };
+    uploads.seed({ id: READY, status: 'completed', submittedAt: null, result: unscored, confidence: null, uploadedBy: ADMIN.id });
+
+    const [listed] = (await app.inject({ method: 'GET', url: '/api/uploads?view=review' })).json().uploads;
+    expect(listed.confidence).toBe(60);
+    const detail = (await app.inject({ method: 'GET', url: `/api/uploads/${READY}` })).json().upload;
+    expect(detail.fieldConfidence.brand).toEqual({
+      score: 60,
+      reasons: ['Not scored: check it against the label.', 'No brand was found, and every product needs one.'],
+    });
+    expect((await post('submit', [READY])).json()).toEqual({ submitted: [] });
+
+    // "Mark all as checked" confirms every field, as a person looking through it would.
+    expect((await post('check', [READY])).json()).toEqual({ checked: [READY] });
+    expect(Object.keys(uploads.get(READY).fieldReviews)).toHaveLength(5);
     expect((await post('submit', [READY])).json()).toEqual({ submitted: [READY] });
   });
 

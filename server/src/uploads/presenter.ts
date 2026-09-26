@@ -6,6 +6,7 @@ import {
   type CurrentMember,
   flaggedFields,
   overallConfidence,
+  unscoredConfidence,
   type ExtractionConfidence,
   type LabelField,
   type FieldReviews,
@@ -86,11 +87,13 @@ export function peopleIn(record: UploadRecord): string[] {
 
 /**
  * A completed upload's scores with the checks applied to its data as it is now, edits included, so
- * a flag never outlives the contradiction it was about (or misses one an edit introduced).
+ * a flag never outlives the contradiction it was about (or misses one an edit introduced). A reading
+ * that wasn't scored starts with every field doubtful (unscoredConfidence), so every gate that reads
+ * these (the list's score, what's flagged, whether it can be submitted) asks for it to be checked.
  */
 function checkedConfidence(record: UploadRecord): ExtractionConfidence | null {
-  if (record.status !== 'completed' || !record.result || !record.confidence) return null;
-  return applyConfidenceChecks(record.result, record.confidence);
+  if (record.status !== 'completed' || !record.result) return null;
+  return applyConfidenceChecks(record.result, record.confidence ?? unscoredConfidence());
 }
 
 function reviewedFields(reviews: StoredFieldReviews): LabelField[] {

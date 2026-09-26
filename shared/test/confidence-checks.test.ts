@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { applyConfidenceChecks, type ExtractionConfidence } from '../src/confidence.ts';
+import { applyConfidenceChecks, DOUBTFUL_SCORE, flaggedFields, unscoredConfidence, type ExtractionConfidence } from '../src/confidence.ts';
 import type { LabelExtraction } from '../src/extraction.ts';
-import type { LabelField } from '../src/fields.ts';
+import { LABEL_FIELDS, type LabelField } from '../src/fields.ts';
 
 const SAMPLE_EXTRACTION: LabelExtraction = {
   productName: 'Maple Pecan Crunch',
@@ -95,5 +95,18 @@ describe('applyConfidenceChecks', () => {
       score: 40,
       reasons: ['Partly hidden by a fold.', "The amount isn't in the printed net quantity."],
     });
+  });
+});
+
+describe('a reading that was not scored', () => {
+  it('has every field to check, and still says what the checks find', () => {
+    const checked = check({ brand: null }, unscoredConfidence());
+
+    for (const field of LABEL_FIELDS) {
+      expect(checked[field].score, field).toBe(DOUBTFUL_SCORE);
+      expect(checked[field].reasons, field).toContain('Not scored: check it against the label.');
+    }
+    expect(checked.brand.reasons).toContain('No brand was found, and every product needs one.');
+    expect(flaggedFields(checked, [])).toEqual(LABEL_FIELDS);
   });
 });
