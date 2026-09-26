@@ -6,7 +6,7 @@ import type { LogFilters } from '@/api/logs';
 import { useLogs } from '@/api/queries';
 import { InlineError } from '@/components/InlineError';
 import { Button } from '@/components/ui/button';
-import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TONE_CLASSES } from '@/lib/tone';
 import { useNow } from '@/lib/useNow';
@@ -39,9 +39,6 @@ export function LogsPage() {
           <CardTitle id="logs-heading" className="text-base font-semibold">
             Activity log
           </CardTitle>
-          <CardDescription>
-            What happened to each upload, and to the system, as it happens. Kept for {LOG_RETENTION_DAYS} days.
-          </CardDescription>
           <div className="col-span-full pt-1">
             <LogFilterBar filters={filters} onChange={setFilters} uploadName={filters.upload ? fileNameIn(events) : null} />
           </div>
@@ -54,8 +51,10 @@ export function LogsPage() {
           </p>
         )}
 
+        {/* Every row has a line beneath it, so each day's heading is ruled above and below. Only the
+            very last row goes without: the card's edge, or "Load older events", follows it. */}
         {days.map((day) => (
-          <section key={day.key} aria-label={day.label}>
+          <section key={day.key} aria-label={day.label} className="last-of-type:[&_li:last-child]:border-b-0">
             <h3 className="border-b border-border/70 bg-muted/40 px-5 py-1.5 text-xs font-semibold text-muted-foreground">
               {day.label}
             </h3>

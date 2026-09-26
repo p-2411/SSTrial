@@ -29,7 +29,7 @@ export function LogEventRow({ event }: { event: LogEvent }) {
   const hasDetails = Object.keys(event.data).length > 0;
 
   return (
-    <li className="border-b border-border/70 last:border-b-0">
+    <li className="border-b border-border/70">
       <Collapsible className="group/event grid grid-cols-[4.5rem_4.75rem_minmax(0,1fr)] items-baseline gap-x-3 px-5 py-2.5">
         <time
           dateTime={event.occurredAt}
