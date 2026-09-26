@@ -12,9 +12,13 @@ import { diffLines, fieldLines, foldUnchanged, type DiffLine } from './changeLin
 /**
  * How an action on an event reads: small, quiet text with its icon first, darkening and underlined on hover.
  * "Details" and a history's "Revert" share it, so they sit side by side as equals.
+ *
+ * Its label goes in a <span>, which sets the action's baseline (`self-baseline`), so the label sits on
+ * the same line as the event's message in the rows' baseline grids. Otherwise the icon, coming first
+ * and having no baseline of its own, did: its bottom edge sat on the line, lifting the label.
  */
 export const EVENT_ACTION_CLASS =
-  'inline-flex items-center gap-1 rounded-sm text-xs font-medium whitespace-nowrap text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none [&_svg]:size-3.5 [&_svg]:shrink-0';
+  'inline-flex items-center gap-1 rounded-sm text-xs font-medium whitespace-nowrap text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none [&>span]:self-baseline [&_svg]:size-3.5 [&_svg]:shrink-0';
 
 /**
  * "Details", beside or under an event in a list: opens its CollapsibleContent (which holds
@@ -25,7 +29,7 @@ export function EventDetailsTrigger() {
     <CollapsibleTrigger className={EVENT_ACTION_CLASS}>
       {/* Points right when collapsed, down when open. */}
       <ChevronRight className="transition-transform group-data-[state=open]/event:rotate-90" aria-hidden />
-      Details
+      <span>Details</span>
     </CollapsibleTrigger>
   );
 }

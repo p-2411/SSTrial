@@ -53,7 +53,7 @@ export function LogEventRow({ event }: { event: LogEvent }) {
           {uploadId && (
             <Link to={uploadPath(uploadId)} className={EVENT_ACTION_CLASS}>
               <ArrowUpRight aria-hidden />
-              View upload
+              <span>View upload</span>
             </Link>
           )}
         </span>

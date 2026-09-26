@@ -157,7 +157,7 @@ function HistoryEntry({ uploadId, entry, onRevert }: { uploadId: string; entry: 
         {onRevert ? (
           <button type="button" className={EVENT_ACTION_CLASS} onClick={onRevert}>
             <Undo2 aria-hidden />
-            Revert
+            <span>Revert</span>
           </button>
         ) : (
           <span />
