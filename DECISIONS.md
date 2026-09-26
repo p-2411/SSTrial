@@ -30,5 +30,6 @@ It also gives us, for free:
 
 - **Supabase Storage over S3 or R2.** One platform for database, queue and files was simpler. Storage sits behind an interface, so switching is one file. YAGNI.
 - **Confidence from the model, checked by code.** The model scores each field in the same call; extracting twice and comparing would measure doubt better, at double the cost. Its scores aren't calibrated, so plain checks lower any field the rest of the data contradicts, and people can mark fields as checked.
+- **One file, one product.** A product can't be built from several files, such as a pack's front and back. Adding many products in one batch is the more frequent and more valuable need, and a company most likely keeps each label as a single file already. Allowing both would make uploading harder for everyone, for a case that rarely comes up.
 - **SupplyScope's own UI stack** (Tailwind v4, shadcn/ui), so it feels like a SupplyScope product. Desktop only.
 - **Left out for now:** team management (accounts come from a script), CI, HEIC photos and rollback migrations. A label can occasionally be read twice if a worker loses the database mid-call; the claim token makes the second read harmless.
