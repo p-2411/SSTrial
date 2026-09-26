@@ -127,7 +127,7 @@ export const logEvents = {
   /** An admin put the data back to an earlier version (`to`); the result is saved as `versionId`. */
   uploadReverted(upload: UploadRef, revert: { by: string; to: UploadVersion; versionId: string }): NewLogEvent {
     const base = aboutUpload(upload);
-    const back = { extraction: "the AI's reading", review: 'how it was after an earlier review', revert: 'an earlier version' }[revert.to.source];
+    const back = { extraction: 'the original reading', review: 'how it was after an earlier review', revert: 'an earlier version' }[revert.to.source];
     return {
       ...base,
       type: 'upload.reverted',

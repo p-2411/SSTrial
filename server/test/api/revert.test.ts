@@ -8,7 +8,7 @@ let events: InMemoryEventStore;
 
 const ID = '5d9e2f3a-0000-4000-8000-000000000001';
 
-/** The AI's reading, saved as version 1 as the worker does when an upload completes, then submitted to Products. */
+/** The original reading, saved as version 1 as the worker does when an upload completes, then submitted to Products. */
 async function readByTheAi() {
   uploads.seed({ id: ID, status: 'processing', claimToken: 'claim' });
   await uploads.complete(ID, 'claim', SAMPLE_EXTRACTION, null);
@@ -36,7 +36,7 @@ describe('POST /api/uploads/:id/revert', () => {
     expect(response.json().upload).toMatchObject({ result: { brand: SAMPLE_EXTRACTION.brand }, fieldReviews: {}, revision: 2 });
     expect(events.events.at(-1)).toMatchObject({
       type: 'upload.reverted',
-      message: `${ADMIN.email} put label.png back to the AI's reading.`,
+      message: `${ADMIN.email} put label.png back to the original reading.`,
       data: { revertedTo: '1', versionId: '3' },
     });
     // Nothing is erased: the revert is a version of its own, so it can be undone too.
