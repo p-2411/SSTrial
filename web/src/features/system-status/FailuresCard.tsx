@@ -3,7 +3,7 @@ import { SectionCard } from './SectionCard';
 
 export function FailuresCard({ failures }: { failures: OpsStatusResponse['failuresByReason'] }) {
   return (
-    <SectionCard title="Failures" description="Uploads that failed in the last 24 hours, by reason.">
+    <SectionCard title="Failures">
       {failures.length === 0 ? (
         <p className="text-sm text-muted-foreground">No failures in the last 24 hours.</p>
       ) : (
