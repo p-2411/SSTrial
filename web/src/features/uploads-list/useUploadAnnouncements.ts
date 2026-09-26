@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { isActiveStatus, type UploadSummary } from '@label-extractor/shared';
 
 /**
- * Text for a screen-reader live region over the Upload stage: announces when one of its uploads
- * fails, or is read (it leaves for Review), so users who can't see the rows change still find out.
+ * Text for a screen-reader live region over the Uploading tab: announces when one of its uploads
+ * fails, or is read (it moves to Review), so users who can't see the rows change still find out.
  * Ignores the initial load.
  */
 export function useUploadAnnouncements(uploads: UploadSummary[] | undefined): string {

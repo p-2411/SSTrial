@@ -1,13 +1,13 @@
+import { Dropzone } from '@/features/upload/Dropzone';
 import { useFileUploadsContext } from '@/features/upload/FileUploadsProvider';
 import { UploadDetailPanel } from '@/features/upload-detail/UploadDetailPanel';
 import { ProductList } from './ProductList';
-import { ReviewStage } from './ReviewStage';
-import { UploadStage } from './UploadStage';
+import { YourUploads } from './YourUploads';
 
 /**
- * Routes / and /uploads/:id: the three stages a label goes through, with the open upload in a
- * panel beside them. Upload, where files come in and are read; Review, where the person checks
- * what was read and submits it; and Products, everyone's. The first two are private to the person.
+ * Routes / and /uploads/:id: where labels come in and go, with the open upload in a panel beside
+ * them. Upload, where files are dropped; the person's own uploads, being uploaded and read, then
+ * waiting for them to review and submit (private to them); and Products, everyone's.
  */
 export function UploadsPage() {
   const { pending, addFiles, retry, dismiss } = useFileUploadsContext();
@@ -19,8 +19,8 @@ export function UploadsPage() {
           centred: a list growing past the fold mustn't make everything shift sideways. */}
       <div className="min-w-0 flex-1 overflow-y-auto [scrollbar-gutter:stable_both-edges]">
         <div className="mx-auto grid max-w-4xl content-start gap-4 p-6">
-          <UploadStage pending={pending} onUpload={addFiles} onRetry={retry} onDismiss={dismiss} />
-          <ReviewStage />
+          <Dropzone onUpload={addFiles} />
+          <YourUploads pending={pending} onRetry={retry} onDismiss={dismiss} />
           <ProductList />
         </div>
       </div>

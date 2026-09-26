@@ -6,8 +6,8 @@ export interface Selection {
   isSelected: (id: string) => boolean;
   /** Picks or unpicks one. Stable, so memoised rows needn't re-render when another is picked. */
   toggle: (id: string, picked: boolean) => void;
-  /** For a "select all" box: every listed one picked, some, or none. */
-  all: boolean | 'indeterminate';
+  /** Whether every listed one is picked. */
+  allSelected: boolean;
   /** Picks every listed one, or none. */
   setAll: (picked: boolean) => void;
   clear: () => void;
@@ -35,7 +35,7 @@ export function useSelection(listedIds: readonly string[]): Selection {
     selected,
     isSelected: (id) => picked.has(id),
     toggle,
-    all: selected.length === 0 ? false : selected.length === listedIds.length ? true : 'indeterminate',
+    allSelected: listedIds.length > 0 && selected.length === listedIds.length,
     setAll: (on) => setPicked(new Set(on ? listedIds : [])),
     clear: () => setPicked(new Set()),
   };

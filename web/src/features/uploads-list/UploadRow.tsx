@@ -17,8 +17,11 @@ import { uploadPath } from '@/routes';
  * name leads and the second line says what's happening. A finished or failed upload's row links to
  * its detail view; one still being worked on has nothing to open yet, so it isn't a link.
  *
- * In a list that can act on several at once, `onSelect` gives the row a checkbox, beside the link
- * rather than in it (a control can't sit inside a link).
+ * In a list that can act on several at once, `onSelect` gives the row a checkbox. It takes the
+ * status column's place while the row is hovered (or focused), and stays once ticked. It sits over
+ * the link rather than in it: a control can't be inside a link. The swap is instant, by opacity on
+ * the whole column: hiding it with `visibility` let the pill's own transition lag behind the time,
+ * so the two went one after the other and the pill briefly overlapped the box.
  *
  * Memoised: the list re-renders whenever anything in it changes (a status, an upload's progress),
  * but React Query keeps unchanged uploads as the same objects, so only changed rows re-render.
@@ -49,7 +52,12 @@ export const UploadRow = memo(function UploadRow({
           <StatusDetail upload={upload} />
         )}
       </div>
-      <div className="flex flex-col items-end gap-1.5">
+      <div
+        className={cn(
+          'flex flex-col items-end gap-1.5',
+          onSelect && (selected ? 'opacity-0' : 'group-focus-within/row:opacity-0 group-hover/row:opacity-0'),
+        )}
+      >
         {/* A completed upload's pill also says whether it's worth checking ("Check (72%)"). */}
         <StatusPill status={upload.status} confidence={upload.confidence} inReview={upload.submittedAt === null} />
         <RelativeTime className="text-xs text-muted-foreground tabular-nums" iso={upload.createdAt} now={now} />
@@ -61,23 +69,12 @@ export const UploadRow = memo(function UploadRow({
     // list (after several "Load more"s) cheap. The intrinsic size is roughly one row's height.
     <li
       className={cn(
-        'border-b border-border/70 [contain-intrinsic-size:auto_4.25rem] [content-visibility:auto] last:border-b-0',
-        onSelect && 'flex',
+        'group/row relative border-b border-border/70 [contain-intrinsic-size:auto_4.25rem] [content-visibility:auto] last:border-b-0',
         selected && 'bg-muted/50',
       )}
     >
-      {onSelect && (
-        // The whole strip left of the row picks it, not just the box. Lined up with the file tile.
-        <label className="flex cursor-pointer pt-[1.375rem] pl-4">
-          <Checkbox
-            checked={selected}
-            onCheckedChange={(checked) => onSelect(upload.id, checked === true)}
-            aria-label={`Select ${productName ?? upload.fileName}`}
-          />
-        </label>
-      )}
       {isActiveStatus(upload.status) ? (
-        <div className={cn(rowClassName, 'border-b-0', onSelect && 'min-w-0 flex-1 pl-3')}>{content}</div>
+        <div className={cn(rowClassName, 'border-b-0')}>{content}</div>
       ) : (
         <NavLink
           to={uploadPath(upload.id)}
@@ -85,7 +82,6 @@ export const UploadRow = memo(function UploadRow({
             cn(
               rowClassName,
               'border-b-0 text-inherit no-underline transition-colors outline-none hover:bg-muted/60 focus-visible:bg-muted',
-              onSelect && 'min-w-0 flex-1 pl-3',
               // The open upload gets an indigo marker, like the active item in SupplyScope's lists.
               isActive && 'bg-brand-soft/70 shadow-[inset_3px_0_0_var(--brand)] hover:bg-brand-soft/70',
             )
@@ -93,6 +89,21 @@ export const UploadRow = memo(function UploadRow({
         >
           {content}
         </NavLink>
+      )}
+      {onSelect && (
+        // Padded, so the box is easy to hit; after the link, so it's on top of it.
+        <label
+          className={cn(
+            'absolute top-1/2 right-2 flex -translate-y-1/2 cursor-pointer p-2',
+            !selected && 'opacity-0 group-focus-within/row:opacity-100 group-hover/row:opacity-100',
+          )}
+        >
+          <Checkbox
+            checked={selected}
+            onCheckedChange={(checked) => onSelect(upload.id, checked === true)}
+            aria-label={`Select ${productName ?? upload.fileName}`}
+          />
+        </label>
       )}
     </li>
   );

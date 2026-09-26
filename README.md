@@ -66,8 +66,8 @@ uploading ─(browser confirms)─► queued ─(worker claims)─► processing
 Each of these moves is declared once, in `shared/src/lifecycle.ts`; the database only makes a move
 from a status that table allows.
 
-- **Three stages: Upload, Review, Products.** A file is sent and read under *Upload*, then waits under *Review* until its uploader submits it to *Products*, which everyone shares. Until it's submitted it's the uploader's alone: nobody else can list it, open it, edit it or read its history (the API answers 404). Each person can pick up to 50 files at a time and have up to 200 under way.
-- **Finding and acting on products.** Products can be searched (product name, brand or file name) and filtered by when they were added (last 7 or 30 days), by the server. Tick products to export or delete them together; with none ticked, Export takes every product the search and filter match. Review has checkboxes too, so "Mark as checked" and "Submit" can act on just the ticked ones.
+- **Three stages: Upload, Review, Products.** A file dropped under *Upload* is sent and read under the *Uploading* tab, then waits under the *Review* tab until its uploader submits it to *Products*, which everyone shares. Until it's submitted it's the uploader's alone: nobody else can list it, open it, edit it or read its history (the API answers 404). Each person can pick up to 50 files at a time and have up to 200 under way.
+- **Finding and acting on products.** Products can be searched (product name, brand or file name) and filtered by when they were added (last 7 or 30 days), by the server. Tick products (a row's box shows on hover) to export or delete them together; with none ticked, Export takes every product the search and filter match. Review can be ticked too ("Select all" ticks every one), so "Mark as checked" and "Submit" act on just those.
 - **Nothing unsure goes into Products unchecked.** A product can only be submitted once every field the model scored under 85 has been checked or corrected by a person. The server enforces it, not just the buttons. Review offers "Mark all as checked" (after a confirmation) and "Submit all ready"; the detail panel offers the same for one product. Reading a product again takes it back out of Products, to be reviewed again.
 - **Every upload finishes.** Creating an upload schedules a *finalise* job for just after its signed URL expires. It confirms a file the browser never confirmed, or discards an upload whose file never arrived. When the browser does confirm, the job is cancelled in the same transaction.
 - **Rejected files aren't kept.** Content that isn't really a JPEG, PNG, WebP or PDF is deleted with its upload; the browser shows why, with "Try again".
@@ -89,8 +89,8 @@ Whoever uploaded a file, or any admin, can delete it from the detail panel, afte
 
 Both pages are for admins only.
 
-- **System status page** (`/status` in the app, from `GET /api/ops`): uploads waiting, retrying and processing; whether the worker is running; health checks; the last 24 hours; and failures by reason.
-- **Activity log** (`/logs` in the app, from `GET /api/logs`): every step of every upload (created, queued, each extraction attempt, retries, failures and why), plus rate-limit pauses and process starts. Narrow it to any mix of event types (with shortcuts for warnings and errors), or to one upload with `?upload=<id>` in the address, and it updates live. Kept for 30 days.
+- **System status page** (`/status` in the app, from `GET /api/ops`): uploads waiting, retrying and processing; whether the worker is running; health checks; and the last 24 hours. Why particular uploads failed is in the activity log, which can be searched and filtered.
+- **Activity log** (`/logs` in the app, from `GET /api/logs`): every step of every upload (created, queued, each extraction attempt, retries, failures and why), plus rate-limit pauses and process starts. Search its messages, narrow it to any mix of event types (with shortcuts for warnings and errors), or to one upload with `?upload=<id>` in the address, and it updates live. Kept for 30 days.
 - **`GET /api/health`** on the API (database, queue) and on the worker (plus its job loop) answers 200 or 503, naming which check failed but not the error's details (the status page shows those). Railway uses it on deploy.
 
 ## Running locally
@@ -163,7 +163,7 @@ web/src/
   app/           Router, app shell (sidebar and top bar), 404 page
   auth/          Supabase Auth in the browser, the sign-in page, and the route guards
   api/           API client, React Query hooks and cache refreshing, live updates (polling as fallback)
-  features/      upload (dropzone + upload manager), uploads-list (the Upload, Review and Products stages),
+  features/      upload (dropzone + upload manager), uploads-list (Uploading and Review tabs, Products),
                  upload-detail (side panel), system-status, logs (the activity log)
   components/    Small shared pieces (status pill, file-type tile, row layout, segmented tabs, errors)
   components/ui/ shadcn/ui components, generated by the shadcn CLI and lightly adapted

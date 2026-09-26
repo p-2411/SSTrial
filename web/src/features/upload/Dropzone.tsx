@@ -12,6 +12,7 @@ import {
 } from '@label-extractor/shared';
 import { FileTypeTile } from '@/components/FileTypeTile';
 import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatFileFacts } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
@@ -93,85 +94,92 @@ export const Dropzone = memo(function Dropzone({ onUpload }: { onUpload: (files:
   const isEmpty = staged.length === 0;
 
   return (
-    <div className="grid gap-2">
-      <div
-        className={cn(
-          'rounded-lg border border-dashed border-border bg-muted/50 transition-colors',
-          DROP_AREA_HEIGHT,
-          isEmpty ? 'flex flex-col items-center justify-center gap-3 px-6 text-center' : 'overflow-y-auto p-2',
-          isDragging && 'border-brand bg-brand-soft',
-        )}
-        onDragEnter={(event) => {
-          if (!hasFiles(event)) return;
-          dragDepth.current += 1;
-          setIsDragging(true);
-        }}
-        onDragOver={(event) => {
-          if (!hasFiles(event)) return;
-          event.preventDefault();
-          event.dataTransfer.dropEffect = 'copy';
-        }}
-        onDragLeave={() => {
-          dragDepth.current = Math.max(0, dragDepth.current - 1);
-          if (dragDepth.current === 0) setIsDragging(false);
-        }}
-        onDrop={(event) => {
-          event.preventDefault();
-          dragDepth.current = 0;
-          setIsDragging(false);
-          if (event.dataTransfer.files.length > 0) add([...event.dataTransfer.files]);
-        }}
-      >
-        {isEmpty ? (
-          <>
-            <span className="grid size-11 place-items-center rounded-full bg-card text-brand shadow-sm ring-1 ring-border">
-              <UploadCloud className="size-5" aria-hidden />
-            </span>
-            <div className="space-y-1">
-              <p className="font-semibold tracking-[-0.01em]">{isDragging ? 'Drop to add' : 'Drop label photos or PDFs here'}</p>
-              <p className="text-sm text-muted-foreground">
-                {SUPPORTED_TYPES_LABEL}, up to {formatBytes(MAX_FILE_SIZE_BYTES)} each.
-              </p>
-            </div>
-            <Button size="lg" onClick={choose}>
-              Choose files
-            </Button>
-          </>
-        ) : (
-          <ul aria-label="Files to upload" className="grid gap-2">
-            {staged.map((s) => (
-              <StagedFileCard key={s.id} staged={s} onRemove={() => remove(s.id)} />
-            ))}
-          </ul>
-        )}
-        <input
-          ref={inputRef}
-          type="file"
-          multiple
-          accept={FILE_INPUT_ACCEPT}
-          className="sr-only"
-          tabIndex={-1}
-          aria-hidden="true"
-          data-testid="file-input"
-          onChange={(event) => {
-            const files = [...(event.target.files ?? [])];
-            event.target.value = ''; // so choosing the same file again still triggers a change
-            if (files.length > 0) add(files);
-          }}
-        />
-      </div>
+    <Card aria-labelledby="upload-heading" className="gap-0 py-0" role="region">
+      <CardHeader className="py-4">
+        <CardTitle id="upload-heading" className="text-base font-semibold">
+          Upload
+        </CardTitle>
+      </CardHeader>
+      <div className="grid gap-2 px-4 pb-4">
+          <div
+            className={cn(
+              'rounded-lg border border-dashed border-border bg-muted/50 transition-colors',
+              DROP_AREA_HEIGHT,
+              isEmpty ? 'flex flex-col items-center justify-center gap-3 px-6 text-center' : 'overflow-y-auto p-2',
+              isDragging && 'border-brand bg-brand-soft',
+            )}
+            onDragEnter={(event) => {
+              if (!hasFiles(event)) return;
+              dragDepth.current += 1;
+              setIsDragging(true);
+            }}
+            onDragOver={(event) => {
+              if (!hasFiles(event)) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = 'copy';
+            }}
+            onDragLeave={() => {
+              dragDepth.current = Math.max(0, dragDepth.current - 1);
+              if (dragDepth.current === 0) setIsDragging(false);
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              dragDepth.current = 0;
+              setIsDragging(false);
+              if (event.dataTransfer.files.length > 0) add([...event.dataTransfer.files]);
+            }}
+          >
+            {isEmpty ? (
+              <>
+                <span className="grid size-11 place-items-center rounded-full bg-card text-brand shadow-sm ring-1 ring-border">
+                  <UploadCloud className="size-5" aria-hidden />
+                </span>
+                <div className="space-y-1">
+                  <p className="font-semibold tracking-[-0.01em]">{isDragging ? 'Drop to add' : 'Drop label photos or PDFs here'}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {SUPPORTED_TYPES_LABEL}, up to {formatBytes(MAX_FILE_SIZE_BYTES)} each.
+                  </p>
+                </div>
+                <Button size="lg" onClick={choose}>
+                  Choose files
+                </Button>
+              </>
+            ) : (
+              <ul aria-label="Files to upload" className="grid gap-2">
+                {staged.map((s) => (
+                  <StagedFileCard key={s.id} staged={s} onRemove={() => remove(s.id)} />
+                ))}
+              </ul>
+            )}
+            <input
+              ref={inputRef}
+              type="file"
+              multiple
+              accept={FILE_INPUT_ACCEPT}
+              className="sr-only"
+              tabIndex={-1}
+              aria-hidden="true"
+              data-testid="file-input"
+              onChange={(event) => {
+                const files = [...(event.target.files ?? [])];
+                event.target.value = ''; // so choosing the same file again still triggers a change
+                if (files.length > 0) add(files);
+              }}
+            />
+          </div>
 
-      {!isEmpty && (
-        <div className="flex justify-between gap-2">
-          <Button variant="outline" onClick={choose}>
-            Add more files
-          </Button>
-          <Button onClick={upload} disabled={ready.length === 0}>
-            Upload
-          </Button>
-        </div>
-      )}
-    </div>
+          {!isEmpty && (
+            <div className="flex justify-between gap-2">
+              <Button variant="outline" onClick={choose}>
+                Add more files
+              </Button>
+              <Button onClick={upload} disabled={ready.length === 0}>
+                Upload
+              </Button>
+            </div>
+          )}
+      </div>
+    </Card>
   );
 });
 

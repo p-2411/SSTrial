@@ -1,9 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { canSubmitUpload, stillToCheck, type UploadSummary } from '@label-extractor/shared';
 import { errorMessage } from '@/api/client';
-import { useCheckUploads, useSubmitUploads, useUploadList } from '@/api/queries';
-import { InlineError } from '@/components/InlineError';
+import { useCheckUploads, useSubmitUploads } from '@/api/queries';
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -14,37 +13,25 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import { Card, CardAction, CardHeader, CardTitle } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
 import { productCount } from '@/lib/format';
-import { useNow } from '@/lib/useNow';
-import { useSelection } from '@/lib/useSelection';
-import { StaleListBanner } from './listParts';
-import { UploadRow } from './UploadRow';
+import type { Selection } from '@/lib/useSelection';
 
 /**
- * The second stage, Review: the person's own uploads that have been read, waiting to go into
- * Products. One the model wasn't sure of ("Check (72%)", amber or red) must have its flagged fields
- * checked first: one by one in its detail, or all at once with "Mark all as checked". "Submit all
- * ready" then puts in every one with nothing left to check. The server holds to the same rules.
- * With some ticked, both act on just those. Only the uploader sees these, and the card goes when
- * nothing is waiting.
+ * The Review tab's actions. An upload the model wasn't sure of ("Check (72%)", amber or red) must
+ * have its flagged fields checked before it can go into Products: one by one in its detail, or all
+ * at once with "Mark all as checked". "Submit all ready" then puts in every one with nothing left
+ * to check; the server holds to the same rules. With some ticked (a row's box shows on hover), both
+ * act on just those. "Select all" ticks every one listed.
  */
-export function ReviewStage() {
-  const list = useUploadList('review');
-  const now = useNow();
-  const uploads = useMemo(() => list.data?.pages.flatMap((page) => page.uploads), [list.data]);
-  const ids = useMemo(() => uploads?.map((upload) => upload.id) ?? [], [uploads]);
-  const selection = useSelection(ids);
-  // What the buttons act on: the ticked ones, or with none ticked, every one listed.
-  const picked = selection.selected.length > 0;
-  const actOn = (picked ? uploads?.filter((upload) => selection.isSelected(upload.id)) : uploads) ?? [];
-  const ready = actOn.filter(canSubmitUpload);
-  const toCheck = actOn.filter(stillToCheck);
+export function ReviewActions({ uploads, selection }: { uploads: UploadSummary[]; selection: Selection }) {
   const submit = useSubmitUploads();
   // The uploads the dialog asks about, fixed as it opens: the list may change underneath it.
   const [confirmingCheck, setConfirmingCheck] = useState<UploadSummary[] | null>(null);
-  const { isError, error, refetch, isRefetching } = list;
+  const picked = selection.selected.length > 0;
+  // What the buttons act on: the ticked ones, or with none ticked, every one listed.
+  const actOn = picked ? uploads.filter((upload) => selection.isSelected(upload.id)) : uploads;
+  const ready = actOn.filter(canSubmitUpload);
+  const toCheck = actOn.filter(stillToCheck);
 
   const submitReady = () => {
     const ids = ready.map((upload) => upload.id);
@@ -61,57 +48,28 @@ export function ReviewStage() {
     });
   };
 
-  if (isError && !uploads) {
-    return <InlineError title="Couldn't load your uploads to review" message={errorMessage(error)} onRetry={() => void refetch()} retrying={isRefetching} />;
-  }
-  if (!uploads || uploads.length === 0) return null;
-
   return (
-    <Card aria-labelledby="review-heading" className="gap-0 py-0" role="region">
-      <CardHeader className="border-b border-border/70 py-4">
-        <div className="flex h-8 items-center gap-3">
-          <Checkbox checked={selection.all} onCheckedChange={(checked) => selection.setAll(checked === true)} aria-label="Select all to review" />
-          <CardTitle id="review-heading" className="text-base font-semibold">
-            Review
-          </CardTitle>
-          {picked && <span className="text-sm text-muted-foreground">{selection.selected.length} selected</span>}
-        </div>
-        <CardAction className="flex items-center gap-2">
-          {toCheck.length > 0 && (
-            <Button variant="outline" size="sm" onClick={() => setConfirmingCheck(toCheck)}>
-              {picked ? `Mark ${toCheck.length} as checked` : 'Mark all as checked'}
-            </Button>
-          )}
-          <Button
-            size="sm"
-            disabled={ready.length === 0}
-            loading={submit.isPending}
-            title={ready.length === 0 ? 'Check the flagged products first' : undefined}
-            onClick={submitReady}
-          >
-            {picked ? `Submit ${ready.length} ready` : `Submit all ready${ready.length > 0 ? ` (${ready.length})` : ''}`}
-          </Button>
-        </CardAction>
-      </CardHeader>
-
-      {isError && <StaleListBanner error={error} />}
-
-      <ul>
-        {uploads.map((upload) => (
-          <UploadRow key={upload.id} upload={upload} now={now} selected={selection.isSelected(upload.id)} onSelect={selection.toggle} />
-        ))}
-      </ul>
-
-      {list.hasNextPage && (
-        <div className="border-t border-border/70 p-3 text-center">
-          <Button variant="ghost" size="sm" onClick={() => void list.fetchNextPage()} loading={list.isFetchingNextPage}>
-            Load more
-          </Button>
-        </div>
+    <div className="flex items-center gap-2">
+      {/* A tertiary action: plain text, underlined on hover. */}
+      <Button variant="link" size="sm" className="px-1 font-medium" onClick={() => selection.setAll(!selection.allSelected)}>
+        {selection.allSelected ? 'Deselect all' : 'Select all'}
+      </Button>
+      {toCheck.length > 0 && (
+        <Button variant="outline" size="sm" onClick={() => setConfirmingCheck(toCheck)}>
+          {picked ? `Mark ${toCheck.length} as checked` : 'Mark all as checked'}
+        </Button>
       )}
-
+      <Button
+        size="sm"
+        disabled={ready.length === 0}
+        loading={submit.isPending}
+        title={ready.length === 0 ? 'Check the flagged products first' : undefined}
+        onClick={submitReady}
+      >
+        {picked ? `Submit ${ready.length} ready` : `Submit all ready${ready.length > 0 ? ` (${ready.length})` : ''}`}
+      </Button>
       <CheckAllDialog uploads={confirmingCheck} onClose={() => setConfirmingCheck(null)} />
-    </Card>
+    </div>
   );
 }
 

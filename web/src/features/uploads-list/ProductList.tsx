@@ -19,7 +19,6 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardHeader, CardTitle } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,10 +39,10 @@ const ADDED_LABELS: Record<AddedWithin | 'any', string> = { any: 'any time', '7d
 
 /**
  * Everyone's products: the shared, lasting list. Uploads being read, failed or waiting for review
- * are their uploader's alone (see UploadStage, ReviewStage), and only arrive here once submitted.
+ * are their uploader's alone (see YourUploads), and only arrive here once submitted.
  *
  * Searchable (name, brand or file name) and filterable by when products were added, by the server.
- * Products can be picked, one by one or all loaded at once, to export or delete together; with none
+ * Products can be picked (a row's box shows on hover) to export or delete together; with none
  * picked, Export takes every product the search and filter match.
  */
 export function ProductList() {
@@ -69,9 +68,6 @@ export function ProductList() {
     <Card aria-labelledby="products-heading" className="gap-0 py-0" role="region">
       <CardHeader className="border-b border-border/70 py-4">
         <div className="flex h-8 items-center gap-3">
-          {ids.length > 0 && (
-            <Checkbox checked={selection.all} onCheckedChange={(checked) => selection.setAll(checked === true)} aria-label="Select all products" />
-          )}
           <CardTitle id="products-heading" className="text-base font-semibold">
             Products
           </CardTitle>

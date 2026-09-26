@@ -1,19 +1,31 @@
 import { act, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { UploadSummary } from '@label-extractor/shared';
 import { uploadKeys } from '@/api/queries';
 import type { PendingUpload } from '@/features/upload/useFileUploads';
 import { summary } from '@/test/fixtures';
-import { jsonResponse, renderWithProviders } from '@/test/render';
-import { UploadStage } from './UploadStage.tsx';
+import { jsonResponse, Providers, renderWithProviders } from '@/test/render';
+import { YourUploads } from './YourUploads.tsx';
 
 afterEach(() => vi.unstubAllGlobals());
 
-let mine: UploadSummary[] = [];
-function stubMine() {
-  const fetch = vi.fn(async () => jsonResponse({ uploads: mine, nextCursor: null }));
+/** What the server has in each of the person's lists. */
+let uploading: UploadSummary[] = [];
+let review: UploadSummary[] = [];
+
+/** Answers both lists, and the review actions as given. Returns what was posted where. */
+function stubApi(answers: { submitted?: string[]; checked?: string[] } = {}) {
+  const posted: Array<{ url: string; body: unknown }> = [];
+  const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+    if (init?.method === 'POST') {
+      posted.push({ url, body: JSON.parse(String(init.body)) });
+      return jsonResponse(url.endsWith('/submit') ? { submitted: answers.submitted ?? [] } : { checked: answers.checked ?? [] });
+    }
+    return jsonResponse({ uploads: url.includes('view=review') ? review : uploading, nextCursor: null });
+  });
   vi.stubGlobal('fetch', fetch);
-  return fetch;
+  return { fetch, posted };
 }
 
 const sending = (name: string): PendingUpload => ({
@@ -25,62 +37,170 @@ const sending = (name: string): PendingUpload => ({
   error: null,
 });
 
-const renderYours = (pending: PendingUpload[] = []) =>
-  renderWithProviders(<UploadStage pending={pending} onUpload={() => {}} onRetry={() => {}} onDismiss={() => {}} />);
+const inReview = (id: string, productName: string, confidence: number | null) =>
+  summary({ id, productName, fileName: `${id}.png`, confidence, submittedAt: null });
 
-describe('UploadStage', () => {
-  it("asks for the person's own uploads being read, and shows just the drop area when there are none", async () => {
-    mine = [];
-    const fetch = stubMine();
+const renderYours = (pending: PendingUpload[] = []) =>
+  renderWithProviders(<YourUploads pending={pending} onRetry={() => {}} onDismiss={() => {}} />);
+
+describe('YourUploads', () => {
+  it("asks for the person's own lists, and shows nothing when both are empty", async () => {
+    uploading = [];
+    review = [];
+    const { fetch } = stubApi();
     renderYours();
 
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/uploads?view=upload', expect.anything()));
-    const card = screen.getByRole('region', { name: 'Upload' });
-    expect(within(card).getByRole('button', { name: 'Choose files' })).toBeInTheDocument();
-    expect(within(card).queryByRole('list', { name: 'Uploading' })).not.toBeInTheDocument();
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/uploads?view=review', expect.anything()));
+    expect(screen.queryByRole('region', { name: 'Your uploads' })).not.toBeInTheDocument();
   });
 
-  it("lists files still being sent, then the server's, under the drop area", async () => {
-    mine = [
+  it("shows files still being sent, then the server's, under Uploading", async () => {
+    uploading = [
       summary({ id: 'q', fileName: 'waiting.png', status: 'queued', productName: null }),
       summary({ id: 'f', fileName: 'broken.png', status: 'failed', productName: null, error: { code: 'LLM_TIMEOUT', message: 'The AI service took too long to respond.' } }),
     ];
-    stubMine();
+    review = [inReview('r', 'Maple Pecan Crunch', 92)];
+    stubApi();
     renderYours([sending('sending.png')]);
 
-    const rows = within(screen.getByRole('region', { name: 'Upload' })).getByRole('list', { name: 'Uploading' });
+    const rows = await screen.findByRole('list', { name: 'Uploading' });
     await within(rows).findByText('waiting.png');
     expect(within(rows).getAllByRole('listitem').map((row) => row.textContent)).toEqual([
       expect.stringContaining('sending.png'),
       expect.stringContaining('waiting.png'),
       expect.stringContaining('broken.png'),
     ]);
+    expect(screen.getByRole('tab', { name: 'Uploading 3' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Review 1' })).toBeInTheDocument();
+    // A failed upload opens; one still being worked on has nothing to open yet.
+    expect(within(rows).getAllByRole('link')).toHaveLength(1);
   });
 
-  it('opens a failed upload, but not one still being worked on', async () => {
-    mine = [
-      summary({ id: 'q', fileName: 'waiting.png', status: 'queued', productName: null }),
-      summary({ id: 'f', fileName: 'broken.png', status: 'failed', productName: null, error: { code: 'LLM_TIMEOUT', message: 'Timed out.' } }),
-    ];
-    stubMine();
-    renderYours();
-
-    const card = screen.getByRole('region', { name: 'Upload' });
-    await within(card).findByText('waiting.png');
-    const links = within(card).getAllByRole('link');
-    expect(links).toHaveLength(1);
-    expect(links[0]).toHaveTextContent('broken.png');
-  });
-
-  it('announces an upload that has been read, as it leaves for Review', async () => {
-    mine = [summary({ id: 'q', fileName: 'granola.png', status: 'processing', productName: null })];
-    stubMine();
+  it('shows Review when nothing is uploading, and moves there when the last upload is read', async () => {
+    uploading = [summary({ id: 'q', fileName: 'granola.png', status: 'processing', productName: null })];
+    review = [];
+    stubApi();
     const { client } = renderYours();
     await screen.findByText('granola.png');
 
-    mine = [];
+    uploading = [];
+    review = [inReview('q', 'Maple Pecan Crunch', 92)];
     await act(() => client.invalidateQueries({ queryKey: uploadKeys.lists() }));
 
-    expect(await screen.findByText('granola.png is ready to review.')).toBeInTheDocument();
+    expect(await screen.findByRole('list', { name: 'Review' })).toHaveTextContent('Maple Pecan Crunch');
+    expect(screen.getByRole('tab', { name: 'Review 1' })).toHaveAttribute('aria-selected', 'true');
+    // An empty tab isn't offered.
+    expect(screen.queryByRole('tab', { name: /Uploading/ })).not.toBeInTheDocument();
+    // Announced too, for anyone who can't see the rows move.
+    expect(screen.getByText('granola.png is ready to review.')).toBeInTheDocument();
+  });
+
+  it('brings Uploading to the front when new files are on their way', async () => {
+    uploading = [];
+    review = [inReview('r', 'Maple Pecan Crunch', 92)];
+    stubApi();
+    const { client, rerender } = renderYours();
+    await screen.findByRole('list', { name: 'Review' });
+
+    rerender(
+      <Providers client={client}>
+        <YourUploads pending={[sending('new.png')]} onRetry={() => {}} onDismiss={() => {}} />
+      </Providers>,
+    );
+
+    expect(await screen.findByRole('tab', { name: 'Uploading 1' })).toHaveAttribute('aria-selected', 'true');
+  });
+});
+
+describe('YourUploads — Review', () => {
+  it('marks what can go in as ready, and what must be checked first', async () => {
+    uploading = [];
+    review = [inReview('a', 'Maple Pecan Crunch', 92), inReview('b', 'Barista Oat Milk', 72), inReview('c', 'Sea Salt Crackers', 40)];
+    stubApi();
+    renderYours();
+
+    const rows = within(await screen.findByRole('list', { name: 'Review' })).getAllByRole('listitem');
+    expect(rows.map((row) => row.textContent)).toEqual([
+      expect.stringContaining('Ready'),
+      expect.stringContaining('Check (72%)'),
+      expect.stringContaining('Check (40%)'),
+    ]);
+    expect(screen.getByRole('button', { name: 'Submit all ready (1)' })).toBeEnabled();
+  });
+
+  it('submits only the ready ones', async () => {
+    uploading = [];
+    review = [inReview('a', 'Maple Pecan Crunch', 92), inReview('b', 'Barista Oat Milk', 72), inReview('d', 'Checked Tea', null)];
+    const { posted } = stubApi({ submitted: ['a', 'd'] });
+    renderYours();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Submit all ready (2)' }));
+
+    await vi.waitFor(() => expect(posted).toEqual([{ url: '/api/uploads/submit', body: { ids: ['a', 'd'] } }]));
+  });
+
+  it("can't submit anything until something is ready", async () => {
+    uploading = [];
+    review = [inReview('b', 'Barista Oat Milk', 72)];
+    stubApi();
+    renderYours();
+
+    expect(await screen.findByRole('button', { name: 'Submit all ready' })).toBeDisabled();
+  });
+
+  it('marks every flagged product as checked, once the person confirms', async () => {
+    uploading = [];
+    review = [inReview('a', 'Maple Pecan Crunch', 92), inReview('b', 'Barista Oat Milk', 72), inReview('c', 'Sea Salt Crackers', 40)];
+    const { posted } = stubApi({ checked: ['b', 'c'] });
+    renderYours();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Mark all as checked' }));
+    const dialog = screen.getByRole('alertdialog', { name: 'Mark 2 products as checked?' });
+    expect(posted).toEqual([]); // nothing until they confirm
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Mark as checked' }));
+
+    await vi.waitFor(() => expect(posted).toEqual([{ url: '/api/uploads/check', body: { ids: ['b', 'c'] } }]));
+    await vi.waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+  });
+
+  it('acts on just the ticked ones, when some are', async () => {
+    uploading = [];
+    review = [inReview('a', 'Maple Pecan Crunch', 92), inReview('b', 'Barista Oat Milk', 72), inReview('c', 'Sea Salt Crackers', 95)];
+    const { posted } = stubApi({ submitted: ['c'] });
+    renderYours();
+
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Select Barista Oat Milk' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select Sea Salt Crackers' }));
+    expect(screen.getByRole('button', { name: 'Mark 1 as checked' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Submit 1 ready' }));
+
+    await vi.waitFor(() => expect(posted).toEqual([{ url: '/api/uploads/submit', body: { ids: ['c'] } }]));
+  });
+
+  it('selects all, and deselects all', async () => {
+    uploading = [];
+    review = [inReview('a', 'Maple Pecan Crunch', 92), inReview('b', 'Barista Oat Milk', 72)];
+    stubApi();
+    renderYours();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Select all' }));
+    expect(screen.getAllByRole('checkbox', { checked: true })).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Submit 1 ready' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Deselect all' }));
+    expect(screen.queryAllByRole('checkbox', { checked: true })).toHaveLength(0);
+  });
+
+  it('offers no bulk check when nothing is flagged', async () => {
+    uploading = [];
+    review = [inReview('a', 'Maple Pecan Crunch', 92)];
+    stubApi();
+    renderYours();
+
+    await screen.findByRole('list', { name: 'Review' });
+    expect(screen.queryByRole('button', { name: 'Mark all as checked' })).not.toBeInTheDocument();
   });
 });

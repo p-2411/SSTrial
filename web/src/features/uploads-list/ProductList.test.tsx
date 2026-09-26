@@ -112,16 +112,15 @@ describe('searching, filtering and picking products', () => {
     expect(screen.getByRole('searchbox', { name: 'Search products' })).toHaveValue('');
   });
 
-  it('picks products one by one or all at once, and exports just those', async () => {
+  it('picks products one by one, and exports just those', async () => {
     stubApi(() => [OAT, GRANOLA]);
     renderWithProviders(<ProductList />);
 
     await userEvent.click(await screen.findByRole('checkbox', { name: 'Select Barista Oat Milk' }));
     expect(screen.getByText('1 selected')).toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: 'Select all products' })).toHaveAttribute('data-state', 'indeterminate');
-
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Select all products' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select Maple Pecan Crunch' }));
     expect(screen.getByText('2 selected')).toBeInTheDocument();
+
     await userEvent.click(screen.getByRole('button', { name: 'Export' }));
     expect(screen.getByText('2 products selected')).toBeInTheDocument();
   });
