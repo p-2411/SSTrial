@@ -1,11 +1,11 @@
 import { useId, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { canSubmitUpload, stillToCheck, type UploadSummary } from '@label-extractor/shared';
-import { errorMessage } from '@/api/client';
-import { useCheckUploads, useSubmitUploads } from '@/api/queries';
+import { useCheckUploads } from '@/api/queries';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useSubmitToProducts } from '@/features/upload-detail/useSubmitToProducts';
 import { productCount } from '@/lib/format';
 import type { Selection } from '@/lib/useSelection';
 
@@ -17,7 +17,7 @@ import type { Selection } from '@/lib/useSelection';
  * act on just those. "Select all" ticks every one listed.
  */
 export function ReviewActions({ uploads, selection }: { uploads: UploadSummary[]; selection: Selection }) {
-  const submit = useSubmitUploads();
+  const { submitToProducts, submitting } = useSubmitToProducts();
   // The uploads the dialog asks about, fixed as it opens: the list may change underneath it.
   const [confirmingCheck, setConfirmingCheck] = useState<UploadSummary[] | null>(null);
   const picked = selection.selected.length > 0;
@@ -26,20 +26,11 @@ export function ReviewActions({ uploads, selection }: { uploads: UploadSummary[]
   const ready = actOn.filter(canSubmitUpload);
   const toCheck = actOn.filter(stillToCheck);
 
-  const submitReady = () => {
-    const ids = ready.map((upload) => upload.id);
-    submit.mutate(ids, {
-      onSuccess: (submitted) => {
-        selection.clear();
-        if (submitted.length > 0) toast.success(`${productCount(submitted.length)} added to Products`);
-        const left = ids.length - submitted.length;
-        if (left > 0) {
-          toast.warning(`${productCount(left)} weren't submitted`, { description: 'They changed since you looked. Check them again.' });
-        }
-      },
-      onError: (failure) => toast.error("Couldn't submit", { description: errorMessage(failure) }),
-    });
-  };
+  const submitReady = () =>
+    submitToProducts(
+      ready.map((upload) => upload.id),
+      () => selection.clear(),
+    );
 
   return (
     <div className="flex items-center gap-2">
@@ -54,7 +45,7 @@ export function ReviewActions({ uploads, selection }: { uploads: UploadSummary[]
       )}
       <WhyDisabled reason={ready.length === 0 ? 'Check the flagged products first' : null}>
         {(describedBy) => (
-          <Button size="sm" disabled={ready.length === 0} loading={submit.isPending} aria-describedby={describedBy} onClick={submitReady}>
+          <Button size="sm" disabled={ready.length === 0} loading={submitting} aria-describedby={describedBy} onClick={submitReady}>
             {picked ? `Submit ${ready.length} ready` : `Submit all ready${ready.length > 0 ? ` (${ready.length})` : ''}`}
           </Button>
         )}

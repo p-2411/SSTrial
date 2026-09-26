@@ -64,7 +64,7 @@ beforeEach(() => {
         return answer(request);
       }
       if (url === '/api/uploads/u1') return jsonResponse({ upload: onServer });
-      return jsonResponse({ uploads: [], nextCursor: null, counts: {} });
+      return jsonResponse({ uploads: [], nextCursor: null });
     }),
   );
 });

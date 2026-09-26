@@ -1,6 +1,6 @@
 import { useSearchParams } from 'react-router';
 import type { NavigateOptions } from 'react-router';
-import { logFilterParams, NO_ACTIVITY_FILTERS, type LogFilters } from '@/api/logs';
+import { NO_ACTIVITY_FILTERS, type LogFilters } from '@/api/logs';
 import { MAX_SEARCH_LENGTH } from '@/components/SearchInput';
 import { isDay } from '@/lib/dayRange';
 import { inCatalogueOrder } from '../eventTypes';
@@ -33,6 +33,17 @@ export function readActivityLogFilters(params: URLSearchParams): LogFilters {
   };
 }
 
+/** The filters as the URL has them, one `type` per type, and the days as days (unlike the API's). */
+function activityLogParams({ search, types, from, to, upload }: LogFilters): URLSearchParams {
+  const params = new URLSearchParams();
+  if (search) params.set('q', search);
+  for (const type of types) params.append('type', type);
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  if (upload) params.set('upload', upload);
+  return params;
+}
+
 /**
  * The filters in the URL, and a function that changes some of them: a navigation, so Back undoes
  * it (unless `replace`, as for a search being typed). Changes apply to the URL as it is then, so a
@@ -42,6 +53,6 @@ export function useActivityLogFilters(): [LogFilters, (changes: Partial<LogFilte
   const [params, setParams] = useSearchParams();
   return [
     readActivityLogFilters(params),
-    (changes, options) => setParams((current) => logFilterParams({ ...readActivityLogFilters(current), ...changes }), options),
+    (changes, options) => setParams((current) => activityLogParams({ ...readActivityLogFilters(current), ...changes }), options),
   ];
 }

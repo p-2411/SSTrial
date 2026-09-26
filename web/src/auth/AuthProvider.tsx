@@ -4,7 +4,7 @@ import { ME_PATH, type CurrentMember } from '@label-extractor/shared';
 import { ApiRequestError, apiRequest, connectApi, errorMessage } from '@/api/client';
 import { loadSupabaseAuthClient, type AuthClient } from './authClient';
 
-export type AuthState =
+type AuthState =
   | { status: 'loading' }
   /** `notice` explains why, when it isn't just "nobody has signed in yet". */
   | { status: 'signed-out'; notice: string | null }

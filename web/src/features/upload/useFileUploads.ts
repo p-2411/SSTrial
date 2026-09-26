@@ -2,7 +2,7 @@ import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { validateFileMetadata, type SupportedMimeType, type UploadSummary } from '@label-extractor/shared';
 import { errorMessage } from '@/api/client';
-import { refreshUploadLists, storeUpload } from '@/api/queries';
+import { refreshAfterChange, storeUpload } from '@/api/queries';
 import { useWarnBeforeUnload } from '@/lib/useWarnBeforeUnload';
 import { uploadFile } from './uploadFile';
 
@@ -106,7 +106,7 @@ export function useFileUploads({ onDuplicate }: FileUploadsOptions = {}) {
         // Hand over to the server-side list: cache the detail, wait for the list to include this
         // upload, then drop the local row, so it moves across without a flicker.
         storeUpload(queryClient, result.upload);
-        await refreshUploadLists(queryClient);
+        await refreshAfterChange(queryClient);
         dispatch({ type: 'removed', localId });
       } catch (error) {
         failed.current.set(localId, upload);

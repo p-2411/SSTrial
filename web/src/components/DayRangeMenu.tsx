@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ANY_TIME, DAY_PRESETS, describeDayRange, sameRange, toDay, type DayRange } from '@/lib/dayRange';
 import { importWithReload } from '@/lib/importWithReload';
+import { midSentence } from '@/lib/text';
 import { cn } from '@/lib/utils';
 
 // The calendar (react-day-picker) is only fetched when someone opens the menu: most never pick a
@@ -91,9 +92,4 @@ function CalendarUnavailable() {
       The calendar couldn't load. Pick a span on the left, or reload the page to try again.
     </p>
   );
-}
-
-/** "Last 7 days" → "last 7 days", after a label; a month's name keeps its capital ("Sep 3"). */
-function midSentence(text: string): string {
-  return /^(Any|Today|Yesterday|Last|Since|Until)\b/.test(text) ? text.charAt(0).toLowerCase() + text.slice(1) : text;
 }

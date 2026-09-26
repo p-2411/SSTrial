@@ -4,6 +4,7 @@ import { AlertTriangle, OctagonAlert, ShieldCheck } from 'lucide-react';
 import { confidenceBand, type UploadDetail } from '@label-extractor/shared';
 import { OVERALL_CONFIDENCE_MEANING } from '@/components/Confidence';
 import { Button } from '@/components/ui/button';
+import { BAND_TONE, TONE_BORDER_CLASSES, TONE_CLASSES, type Tone } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 
 type Upload = Pick<UploadDetail, 'confidence' | 'fieldConfidence'>;
@@ -23,6 +24,11 @@ function overallState({ confidence, fieldConfidence }: Upload): OverallState {
   return ({ ok: 'high', check: 'medium', low: 'low' } as const)[confidenceBand(confidence)];
 }
 
+/** A flagged verdict's footer: its tone's pastel band, ruled above, with the card's edge to match. */
+function flaggedStyle(tone: Tone): { bar: string; border: string } {
+  return { bar: cn('border-t', TONE_CLASSES[tone]), border: TONE_BORDER_CLASSES[tone] };
+}
+
 const STATES: Record<OverallState, { icon: LucideIcon; bar: string; border: string; text: (score: number | null) => string }> = {
   high: {
     icon: ShieldCheck,
@@ -32,14 +38,12 @@ const STATES: Record<OverallState, { icon: LucideIcon; bar: string; border: stri
   },
   medium: {
     icon: AlertTriangle,
-    bar: 'border-t border-warning-border bg-warning-soft text-warning',
-    border: 'border-warning-border',
+    ...flaggedStyle(BAND_TONE.check),
     text: (score) => `Medium confidence (${score}%). Check flagged fields.`,
   },
   low: {
     icon: OctagonAlert,
-    bar: 'border-t border-danger-border bg-danger-soft text-danger',
-    border: 'border-danger-border',
+    ...flaggedStyle(BAND_TONE.low),
     text: (score) => `Low confidence (${score}%). Check flagged fields.`,
   },
   // Every stored result passed schema validation, so without scores that's what there is to say.

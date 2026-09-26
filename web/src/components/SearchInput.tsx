@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
 /** How long typing has to pause before a search runs: long enough not to search every letter. */
-export const SEARCH_DELAY_MS = 300;
+const SEARCH_DELAY_MS = 300;
 
 /** The longest search the server takes. */
 export const MAX_SEARCH_LENGTH = 200;

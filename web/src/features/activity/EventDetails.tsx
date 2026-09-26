@@ -40,7 +40,7 @@ export function EventDetailsTrigger() {
  * event's facts.
  */
 export function EventDetails({ source, eventId }: { source: EventDetailsSource; eventId: string }) {
-  const { data, isPending, isError, error, refetch, isRefetching } = useEventDetails(source, eventId, true);
+  const { data, isPending, isError, error, refetch, isRefetching } = useEventDetails(source, eventId);
 
   if (isPending) {
     return (

@@ -1,7 +1,7 @@
 import type { ApiErrorBody, ApiErrorCode } from '@label-extractor/shared';
 
 /** The server's codes, plus two for when no answer came from our API at all. */
-export type RequestErrorCode = ApiErrorCode | 'NETWORK_ERROR' | 'HTTP_ERROR';
+type RequestErrorCode = ApiErrorCode | 'NETWORK_ERROR' | 'HTTP_ERROR';
 
 /**
  * A failed API call, carrying the server's error code and its user-facing message.
@@ -19,7 +19,7 @@ export class ApiRequestError extends Error {
   }
 }
 
-export interface AuthHooks {
+interface AuthHooks {
   /** The signed-in user's access token, or null. Asked for on every request, so it's never stale. */
   getAccessToken(): Promise<string | null>;
   /** The API stopped accepting the sign-in (expired or revoked). */

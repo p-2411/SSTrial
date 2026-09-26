@@ -5,7 +5,7 @@ import type { UploadDetail } from '@label-extractor/shared';
 import { useDeleteUpload } from '@/api/queries';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/button';
-import { useCloseDetail } from './UploadDetailPanel';
+import { useCloseDetail } from './useOpenUpload';
 
 /**
  * Deleting the product, its file with it (or, for an upload that was never read, just the file),

@@ -6,7 +6,8 @@ import type { UploadDetail } from '@label-extractor/shared';
 import { uploadKeys } from '@/api/queries';
 import { jsonResponse, renderWithProviders } from '@/test/render';
 import { detail } from '@/test/fixtures';
-import { panelWidth, UploadDetailPanel } from './UploadDetailPanel.tsx';
+import { UploadDetailPanel } from './UploadDetailPanel.tsx';
+import { panelWidth } from './usePanelResize.ts';
 
 /** Uploads the fake API can return, by ID. "nameless" is a read label with no product name on it. */
 const uploads: Record<string, UploadDetail> = Object.fromEntries(
@@ -89,7 +90,7 @@ afterEach(() => {
 
 describe('UploadDetailPanel', () => {
   it('shows nothing on the list', () => {
-    renderAt('/?status=failed');
+    renderAt('/');
     expect(screen.queryByRole('heading', { level: 2 })).not.toBeInTheDocument();
   });
 
@@ -136,13 +137,13 @@ describe('UploadDetailPanel', () => {
   it.each([
     ['the close button', () => userEvent.click(screen.getByRole('button', { name: 'Close details' }))],
     ['Esc', () => userEvent.keyboard('{Escape}')],
-  ])('closes with %s, returning to the list with the status filter kept', async (_how, closePanel) => {
-    renderAt('/uploads/abc?status=completed');
+  ])('closes with %s, returning to the list', async (_how, closePanel) => {
+    renderAt('/uploads/abc');
     await screen.findByRole('complementary', { name: 'Maple Pecan Crunch' });
 
     await closePanel();
 
-    expect(screen.getByTestId('url')).toHaveTextContent('/?status=completed');
+    expect(screen.getByTestId('url')).toHaveTextContent(/^\/$/);
   });
 
   it('invites a check in the status pill when the upload is worth checking', async () => {
@@ -253,8 +254,8 @@ describe('UploadDetailPanel', () => {
       expect(screen.queryByRole('button', { name: 'Delete product' })).not.toBeInTheDocument();
     });
 
-    it('asks first, then deletes and closes the panel, keeping the status filter', async () => {
-      renderAt('/uploads/mine?status=completed');
+    it('asks first, then deletes and closes the panel', async () => {
+      renderAt('/uploads/mine');
       await screen.findByRole('complementary', { name: 'My Crackers' });
 
       await userEvent.click(screen.getByRole('button', { name: 'Delete product' }));
@@ -266,7 +267,7 @@ describe('UploadDetailPanel', () => {
       await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
       expect(deleteCalls().map(([url]) => url)).toEqual(['/api/uploads/mine']);
-      await waitFor(() => expect(screen.getByTestId('url')).toHaveTextContent('/?status=completed'));
+      await waitFor(() => expect(screen.getByTestId('url')).toHaveTextContent(/^\/$/));
     });
 
     it('keeps the upload when the person changes their mind', async () => {

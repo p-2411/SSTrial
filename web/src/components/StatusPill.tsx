@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle2, Clock, Loader2, OctagonAlert, XCircle } fr
 import { confidenceBand, type UploadStatus } from '@label-extractor/shared';
 import { Badge } from '@/components/ui/badge';
 import { OVERALL_CONFIDENCE_MEANING } from '@/components/Confidence';
-import { TONE_CLASSES } from '@/lib/tone';
+import { BAND_TONE, TONE_CLASSES } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 
 interface PillStyle {
@@ -21,10 +21,10 @@ const STATUS: Record<UploadStatus, PillStyle> = {
   failed: { label: 'Failed', icon: XCircle, className: TONE_CLASSES.danger },
 };
 
-/** A completed upload that isn't confidently read: amber for medium confidence, red for low. */
+/** A completed upload that isn't confidently read: amber for medium confidence, red for low (BAND_TONE). */
 const WORTH_CHECKING: Record<'check' | 'low', Omit<PillStyle, 'label'>> = {
-  check: { icon: AlertTriangle, className: TONE_CLASSES.warning },
-  low: { icon: OctagonAlert, className: TONE_CLASSES.danger },
+  check: { icon: AlertTriangle, className: TONE_CLASSES[BAND_TONE.check] },
+  low: { icon: OctagonAlert, className: TONE_CLASSES[BAND_TONE.low] },
 };
 
 /**

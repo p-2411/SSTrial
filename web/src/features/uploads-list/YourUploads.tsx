@@ -13,7 +13,7 @@ import { PendingUploadRow } from '@/features/upload/PendingUploadRow';
 import type { PendingUpload } from '@/features/upload/useFileUploads';
 import { useNow } from '@/lib/useNow';
 import { useSelection, type Selection } from '@/lib/useSelection';
-import { ListSkeleton } from './listParts';
+import { ListSkeleton } from './ListSkeleton';
 import { ReviewActions } from './ReviewActions';
 import { UploadRow } from './UploadRow';
 import { useUploadAnnouncements } from './useUploadAnnouncements';

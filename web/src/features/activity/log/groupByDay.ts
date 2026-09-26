@@ -1,6 +1,6 @@
 import type { LogEvent } from '@label-extractor/shared';
 
-export interface DayOfEvents {
+interface DayOfEvents {
   key: string;
   /** "Today", "Yesterday", "Tuesday, September 23", or with the year when it isn't this year's. */
   label: string;

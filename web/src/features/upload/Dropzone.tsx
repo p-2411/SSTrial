@@ -1,47 +1,18 @@
 import { memo, useEffect, useRef, useState, type DragEvent } from 'react';
 import { UploadCloud, X } from 'lucide-react';
-import { toast } from 'sonner';
-import {
-  FILE_INPUT_ACCEPT,
-  formatBytes,
-  MAX_FILE_SIZE_BYTES,
-  MAX_FILES_PER_BATCH,
-  SUPPORTED_TYPES_LABEL,
-  validateFileMetadata,
-  type SupportedMimeType,
-} from '@label-extractor/shared';
+import { FILE_INPUT_ACCEPT, formatBytes, MAX_FILE_SIZE_BYTES, SUPPORTED_TYPES_LABEL } from '@label-extractor/shared';
 import { FileTypeTile } from '@/components/FileTypeTile';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatFileFacts } from '@/lib/format';
 import { cn } from '@/lib/utils';
-
-/** A file picked but not yet uploaded. `problem` says why it can't be uploaded, if it can't. */
-interface StagedFile {
-  id: string;
-  file: File;
-  mimeType: SupportedMimeType | null;
-  problem: string | null;
-}
-
-function stage(file: File): StagedFile {
-  const validation = validateFileMetadata({ name: file.name, type: file.type, size: file.size });
-  return {
-    id: crypto.randomUUID(),
-    file,
-    mimeType: validation.ok ? validation.mimeType : null,
-    problem: validation.ok ? null : validation.message,
-  };
-}
+import { useStagedFiles, type StagedFile } from './useStagedFiles';
 
 /**
  * The drop area's one height, whether it's inviting files or listing them: the invitation's own
  * height (218px). Listed files scroll inside it, so the page below never jumps as files are added.
  */
 const DROP_AREA_HEIGHT = 'h-[13.625rem]';
-
-/** The same file picked twice (dropped again, or chosen again) is only listed once. */
-const sameFile = (a: File, b: File) => a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
 
 /**
  * Where files come in: drag and drop, or the file picker (which is also the keyboard path). Files
@@ -53,7 +24,7 @@ const sameFile = (a: File, b: File) => a.name === b.name && a.size === b.size &&
  */
 export const Dropzone = memo(function Dropzone({ onUpload }: { onUpload: (files: File[]) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [staged, setStaged] = useState<StagedFile[]>([]);
+  const { staged, readyCount, add, remove, takeReady } = useStagedFiles();
   const [isDragging, setIsDragging] = useState(false);
   // dragenter/dragleave fire for every child element crossed, so count depth instead of toggling.
   const dragDepth = useRef(0);
@@ -69,26 +40,7 @@ export const Dropzone = memo(function Dropzone({ onUpload }: { onUpload: (files:
     };
   }, []);
 
-  /** Adds files not already listed, up to MAX_FILES_PER_BATCH; says so if some didn't fit. */
-  const add = (files: File[]) => {
-    const fresh = files.filter((file) => !staged.some((s) => sameFile(s.file, file)));
-    const room = Math.max(0, MAX_FILES_PER_BATCH - staged.length);
-    if (fresh.length > room) {
-      const left = fresh.length - room;
-      toast.warning(`You can add up to ${MAX_FILES_PER_BATCH} files at a time`, {
-        description: `${left} ${left === 1 ? "file wasn't" : "files weren't"} added. Upload these first, then add the rest.`,
-      });
-    }
-    if (room > 0) setStaged([...staged, ...fresh.slice(0, room).map(stage)]);
-  };
-  const remove = (id: string) => setStaged((current) => current.filter((s) => s.id !== id));
   const choose = () => inputRef.current?.click();
-
-  const ready = staged.filter((s) => s.problem === null);
-  const upload = () => {
-    onUpload(ready.map((s) => s.file));
-    setStaged((current) => current.filter((s) => s.problem !== null));
-  };
 
   const hasFiles = (event: DragEvent) => event.dataTransfer.types.includes('Files');
   const isEmpty = staged.length === 0;
@@ -173,7 +125,7 @@ export const Dropzone = memo(function Dropzone({ onUpload }: { onUpload: (files:
               <Button variant="outline" onClick={choose}>
                 Add more files
               </Button>
-              <Button onClick={upload} disabled={ready.length === 0}>
+              <Button onClick={() => onUpload(takeReady())} disabled={readyCount === 0}>
                 Upload
               </Button>
             </div>

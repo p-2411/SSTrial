@@ -37,7 +37,7 @@ import {
 /**
  * Server state lives in React Query: caching, polling and retries are handled here so
  * components only deal with "loading / error / data". Code that changes uploads keeps the cache in
- * step through the helpers below rather than touching query keys itself.
+ * step through the helpers below rather than touching query keys itself (see refreshAfterChange).
  */
 
 /**
@@ -59,7 +59,7 @@ export const uploadKeys = {
   detail: (id: string) => [...uploadKeys.all, 'detail', id] as const,
 };
 
-export const opsKeys = {
+const opsKeys = {
   all: ['ops'] as const,
 };
 
@@ -72,7 +72,7 @@ export const logKeys = {
 };
 
 /** Kept apart from `logKeys`, so new events don't refetch details: an event never changes. */
-export const eventDetailsKeys = {
+const eventDetailsKeys = {
   event: (source: EventDetailsSource, eventId: string) => ['event-details', source.uploadId ?? 'log', eventId] as const,
 };
 
@@ -105,6 +105,22 @@ export function refreshUpload(queryClient: QueryClient, id: string): Promise<voi
 /** Caches an upload the API just returned, so its detail shows without another request. */
 export function storeUpload(queryClient: QueryClient, upload: UploadDetail): void {
   queryClient.setQueryData(uploadKeys.detail(upload.id), upload);
+}
+
+/**
+ * The one rule for keeping the cache in step with a change to uploads, which every mutation
+ * follows. The changed upload's own detail comes first: cached from the API's answer when there is
+ * one (storeUpload), or dropped when deleted, by the caller. Then:
+ *   - every upload list is refetched (a change can move an upload between them, or change a row),
+ *     and so are details too (`details`) when several uploads changed and the API didn't send them;
+ *   - the activity log and each upload's history are refetched, since every change is recorded
+ *     there (histories sit under logKeys.all).
+ * Resolves once the lists (and details) are fresh; the activity follows without being waited on.
+ * Changes made elsewhere arrive through the live update stream instead (useLiveUpdates).
+ */
+export function refreshAfterChange(queryClient: QueryClient, { details = false }: { details?: boolean } = {}): Promise<void> {
+  void refreshLogs(queryClient);
+  return details ? refreshAllUploads(queryClient) : refreshUploadLists(queryClient);
 }
 
 /**
@@ -160,25 +176,25 @@ export function fetchUpload(queryClient: QueryClient, id: string): Promise<Uploa
 
 /**
  * Save corrections to an upload's data, or confirm fields as right. The cached detail is replaced
- * with the saved one, and the lists refresh (the upload's confidence there may change). When
- * someone else saved first (see isEditConflict), the caller decides what to do about it: whether their
- * change matters depends on which field it touched.
+ * with the saved one (see refreshAfterChange). When someone else saved first (see isEditConflict),
+ * the caller decides what to do about it: whether their change matters depends on which field it
+ * touched.
  */
 export function useEditResult(uploadId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (request: EditResultRequest) => editResult(uploadId, request),
-    onSuccess: async (upload) => {
+    onSuccess: (upload) => {
       storeUpload(queryClient, upload);
-      await refreshUploadLists(queryClient);
+      return refreshAfterChange(queryClient);
     },
   });
 }
 
 /**
  * Review's two actions, on the uploads listed there: submitting those that are ready to Products,
- * and marking every flagged field as checked. Each resolves to the IDs it acted on. Both change
- * uploads' details and history as well as the lists, so everything about uploads is refetched.
+ * and marking every flagged field as checked. Each resolves to the IDs it acted on. The API sends
+ * back no uploads, so their details are refetched too (see refreshAfterChange).
  */
 export function useSubmitUploads() {
   return useReviewAction(submitUploads);
@@ -193,9 +209,9 @@ export function useDeleteUploads() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: deleteUploads,
-    onSuccess: async (deleted) => {
+    onSuccess: (deleted) => {
       for (const id of deleted) queryClient.removeQueries({ queryKey: uploadKeys.detail(id) });
-      await Promise.all([refreshUploadLists(queryClient), refreshLogs(queryClient)]);
+      return refreshAfterChange(queryClient);
     },
   });
 }
@@ -204,48 +220,48 @@ function useReviewAction(action: (ids: string[]) => Promise<string[]>) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: action,
-    onSuccess: () => Promise.all([refreshAllUploads(queryClient), refreshLogs(queryClient)]),
+    onSuccess: () => refreshAfterChange(queryClient, { details: true }),
   });
 }
 
-/** Re-queue a failed upload. Updates the cached detail immediately and refreshes the list. */
+/** Re-queue a failed upload. The cached detail is replaced at once (see refreshAfterChange). */
 export function useRetryUpload() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: retryUpload,
-    onSuccess: async (upload) => {
+    onSuccess: (upload) => {
       storeUpload(queryClient, upload);
-      await refreshUploadLists(queryClient);
+      return refreshAfterChange(queryClient);
     },
   });
 }
 
 /**
  * Admins only: put an upload's data back to a version from its history. The reverted upload is
- * cached at once; its history (which gains the revert) and the lists are refetched.
+ * cached at once, and its history gains the revert (see refreshAfterChange).
  */
 export function useRevertUpload(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (request: RevertRequest) => revertUpload(id, request),
-    onSuccess: async (upload) => {
+    onSuccess: (upload) => {
       storeUpload(queryClient, upload);
-      await Promise.all([refreshUploadLists(queryClient), queryClient.invalidateQueries({ queryKey: logKeys.upload(id) })]);
+      return refreshAfterChange(queryClient);
     },
   });
 }
 
 /**
  * Delete an upload. Its cached detail is dropped rather than refetched, so a panel still showing it
- * (closing, say) keeps its last data instead of flashing "not found"; the lists refresh without it.
+ * (closing, say) doesn't warn that it has been deleted (see refreshAfterChange).
  */
 export function useDeleteUpload() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: deleteUpload,
-    onSuccess: async (_nothing, id) => {
+    onSuccess: (_nothing, id) => {
       queryClient.removeQueries({ queryKey: uploadKeys.detail(id) });
-      await refreshUploadLists(queryClient);
+      return refreshAfterChange(queryClient);
     },
   });
 }
@@ -277,14 +293,14 @@ export function useUploadHistory(id: string, filters: ActivityFilters) {
 }
 
 /**
- * One event's details, fetched when someone opens them (`enabled`), never before. An event never
- * changes once written, so they're fetched once and kept while the page is open.
+ * One event's details. Only asked for once they're opened (EventDetails mounts then), never
+ * before. An event never changes once written, so they're fetched once and kept while the page is
+ * open.
  */
-export function useEventDetails(source: EventDetailsSource, eventId: string, enabled: boolean) {
+export function useEventDetails(source: EventDetailsSource, eventId: string) {
   return useQuery({
     queryKey: eventDetailsKeys.event(source, eventId),
     queryFn: () => getEventDetails(source, eventId),
-    enabled,
     staleTime: Infinity,
   });
 }

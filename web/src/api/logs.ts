@@ -8,16 +8,15 @@ import {
   type LogEventType,
   type UploadHistoryResponse,
 } from '@label-extractor/shared';
-import { toInstants, type DayRange } from '@/lib/dayRange';
 import { apiRequest } from './client.ts';
+import { searchAndDayParams, type SearchAndDays } from './filters.ts';
 
 /**
- * What a list of events is narrowed to: words in their messages ('' means any), some types of
- * event (none means every type), and a span of days (see DayRange). The activity log and each
- * upload's history both take these.
+ * What a list of events is narrowed to: words in their messages ('' means any), a span of days,
+ * and some types of event (none means every type). The activity log and each upload's history
+ * both take these.
  */
-export interface ActivityFilters extends DayRange {
-  search: string;
+export interface ActivityFilters extends SearchAndDays {
   types: LogEventType[];
 }
 
@@ -28,30 +27,11 @@ export interface LogFilters extends ActivityFilters {
   upload: string | null;
 }
 
-export function isFiltered(filters: ActivityFilters): boolean {
-  return filters.search !== '' || filters.types.length > 0 || filters.from !== null || filters.to !== null;
-}
-
-/**
- * The filters as query parameters, one `type` per type, days as days. The Logs page's URL uses
- * these; requests to the API send the days as instants instead (see `apiParams`).
- */
-export function logFilterParams({ search, types, from, to, upload }: LogFilters): URLSearchParams {
-  const params = new URLSearchParams();
-  if (search) params.set('q', search);
-  for (const type of types) params.append('type', type);
-  if (from) params.set('from', from);
-  if (to) params.set('to', to);
-  if (upload) params.set('upload', upload);
-  return params;
-}
-
-/** The filters as the API takes them: the days as the viewer's own midnights. */
+/** The filters as the API takes them (one `type` per type), and the page to start from. */
 function apiParams(filters: ActivityFilters & { upload?: string | null }, cursor: string | undefined): string {
-  const params = logFilterParams({ upload: null, ...filters, from: null, to: null });
-  const { from, to } = toInstants(filters);
-  if (from) params.set('from', from);
-  if (to) params.set('to', to);
+  const params = searchAndDayParams(filters);
+  for (const type of filters.types) params.append('type', type);
+  if (filters.upload) params.set('upload', filters.upload);
   if (cursor) params.set('cursor', cursor);
   return params.size > 0 ? `?${params}` : '';
 }

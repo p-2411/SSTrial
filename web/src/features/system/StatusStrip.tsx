@@ -3,9 +3,9 @@ import { CheckCircle2, XCircle } from 'lucide-react';
 import { formatList, type HealthCheckResult, type OpsStatusResponse } from '@label-extractor/shared';
 import { Card } from '@/components/ui/card';
 import { formatDuration, formatOptional, formatRelativeTime } from '@/lib/format';
+import { capitalise } from '@/lib/text';
+import { TONE_TEXT_CLASSES, type Tone } from '@/lib/tone';
 import { cn } from '@/lib/utils';
-
-type Tone = 'ok' | 'bad';
 
 /**
  * Is the system healthy, and is work flowing? One row of figures above the activity log: what's
@@ -73,13 +73,13 @@ function Checks({ checks }: { checks: Check[] }) {
     <Stat
       label="Systems"
       value={
-        // The circled tick or cross the checks each had on the old status page.
+        // A circled tick or cross, beside the words: never colour alone.
         <span className="inline-flex items-center gap-1.5">
           {ok ? <CheckCircle2 className="size-5" aria-hidden /> : <XCircle className="size-5" aria-hidden />}
           {ok ? 'All OK' : `${capitalise(formatList(failing.map((check) => check.name), 'and'))} down`}
         </span>
       }
-      tone={ok ? 'ok' : 'bad'}
+      tone={ok ? 'success' : 'danger'}
       note={ok ? undefined : failing.map((check) => check.problem).join(' ')}
       title={checks.map((check) => `${capitalise(check.name)}: ${check.detail}`).join('\n')}
     />
@@ -90,10 +90,8 @@ function Stat({ label, value, note, tone, title }: { label: string; value: React
   return (
     <div className="grid content-start gap-0.5 px-4 py-3" title={title}>
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={cn('text-xl font-semibold tabular-nums', tone === 'ok' && 'text-success', tone === 'bad' && 'text-danger')}>{value}</p>
+      <p className={cn('text-xl font-semibold tabular-nums', tone && TONE_TEXT_CLASSES[tone])}>{value}</p>
       {note && <p className="text-xs text-muted-foreground">{note}</p>}
     </div>
   );
 }
-
-const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);

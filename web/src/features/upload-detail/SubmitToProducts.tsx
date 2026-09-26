@@ -1,10 +1,8 @@
 import { Send } from 'lucide-react';
-import { toast } from 'sonner';
 import { canSubmitUpload, type UploadDetail } from '@label-extractor/shared';
-import { errorMessage } from '@/api/client';
-import { useSubmitUploads } from '@/api/queries';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useSubmitToProducts } from './useSubmitToProducts';
 
 /**
  * While an upload waits in Review, the way to put it into Products: a button floating over the
@@ -13,17 +11,8 @@ import { cn } from '@/lib/utils';
  * is left to check it's disabled, and says so.
  */
 export function SubmitToProducts({ upload }: { upload: UploadDetail }) {
-  const submit = useSubmitUploads();
+  const { submitToProducts, submitting } = useSubmitToProducts();
   const ready = canSubmitUpload(upload);
-
-  const onClick = () =>
-    submit.mutate([upload.id], {
-      onSuccess: ([submitted]) => {
-        if (submitted) toast.success('Added to Products');
-        else toast.warning("It wasn't submitted", { description: 'It changed since you opened it. Check it again.' });
-      },
-      onError: (failure) => toast.error("Couldn't submit", { description: errorMessage(failure) }),
-    });
 
   return (
     // bottom-0: sticky keeps clear of the panel's padding, and that 12px (pb-3) is the gap.
@@ -41,8 +30,8 @@ export function SubmitToProducts({ upload }: { upload: UploadDetail }) {
             : 'disabled:border-muted disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100',
         )}
         disabled={!ready}
-        loading={submit.isPending}
-        onClick={onClick}
+        loading={submitting}
+        onClick={() => submitToProducts([upload.id])}
       >
         <Send data-icon="inline-start" aria-hidden />
         {ready ? 'Submit to Products' : 'Check the flagged fields to submit'}

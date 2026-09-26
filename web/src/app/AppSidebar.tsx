@@ -32,8 +32,8 @@ import { HOME_PATH, SYSTEM_PATH, UPLOAD_PATH_PATTERN } from '@/routes';
 
 /**
  * The app shell's dark sidebar, following the SupplyScope product layout. It holds destinations
- * only (Uploads for everyone; the System page, status and activity log, for admins), then who is signed
- * in. Filtering the upload list is not a destination, so its status tabs live in the list itself.
+ * only (Uploads for everyone; the System page, status and activity log, for admins), then who is
+ * signed in.
  */
 export function AppSidebar() {
   const { pathname } = useLocation();

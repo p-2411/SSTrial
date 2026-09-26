@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { ChevronRight, Undo2 } from 'lucide-react';
-import { toast } from 'sonner';
-import { UPLOAD_EVENT_TYPE_IDS, type LogLevel, type UploadDetail, type UploadHistoryEntry } from '@label-extractor/shared';
-import { errorMessage, isEditConflict } from '@/api/client';
-import { isFiltered, NO_ACTIVITY_FILTERS, type ActivityFilters } from '@/api/logs';
-import { useRevertUpload, useUploadHistory } from '@/api/queries';
-import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { UPLOAD_EVENT_TYPE_IDS, type UploadDetail, type UploadHistoryEntry } from '@label-extractor/shared';
+import { errorMessage } from '@/api/client';
+import { isFiltered } from '@/api/filters';
+import { NO_ACTIVITY_FILTERS, type ActivityFilters } from '@/api/logs';
+import { useUploadHistory } from '@/api/queries';
 import { EmptyState } from '@/components/EmptyState';
 import { FadeWhileLoading } from '@/components/FadeWhileLoading';
 import { InlineError } from '@/components/InlineError';
@@ -15,16 +14,12 @@ import { Card } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ActivityFilterBar } from '@/features/activity/ActivityFilterBar';
-import { EVENT_ACTION_CLASS, EventDetails, EventDetailsTrigger } from '@/features/activity/EventDetails';
-import { formatDateAndTime, formatDateTimeWithSeconds } from '@/lib/format';
+import { EVENT_ACTION_CLASS } from '@/features/activity/EventDetails';
+import { EventRow } from '@/features/activity/EventRow';
+import { formatDateAndTime } from '@/lib/format';
+import { LEVEL_TONE, TONE_TEXT_CLASSES } from '@/lib/tone';
 import { cn } from '@/lib/utils';
-
-/** Everyday events read plainly; warnings and errors take their tone's colour. */
-const LEVEL_TEXT: Record<LogLevel, string> = {
-  info: '',
-  warn: 'text-warning',
-  error: 'text-danger',
-};
+import { RevertDialog } from './RevertDialog';
 
 type Upload = Pick<UploadDetail, 'id' | 'revision' | 'canRevert'>;
 
@@ -33,7 +28,7 @@ type Upload = Pick<UploadDetail, 'id' | 'revision' | 'canRevert'>;
  * who edited or checked its fields. Its entries come from the activity log, and update live.
  *
  * Collapsed until opened, and nothing is fetched until then: most visits never look. Once open,
- * it's a page at a time ("Load older"), searchable and filtered like the activity log, and each
+ * it's a page at a time ("Load more"), searchable and filtered like the activity log, and each
  * change's details (what it did to the data) are fetched only when opened.
  *
  * An admin can put a completed upload's data back to any point where it changed: "Revert",
@@ -118,82 +113,32 @@ function HistoryBody({ upload }: { upload: Upload }) {
   );
 }
 
-/**
- * When it happened (to the second, on hover), what happened, then, always in view on its right
- * however long the message runs, "Revert" for an admin, and "Details" for a change to the data
- * (what it changed, or the data as read).
- */
+/** An entry in the history: see EventRow. Revert, for an admin, where the data can be put back to. */
 function HistoryEntry({ uploadId, entry, onRevert }: { uploadId: string; entry: UploadHistoryEntry; onRevert?: () => void }) {
+  const tone = LEVEL_TONE[entry.level];
   return (
     // Each entry takes the list's columns (a subgrid), so Details and Revert line up down the list.
     <li className="col-span-full grid grid-cols-subgrid">
-      <Collapsible className="group/event col-span-full grid grid-cols-subgrid items-baseline text-sm">
-        <time
-          dateTime={entry.occurredAt}
-          title={formatDateTimeWithSeconds(entry.occurredAt)}
-          className="text-xs whitespace-nowrap text-muted-foreground tabular-nums"
-        >
-          {formatDateAndTime(entry.occurredAt)}
-        </time>
-        <span className={cn('wrap-anywhere', LEVEL_TEXT[entry.level])}>{entry.message}</span>
-        {/* Revert first: it comes and goes, so Details, on every change, keeps to the right edge. */}
-        {onRevert ? (
-          <button type="button" className={EVENT_ACTION_CLASS} onClick={onRevert}>
-            <Undo2 aria-hidden />
-            <span>Revert</span>
-          </button>
-        ) : (
-          <span />
-        )}
-        {entry.hasDetails ? <EventDetailsTrigger /> : <span />}
-        <CollapsibleContent className="col-span-3 col-start-2 min-w-0">
-          <EventDetails source={{ uploadId }} eventId={entry.id} />
-        </CollapsibleContent>
-      </Collapsible>
+      <EventRow
+        event={entry}
+        source={{ uploadId }}
+        time={formatDateAndTime(entry.occurredAt)}
+        className="col-span-full grid-cols-subgrid text-sm"
+        timeClassName="text-xs whitespace-nowrap"
+        detailsClassName="col-span-3 col-start-2"
+        // Revert first: it comes and goes, so Details, on every change, keeps to the right edge.
+        actions={[
+          onRevert && (
+            <button type="button" className={EVENT_ACTION_CLASS} onClick={onRevert}>
+              <Undo2 aria-hidden />
+              <span>Revert</span>
+            </button>
+          ),
+        ]}
+      >
+        {/* Everyday events read plainly; warnings and errors take their tone's colour. */}
+        <span className={cn('wrap-anywhere', tone && TONE_TEXT_CLASSES[tone])}>{entry.message}</span>
+      </EventRow>
     </li>
-  );
-}
-
-/**
- * Asks before reverting, since it undoes later edits and checks. Made against the revision on
- * screen, so it can't undo a change the admin hasn't seen: if someone saved meanwhile, it's
- * refused, and they can look again.
- */
-function RevertDialog({ upload, entry, onClose }: { upload: Upload; entry: UploadHistoryEntry | null; onClose: () => void }) {
-  const revert = useRevertUpload(upload.id);
-
-  const confirm = () => {
-    if (!entry?.revertTo) return;
-    revert.mutate(
-      { revision: upload.revision, versionId: entry.revertTo },
-      {
-        onSuccess: () => {
-          toast.success('Reverted');
-          onClose();
-        },
-      },
-    );
-  };
-
-  return (
-    <ConfirmDialog
-      open={entry !== null}
-      title="Revert to this point?"
-      description={
-        <>
-          The data goes back to how it was on {entry && formatDateAndTime(entry.occurredAt)}, and checks made since are undone. The
-          revert is recorded in the history, so it can be undone too.
-        </>
-      }
-      confirmLabel="Revert"
-      cancelLabel="Keep it"
-      request={revert}
-      describeError={(error) =>
-        isEditConflict(error) ? 'Someone changed this upload since you opened it. Close this and look again.' : errorMessage(error)
-      }
-      confirmDisabled={isEditConflict(revert.error)}
-      onConfirm={confirm}
-      onClose={onClose}
-    />
   );
 }

@@ -1,10 +1,8 @@
-import { useMatch } from 'react-router';
-import { toast } from 'sonner';
 import { useDeleteUploads } from '@/api/queries';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { useCloseDetail } from '@/features/upload-detail/UploadDetailPanel';
+import { useCloseDetail, useOpenUploadId } from '@/features/upload-detail/useOpenUpload';
 import { productCount } from '@/lib/format';
-import { UPLOAD_PATH_PATTERN } from '@/routes';
+import { toastBatchResult } from '@/lib/toasts';
 
 /**
  * Asks before deleting the picked products (`ids`; null when closed), which can't be undone. The
@@ -13,18 +11,18 @@ import { UPLOAD_PATH_PATTERN } from '@/routes';
  */
 export function DeleteProductsDialog({ ids, onClose }: { ids: string[] | null; onClose: () => void }) {
   const remove = useDeleteUploads();
-  const openId = useMatch(UPLOAD_PATH_PATTERN)?.params.id;
+  const openId = useOpenUploadId();
   const closeDetail = useCloseDetail();
 
   const confirm = () => {
     if (!ids) return;
     remove.mutate(ids, {
       onSuccess: (deleted) => {
-        if (deleted.length > 0) toast.success(`${productCount(deleted.length)} deleted`);
-        const skipped = ids.length - deleted.length;
-        if (skipped > 0) {
-          toast.warning(`${productCount(skipped)} not deleted`, { description: 'Only whoever uploaded a product, or an admin, can delete it.' });
-        }
+        toastBatchResult(deleted.length, ids.length, {
+          done: 'deleted',
+          skipped: 'not deleted',
+          why: 'Only whoever uploaded a product, or an admin, can delete it.',
+        });
         if (openId && deleted.includes(openId)) closeDetail();
         onClose();
       },

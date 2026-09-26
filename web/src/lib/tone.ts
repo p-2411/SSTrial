@@ -27,6 +27,13 @@ export const TONE_TEXT_CLASSES: Record<TextTone, string> = {
   muted: 'text-muted-foreground',
 };
 
+/** Just the border, for a card edged in its status's colour. */
+export const TONE_BORDER_CLASSES: Record<Tone, string> = {
+  success: 'border-success-border',
+  warning: 'border-warning-border',
+  danger: 'border-danger-border',
+};
+
 /**
  * A small solid marker in the same hue (a status dot). Warning's is its border colour, the bright
  * amber: its text colour is a dark brown that wouldn't read as a warning at that size.
@@ -38,15 +45,15 @@ export const TONE_DOT_CLASSES: Record<Tone, string> = {
 };
 
 /** An event's level as a tone: everyday events have none; warnings and errors stand out. */
-export const LEVEL_TONE: Record<LogLevel, Tone | null> = {
+export const LEVEL_TONE = {
   info: null,
   warn: 'warning',
   error: 'danger',
-};
+} as const satisfies Record<LogLevel, Tone | null>;
 
 /** A confidence band as a tone: nothing to flag has none; worth checking is amber, low is red. */
-export const BAND_TONE: Record<ConfidenceBand, Tone | null> = {
+export const BAND_TONE = {
   ok: null,
   check: 'warning',
   low: 'danger',
-};
+} as const satisfies Record<ConfidenceBand, Tone | null>;

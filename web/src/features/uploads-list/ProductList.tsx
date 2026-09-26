@@ -1,14 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Inbox, SearchX } from 'lucide-react';
 import { errorMessage } from '@/api/client';
+import { isFiltered } from '@/api/filters';
 import { useUploadList } from '@/api/queries';
 import { NO_PRODUCT_FILTER, type ProductFilter } from '@/api/uploads';
-import { DayRangeMenu } from '@/components/DayRangeMenu';
 import { EmptyState } from '@/components/EmptyState';
 import { FadeWhileLoading } from '@/components/FadeWhileLoading';
 import { InlineError } from '@/components/InlineError';
 import { LoadMoreButton } from '@/components/LoadMoreButton';
-import { SearchInput } from '@/components/SearchInput';
 import { StaleDataNotice } from '@/components/StaleDataNotice';
 import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,7 +16,8 @@ import { useNow } from '@/lib/useNow';
 import { useSelection } from '@/lib/useSelection';
 import { DeleteProductsDialog } from './DeleteProductsDialog';
 import { ExportMenu } from './ExportMenu';
-import { ListSkeleton } from './listParts';
+import { ListSkeleton } from './ListSkeleton';
+import { ProductFilterBar } from './ProductFilterBar';
 import { UploadRow } from './UploadRow';
 
 /**
@@ -37,7 +37,7 @@ export function ProductList() {
   const selection = useSelection(ids);
   const [confirmingDelete, setConfirmingDelete] = useState<string[] | null>(null);
   const { isPending, isError, isRefetchError, error, refetch, isRefetching, isPlaceholderData } = list;
-  const isFiltered = filter.search !== '' || filter.from !== null || filter.to !== null;
+  const filtered = isFiltered(filter);
   const picked = selection.selected;
 
   const changeFilter = (changes: Partial<ProductFilter>) => {
@@ -68,23 +68,13 @@ export function ProductList() {
             )}
             <ExportMenu
               products={picked.length > 0 ? { ids: picked } : filter}
-              label={picked.length > 0 ? `${productCount(picked.length)} selected` : isFiltered ? 'Products matching the filter' : 'All products'}
+              label={picked.length > 0 ? `${productCount(picked.length)} selected` : filtered ? 'Products matching the filter' : 'All products'}
             />
           </CardAction>
         )}
       </CardHeader>
 
-      {(ids.length > 0 || isFiltered) && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-border/70 px-4 py-3">
-          <SearchInput
-            value={filter.search}
-            onSearch={(search) => changeFilter({ search })}
-            label="Search products"
-            placeholder="Search by product, brand or file"
-          />
-          <DayRangeMenu label="Added" range={filter} onChange={({ from, to }) => changeFilter({ from, to })} />
-        </div>
-      )}
+      {(ids.length > 0 || filtered) && <ProductFilterBar filter={filter} onChange={changeFilter} />}
 
       {isRefetchError && <StaleDataNotice what="the products" error={error} onRetry={() => void refetch()} retrying={isRefetching} />}
 
@@ -109,7 +99,7 @@ export function ProductList() {
       )}
 
       {rows?.length === 0 &&
-        (isFiltered ? (
+        (filtered ? (
           <EmptyState icon={SearchX} title="No products match" action={{ label: 'Clear filters', onClick: () => changeFilter(NO_PRODUCT_FILTER) }} />
         ) : (
           <EmptyState icon={Inbox} title="No products yet" hint="Upload a label photo or PDF above." />

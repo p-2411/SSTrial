@@ -1,4 +1,5 @@
 import { DATA_CHANGE_EVENT_TYPES, LOG_EVENT_TYPE_IDS, LOG_EVENT_TYPES, type LogEventType } from '@label-extractor/shared';
+import { midSentence } from '@/lib/text';
 
 /*
  * The "Show" menu's model (TypeMenu draws it): its sections of event types, the shortcuts at its
@@ -35,7 +36,7 @@ const TYPE_GROUP = {
   'process.started': 'System',
 } satisfies Record<LogEventType, string>;
 
-export interface TypeMenuSection {
+interface TypeMenuSection {
   heading: string;
   types: LogEventType[];
 }
@@ -52,7 +53,7 @@ export function typeMenu(offered: readonly LogEventType[]): TypeMenuSection[] {
   return sections;
 }
 
-export interface TypeShortcut {
+interface TypeShortcut {
   label: string;
   types: LogEventType[];
 }
@@ -82,10 +83,4 @@ export function describeFilter(types: LogEventType[], offered: readonly LogEvent
   if (shortcut) return midSentence(shortcut.label);
   if (types.length === 1) return midSentence(LOG_EVENT_TYPES[types[0]!].label);
   return `${types.length} types of event`;
-}
-
-/** A label as it reads after "Show": "Errors only" → "errors only", but "AI requests paused" stays. */
-function midSentence(label: string): string {
-  const firstWord = label.split(' ')[0]!;
-  return firstWord === firstWord.toUpperCase() ? label : label.charAt(0).toLowerCase() + label.slice(1);
 }
