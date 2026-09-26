@@ -1,7 +1,9 @@
 import { toast } from 'sonner';
-import { productCount } from './format';
+import { countOf } from './format';
 
 interface BatchWording {
+  /** What was acted on, one of them: "product". */
+  noun: string;
   /** What happened to those it acted on, after the count: "deleted". */
   done: string;
   /** What happened to the rest: "not deleted". */
@@ -11,11 +13,11 @@ interface BatchWording {
 }
 
 /**
- * How an action on several products went, in a toast each way: how many it acted on, and how
+ * How an action on several products or uploads went, in a toast each way: how many it acted on, and how
  * many the server skipped, and why. Either is left out when there are none.
  */
 export function toastBatchResult(done: number, asked: number, wording: BatchWording): void {
-  if (done > 0) toast.success(`${productCount(done)} ${wording.done}`);
+  if (done > 0) toast.success(`${countOf(done, wording.noun)} ${wording.done}`);
   const skipped = asked - done;
-  if (skipped > 0) toast.warning(`${productCount(skipped)} ${wording.skipped}`, { description: wording.why });
+  if (skipped > 0) toast.warning(`${countOf(skipped, wording.noun)} ${wording.skipped}`, { description: wording.why });
 }

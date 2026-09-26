@@ -10,12 +10,13 @@ import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { PendingUploadRow } from '@/features/upload/PendingUploadRow';
-import type { PendingUpload } from '@/features/upload/useFileUploads';
+import { couldNotSend, type PendingUpload } from '@/features/upload/useFileUploads';
 import { useNow } from '@/lib/useNow';
 import { useSelection, type Selection } from '@/lib/useSelection';
 import { ListSkeleton } from './ListSkeleton';
 import { ReviewActions } from './ReviewActions';
 import { ScrollingList } from './ScrollingList';
+import { UploadingActions } from './UploadingActions';
 import { UploadRow } from './UploadRow';
 import { useUploadAnnouncements } from './useUploadAnnouncements';
 
@@ -31,7 +32,8 @@ interface YourUploadsProps {
 /**
  * The person's own uploads on their way to Products, in one card with a tab for each stage.
  * Uploading: files still being sent from this browser, then the server's queued, processing and
- * failed ones. Review: the read ones, waiting to be checked and submitted (see ReviewActions).
+ * failed ones, whose failures can be dismissed (see UploadingActions). Review: the read ones,
+ * waiting to be checked and submitted (see ReviewActions).
  * A tab is only there while it has something in it (or its list couldn't load, to say so), and the
  * card only while it has a tab. Until both lists have first loaded, the card holds their place
  * with a skeleton, so the page below doesn't jump when they arrive; it goes if both are empty.
@@ -45,6 +47,11 @@ export function YourUploads({ pending, onRetry, onDismiss }: YourUploadsProps) {
   const review = reviewList.data;
   const reviewIds = useMemo(() => review?.map((upload) => upload.id) ?? [], [review]);
   const selection = useSelection(reviewIds);
+  // Under Uploading, only the failures can be ticked: to dismiss them (see UploadingActions).
+  const failed = useMemo(() => uploading?.filter((upload) => upload.status === 'failed') ?? [], [uploading]);
+  const failedIds = useMemo(() => failed.map((upload) => upload.id), [failed]);
+  const failedSelection = useSelection(failedIds);
+  const unsent = pending.filter(couldNotSend);
   const announcement = useUploadAnnouncements(uploading);
   const counts = { uploading: pending.length + (uploading?.length ?? 0), review: review?.length ?? 0 };
   const shown: Record<Tab, boolean> = {
@@ -73,6 +80,9 @@ export function YourUploads({ pending, onRetry, onDismiss }: YourUploadsProps) {
                   </SegmentedTabsTrigger>
                 )}
               </SegmentedTabsList>
+              {tab === 'uploading' && (failed.length > 0 || unsent.length > 0) && (
+                <UploadingActions failed={failed} unsent={unsent} selection={failedSelection} onDismiss={onDismiss} />
+              )}
               {tab === 'review' && review && review.length > 0 && <ReviewActions uploads={review} selection={selection} />}
             </div>
 
@@ -82,9 +92,19 @@ export function YourUploads({ pending, onRetry, onDismiss }: YourUploadsProps) {
                   {pending.map((upload) => (
                     <PendingUploadRow key={upload.localId} upload={upload} onRetry={onRetry} onDismiss={onDismiss} />
                   ))}
-                  {uploading?.map((upload) => (
-                    <UploadRow key={upload.id} upload={upload} now={now} />
-                  ))}
+                  {uploading?.map((upload) =>
+                    upload.status === 'failed' ? (
+                      <UploadRow
+                        key={upload.id}
+                        upload={upload}
+                        now={now}
+                        selected={failedSelection.isSelected(upload.id)}
+                        onSelect={failedSelection.toggle}
+                      />
+                    ) : (
+                      <UploadRow key={upload.id} upload={upload} now={now} />
+                    ),
+                  )}
                 </ul>
               </ListState>
             </TabsContent>

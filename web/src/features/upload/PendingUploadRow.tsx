@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { rowClassName, RowTitle } from '@/components/UploadRowLayout';
 import { formatFileFacts } from '@/lib/format';
-import type { PendingUpload } from './useFileUploads';
+import { couldNotSend, type PendingUpload } from './useFileUploads';
 
 interface PendingUploadRowProps {
   upload: PendingUpload;
@@ -22,7 +22,7 @@ interface PendingUploadRowProps {
  */
 export const PendingUploadRow = memo(function PendingUploadRow({ upload, onRetry, onDismiss }: PendingUploadRowProps) {
   const { file, mimeType, phase } = upload;
-  const hasError = phase === 'rejected' || phase === 'failed';
+  const hasError = couldNotSend(upload);
 
   return (
     <li className={rowClassName}>

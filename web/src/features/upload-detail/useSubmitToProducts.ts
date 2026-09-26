@@ -16,6 +16,7 @@ export function useSubmitToProducts() {
       onSuccess: (submitted) => {
         onSubmitted?.();
         toastBatchResult(submitted.length, ids.length, {
+          noun: 'product',
           done: 'submitted to Products',
           skipped: 'not submitted',
           why: ids.length === 1 ? 'It changed since you opened it. Check it again.' : 'They changed since you looked. Check them again.',

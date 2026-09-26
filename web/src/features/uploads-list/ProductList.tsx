@@ -9,12 +9,11 @@ import { FadeWhileLoading } from '@/components/FadeWhileLoading';
 import { InlineError } from '@/components/InlineError';
 import { LoadMoreButton } from '@/components/LoadMoreButton';
 import { StaleDataNotice } from '@/components/StaleDataNotice';
-import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardHeader, CardTitle } from '@/components/ui/card';
-import { productCount } from '@/lib/format';
+import { countOf } from '@/lib/format';
 import { useNow } from '@/lib/useNow';
 import { useSelection } from '@/lib/useSelection';
-import { DeleteProductsDialog } from './DeleteProductsDialog';
+import { DeleteSelected } from './DeleteSelected';
 import { ExportMenu } from './ExportMenu';
 import { ListSkeleton } from './ListSkeleton';
 import { ProductFilterBar } from './ProductFilterBar';
@@ -36,7 +35,6 @@ export function ProductList() {
   const rows = list.data; // every page loaded so far
   const ids = useMemo(() => rows?.map((upload) => upload.id) ?? [], [rows]);
   const selection = useSelection(ids);
-  const [confirmingDelete, setConfirmingDelete] = useState<string[] | null>(null);
   const { isPending, isError, isRefetchError, error, refetch, isRefetching, isPlaceholderData } = list;
   const filtered = isFiltered(filter);
   const picked = selection.selected;
@@ -57,19 +55,10 @@ export function ProductList() {
         </div>
         {ids.length > 0 && (
           <CardAction className="flex items-center gap-2">
-            {picked.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-danger-border bg-transparent text-danger hover:bg-danger-soft hover:text-danger"
-                onClick={() => setConfirmingDelete(picked)}
-              >
-                Delete
-              </Button>
-            )}
+            <DeleteSelected ids={picked} noun="product" />
             <ExportMenu
               products={picked.length > 0 ? { ids: picked } : filter}
-              label={picked.length > 0 ? `${productCount(picked.length)} selected` : filtered ? 'Products matching the filter' : 'All products'}
+              label={picked.length > 0 ? `${countOf(picked.length, 'product')} selected` : filtered ? 'Products matching the filter' : 'All products'}
             />
           </CardAction>
         )}
@@ -107,7 +96,6 @@ export function ProductList() {
           <EmptyState icon={Inbox} title="No products yet" hint="Upload a label photo or PDF above." />
         ))}
 
-      <DeleteProductsDialog ids={confirmingDelete} onClose={() => setConfirmingDelete(null)} />
     </Card>
   );
 }

@@ -13,10 +13,12 @@ import { YourUploads } from '../YourUploads.tsx';
 let uploading: UploadSummary[] = [];
 let review: UploadSummary[] = [];
 
-/** Answers both lists, and the review actions as given. Returns every request, and what was posted where. */
-function stubApi(answers: { submitted?: string[]; checked?: string[] } = {}) {
+/** Answers both lists, and the batch actions as given. Returns every request, and what was posted where. */
+function stubApi(answers: { submitted?: string[]; checked?: string[]; deleted?: string[] } = {}) {
   const requests = stubFetch(({ url, method }) => {
-    if (method === 'POST') return jsonResponse(url.endsWith('/submit') ? { submitted: answers.submitted ?? [] } : { checked: answers.checked ?? [] });
+    if (method === 'POST' && url.endsWith('/submit')) return jsonResponse({ submitted: answers.submitted ?? [] });
+    if (method === 'POST' && url.endsWith('/check')) return jsonResponse({ checked: answers.checked ?? [] });
+    if (method === 'POST' && url.endsWith('/delete')) return jsonResponse({ deleted: answers.deleted ?? [] });
     return jsonResponse({ uploads: url.includes('view=review') ? review : uploading, nextCursor: null });
   });
   const posted = () => requests.filter(({ method }) => method === 'POST').map(({ url, body }) => ({ url, body }));
@@ -35,8 +37,13 @@ const sending = (name: string): PendingUpload => ({
 const inReview = (id: string, productName: string, confidence: number | null) =>
   summary({ id, productName, fileName: `${id}.png`, confidence, submittedAt: null });
 
-const renderYours = (pending: PendingUpload[] = []) =>
-  renderWithProviders(<YourUploads pending={pending} onRetry={() => {}} onDismiss={() => {}} />);
+const couldNotRead = (id: string, fileName: string) =>
+  summary({ id, fileName, status: 'failed', productName: null, error: { code: 'NO_LABEL_DATA', message: "Couldn't find any product label information in this file." } });
+
+const neverSent = (name: string): PendingUpload => ({ ...sending(name), phase: 'failed', progress: 0, error: 'The connection dropped.' });
+
+const renderYours = (pending: PendingUpload[] = [], onDismiss: (localId: string) => void = () => {}) =>
+  renderWithProviders(<YourUploads pending={pending} onRetry={() => {}} onDismiss={onDismiss} />);
 
 describe('YourUploads', () => {
   it("asks for the person's own lists, holding their place while they load, and shows nothing when both are empty", async () => {
@@ -216,5 +223,83 @@ describe('YourUploads — Review', () => {
 
     await screen.findByRole('list', { name: 'Review' });
     expect(screen.queryByRole('button', { name: 'Mark all as checked' })).not.toBeInTheDocument();
+  });
+});
+
+describe('YourUploads — deleting from Review', () => {
+  it('deletes the ticked ones, once the person confirms', async () => {
+    uploading = [];
+    review = [inReview('a', 'Maple Pecan Crunch', 92), inReview('b', 'Barista Oat Milk', 72)];
+    const { posted } = stubApi({ deleted: ['b'] });
+    renderYours();
+
+    expect(await screen.findByRole('button', { name: 'Select all' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument(); // nothing ticked
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select Barista Oat Milk' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    const dialog = screen.getByRole('alertdialog', { name: 'Delete 1 upload?' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    await vi.waitFor(() => expect(posted()).toEqual([{ url: '/api/uploads/delete', body: { ids: ['b'] } }]));
+    await vi.waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+  });
+});
+
+describe('YourUploads — dismissing failures', () => {
+  it("dismisses every failure: files that never went at once, and uploads that couldn't be read once the person confirms", async () => {
+    uploading = [summary({ id: 'q', fileName: 'waiting.png', status: 'queued', productName: null }), couldNotRead('f', 'blurry.png')];
+    review = [];
+    const { posted } = stubApi({ deleted: ['f'] });
+    const onDismiss = vi.fn();
+    renderYours([neverSent('dropped.png')], onDismiss);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Dismiss all failed' }));
+    const dialog = screen.getByRole('alertdialog', { name: 'Dismiss 1 failed upload?' });
+    expect(onDismiss).not.toHaveBeenCalled(); // not until the person confirms
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Dismiss' }));
+
+    // The one still waiting to be read isn't a failure, so it stays.
+    await vi.waitFor(() => expect(posted()).toEqual([{ url: '/api/uploads/delete', body: { ids: ['f'] } }]));
+    await vi.waitFor(() => expect(onDismiss).toHaveBeenCalledWith('dropped.png'));
+  });
+
+  it('dismisses files that never went straight away, with nothing to confirm', async () => {
+    uploading = [];
+    review = [];
+    const { posted } = stubApi();
+    const onDismiss = vi.fn();
+    renderYours([neverSent('dropped.png'), sending('on-its-way.png')], onDismiss);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Dismiss all failed' }));
+
+    expect(onDismiss.mock.calls).toEqual([['dropped.png']]);
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(posted()).toEqual([]);
+  });
+
+  it('dismisses just the ticked failures, when some are', async () => {
+    uploading = [couldNotRead('f1', 'blurry.png'), couldNotRead('f2', 'dark.png')];
+    review = [];
+    const { posted } = stubApi({ deleted: ['f2'] });
+    const onDismiss = vi.fn();
+    renderYours([neverSent('dropped.png')], onDismiss);
+
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Select dark.png' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Dismiss 1' }));
+    await userEvent.click(within(screen.getByRole('alertdialog', { name: 'Dismiss 1 failed upload?' })).getByRole('button', { name: 'Dismiss' }));
+
+    await vi.waitFor(() => expect(posted()).toEqual([{ url: '/api/uploads/delete', body: { ids: ['f2'] } }]));
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+
+  it('offers no dismissing while nothing has failed', async () => {
+    uploading = [summary({ id: 'q', fileName: 'waiting.png', status: 'queued', productName: null })];
+    review = [];
+    stubApi();
+    renderYours([sending('on-its-way.png')]);
+
+    await screen.findByText('waiting.png');
+    expect(screen.queryByRole('button', { name: /Dismiss/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   });
 });

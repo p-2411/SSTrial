@@ -6,15 +6,16 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useSubmitToProducts } from '@/features/upload-detail/useSubmitToProducts';
-import { productCount } from '@/lib/format';
+import { countOf } from '@/lib/format';
 import type { Selection } from '@/lib/useSelection';
+import { DeleteSelected } from './DeleteSelected';
 
 /**
  * The Review tab's actions. An upload the model wasn't sure of ("Check (72%)", amber or red) must
  * have its flagged fields checked before it can go into Products: one by one in its detail, or all
  * at once with "Mark all as checked". "Submit all ready" then puts in every one with nothing left
  * to check; the server holds to the same rules. With some ticked (a row's box shows on hover), both
- * act on just those. "Select all" ticks every one listed.
+ * act on just those, and Delete deletes them. "Select all" ticks every one listed.
  */
 export function ReviewActions({ uploads, selection }: { uploads: UploadSummary[]; selection: Selection }) {
   const { submitToProducts, submitting } = useSubmitToProducts();
@@ -38,6 +39,7 @@ export function ReviewActions({ uploads, selection }: { uploads: UploadSummary[]
       <Button variant="link" size="sm" className="px-1 font-medium" onClick={() => selection.setAll(!selection.allSelected)}>
         {selection.allSelected ? 'Deselect all' : 'Select all'}
       </Button>
+      <DeleteSelected ids={selection.selected} noun="upload" />
       {toCheck.length > 0 && (
         <Button variant="outline" size="sm" onClick={() => setConfirmingCheck(toCheck)}>
           {picked ? `Mark ${toCheck.length} as checked` : 'Mark all as checked'}
@@ -90,7 +92,7 @@ function CheckAllDialog({ uploads, onClose }: { uploads: UploadSummary[] | null;
       uploads.map((upload) => upload.id),
       {
         onSuccess: (checked) => {
-          toast.success(`${productCount(checked.length)} marked as checked`);
+          toast.success(`${countOf(checked.length, 'product')} marked as checked`);
           onClose();
         },
       },
@@ -100,7 +102,7 @@ function CheckAllDialog({ uploads, onClose }: { uploads: UploadSummary[] | null;
   return (
     <ConfirmDialog
       open={uploads !== null}
-      title={`Mark ${productCount(uploads?.length ?? 0)} as checked?`}
+      title={`Mark ${countOf(uploads?.length ?? 0, 'product')} as checked?`}
       description="Their flagged fields are marked as checked by you, and can then be submitted."
       confirmLabel="Mark as checked"
       request={check}

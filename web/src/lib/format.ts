@@ -63,7 +63,7 @@ export function formatOptional<T>(value: T | null, format: (value: T) => string)
   return value === null ? '–' : format(value);
 }
 
-/** "1 product", "3 products". */
-export function productCount(count: number): string {
-  return `${count} ${count === 1 ? 'product' : 'products'}`;
+/** "1 product", "3 products"; "1 failed upload", "2 failed uploads". */
+export function countOf(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
 }

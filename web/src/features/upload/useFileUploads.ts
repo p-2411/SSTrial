@@ -32,6 +32,11 @@ export interface PendingUpload {
   error: string | null;
 }
 
+/** Whether a file never made it: rejected here, or its upload failed. It waits to be tried again or dismissed. */
+export function couldNotSend(upload: Pick<PendingUpload, 'phase'>): boolean {
+  return upload.phase === 'rejected' || upload.phase === 'failed';
+}
+
 export interface FileUploadsOptions {
   /** The server already had this file, so it wasn't sent again; `upload` is the one it has. */
   onDuplicate?: (upload: UploadSummary, file: File) => void;
