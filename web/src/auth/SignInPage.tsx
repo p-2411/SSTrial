@@ -15,6 +15,7 @@ export function SignInPage() {
   const [pending, setPending] = useState(false);
 
   if (state.status === 'signed-in') {
+    // If we were redirected to the sign in page, go back to the page we were redirected to. Otherwise we go to the home page.
     const from = (location.state as { from?: string } | null)?.from;
     return <Navigate to={from ?? HOME_PATH} replace />;
   }
