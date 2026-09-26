@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { jsonResponse } from '@/test/render';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { jsonResponse, stubFetch } from '@/test/fetch';
 
 const signOut = vi.fn(async () => ({ error: null }));
 vi.mock('@supabase/auth-js', () => ({
@@ -12,11 +12,9 @@ const CONFIG = { supabaseUrl: 'http://supabase.test', supabasePublishableKey: 'k
 
 // A fresh module for each test: it keeps the client it created.
 beforeEach(() => vi.resetModules());
-afterEach(() => vi.unstubAllGlobals());
-
 describe('loadSupabaseAuthClient', () => {
   it('signs out of this browser only, so others signed in to the same account stay signed in', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(CONFIG)));
+    stubFetch(() => jsonResponse(CONFIG));
     const { loadSupabaseAuthClient } = await import('./authClient');
 
     await (await loadSupabaseAuthClient()).signOut();

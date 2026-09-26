@@ -1,26 +1,15 @@
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { detail } from '@/test/fixtures';
-import { jsonResponse, renderWithProviders } from '@/test/render';
+import { jsonResponse, stubFetch } from '@/test/fetch';
+import { renderWithProviders } from '@/test/render';
 import { SubmitToProducts } from './SubmitToProducts';
-
-afterEach(() => vi.unstubAllGlobals());
 
 /** Answers POST /api/uploads/submit, and lists. Returns the bodies submitted. */
 function stubSubmit() {
-  const submits: unknown[] = [];
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (url: string, init?: RequestInit) => {
-      if (url === '/api/uploads/submit') {
-        submits.push(JSON.parse(String(init?.body)));
-        return jsonResponse({ submitted: ['u1'] });
-      }
-      return jsonResponse({ uploads: [], nextCursor: null });
-    }),
-  );
-  return submits;
+  const requests = stubFetch(({ url }) => jsonResponse(url === '/api/uploads/submit' ? { submitted: ['u1'] } : { uploads: [], nextCursor: null }));
+  return () => requests.filter(({ url }) => url === '/api/uploads/submit').map(({ body }) => body);
 }
 
 describe('SubmitToProducts', () => {
@@ -30,7 +19,7 @@ describe('SubmitToProducts', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Submit to Products' }));
 
-    await vi.waitFor(() => expect(submits).toEqual([{ ids: ['u1'] }]));
+    await vi.waitFor(() => expect(submits()).toEqual([{ ids: ['u1'] }]));
   });
 
   it('says what stands in the way while a field is flagged', () => {

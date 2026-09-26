@@ -1,43 +1,23 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { EventDetails, UploadHistoryEntry, UploadHistoryResponse } from '@label-extractor/shared';
-import { detail } from '@/test/fixtures';
-import { jsonResponse, renderWithProviders } from '@/test/render';
+import { badGateway, jsonResponse, stubFetch } from '@/test/fetch';
+import { detail, historyEntry } from '@/test/fixtures';
+import { renderWithProviders } from '@/test/render';
 import { UploadHistory } from './UploadHistory';
-
-afterEach(() => vi.unstubAllGlobals());
-
-const entry = (id: string, message: string, overrides: Partial<UploadHistoryEntry> = {}): UploadHistoryEntry => ({
-  id,
-  occurredAt: new Date().toISOString(),
-  source: 'api',
-  level: 'info',
-  type: 'upload.created',
-  uploadId: 'u1',
-  message,
-  fileName: 'label.png',
-  hasDetails: false,
-  revertTo: null,
-  ...overrides,
-});
 
 /**
  * Answers each history request with the next of `pages` (the last one repeats), an entry's details
  * with `details`, and a revert with the upload. Returns every request made.
  */
 function renderHistory(pages: UploadHistoryResponse[], { canRevert = false, details }: { canRevert?: boolean; details?: EventDetails } = {}) {
-  const requests: Array<{ url: string; body?: unknown }> = [];
   let historyRequests = 0;
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (url: string, init?: RequestInit) => {
-      requests.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-      if (url.endsWith('/revert')) return jsonResponse({ upload: detail({ id: 'u1', revision: 3 }) });
-      if (/\/history\/\d+$/.test(url)) return jsonResponse(details);
-      return jsonResponse(pages[Math.min(historyRequests++, pages.length - 1)]);
-    }),
-  );
+  const requests = stubFetch(({ url }) => {
+    if (url.endsWith('/revert')) return jsonResponse({ upload: detail({ id: 'u1', revision: 3 }) });
+    if (/\/history\/\d+$/.test(url)) return jsonResponse(details);
+    return jsonResponse(pages[Math.min(historyRequests++, pages.length - 1)]);
+  });
   renderWithProviders(<UploadHistory upload={detail({ id: 'u1', revision: 2, canRevert })} />);
   return requests;
 }
@@ -51,7 +31,7 @@ async function open() {
 
 describe('UploadHistory', () => {
   it('stays collapsed, and fetches nothing, until opened', async () => {
-    const requests = renderHistory([onePage(entry('1', 'alice@example.com started uploading label.png.'))]);
+    const requests = renderHistory([onePage(historyEntry('1', 'alice@example.com started uploading label.png.'))]);
 
     const toggle = screen.getByRole('button', { name: 'History' });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
@@ -67,10 +47,10 @@ describe('UploadHistory', () => {
   it("tells the upload's story newest first, with when each thing happened", async () => {
     renderHistory([
       onePage(
-        entry('4', 'bob@example.com changed the brand of label.png.', { type: 'upload.edited' }),
-        entry('3', 'label.png read in 6.2s: Maple Pecan Crunch.', { type: 'extraction.completed' }),
-        entry('2', 'label.png failed on attempt 1 of 5. It will be retried.', { level: 'warn', type: 'extraction.retry_scheduled' }),
-        entry('1', 'alice@example.com started uploading label.png (PNG, 49 KB).'),
+        historyEntry('4', 'bob@example.com changed the brand of label.png.', { type: 'upload.edited' }),
+        historyEntry('3', 'label.png read in 6.2s: Maple Pecan Crunch.', { type: 'extraction.completed' }),
+        historyEntry('2', 'label.png failed on attempt 1 of 5. It will be retried.', { level: 'warn', type: 'extraction.retry_scheduled' }),
+        historyEntry('1', 'alice@example.com started uploading label.png (PNG, 49 KB).'),
       ),
     ]);
     const history = await open();
@@ -90,8 +70,8 @@ describe('UploadHistory', () => {
 
   it('loads older entries a page at a time', async () => {
     const requests = renderHistory([
-      { entries: [entry('9', 'Newest.')], nextCursor: '9' },
-      { entries: [entry('8', 'Older.')], nextCursor: null },
+      { entries: [historyEntry('9', 'Newest.')], nextCursor: '9' },
+      { entries: [historyEntry('8', 'Older.')], nextCursor: null },
     ]);
     await open();
 
@@ -104,7 +84,7 @@ describe('UploadHistory', () => {
   });
 
   it('is filtered by type of event, like the activity log, and offers to clear a filter nothing matches', async () => {
-    const requests = renderHistory([onePage(entry('1', 'label.png read.', { type: 'extraction.completed' })), onePage()]);
+    const requests = renderHistory([onePage(historyEntry('1', 'label.png read.', { type: 'extraction.completed' })), onePage()]);
     await open();
     await screen.findByText('label.png read.');
 
@@ -117,7 +97,7 @@ describe('UploadHistory', () => {
   });
 
   it('fetches what a change did only when its details are opened', async () => {
-    const requests = renderHistory([onePage(entry('5', 'bob@example.com changed the brand of label.png.', { type: 'upload.edited', hasDetails: true }))], {
+    const requests = renderHistory([onePage(historyEntry('5', 'bob@example.com changed the brand of label.png.', { type: 'upload.edited', hasDetails: true }))], {
       details: { kind: 'changes', changes: [{ field: 'brand', from: 'Harvest', to: 'Harvest & Hearth' }], checked: [], unchecked: [] },
     });
     await open();
@@ -130,7 +110,7 @@ describe('UploadHistory', () => {
   });
 
   it('shows the data as it was read, as JSON', async () => {
-    renderHistory([onePage(entry('3', 'label.png read.', { type: 'extraction.completed', hasDetails: true }))], {
+    renderHistory([onePage(historyEntry('3', 'label.png read.', { type: 'extraction.completed', hasDetails: true }))], {
       details: { kind: 'reading', result: { productName: 'Maple Pecan Crunch', brand: null, ingredients: [], allergens: [], netWeight: null } },
     });
     await open();
@@ -142,10 +122,7 @@ describe('UploadHistory', () => {
 
   it("says why the history couldn't load, and tries again", async () => {
     let fail = true;
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => (fail ? new Response('Bad gateway', { status: 502 }) : jsonResponse(onePage(entry('1', 'label.png read.'))))),
-    );
+    stubFetch(() => (fail ? badGateway() : jsonResponse(onePage(historyEntry('1', 'label.png read.')))));
     renderWithProviders(<UploadHistory upload={detail({ id: 'u1' })} />);
     await open();
 
@@ -167,8 +144,8 @@ describe('UploadHistory', () => {
     const requests = renderHistory(
       [
         onePage(
-          entry('2', 'bob@example.com changed the brand of label.png.', { type: 'upload.edited' }), // where it is now
-          entry('1', 'label.png read: Maple Pecan Crunch.', { type: 'extraction.completed', revertTo: '11' }),
+          historyEntry('2', 'bob@example.com changed the brand of label.png.', { type: 'upload.edited' }), // where it is now
+          historyEntry('1', 'label.png read: Maple Pecan Crunch.', { type: 'extraction.completed', revertTo: '11' }),
         ),
       ],
       { canRevert: true },
@@ -186,7 +163,7 @@ describe('UploadHistory', () => {
   });
 
   it('offers members nothing to revert', async () => {
-    renderHistory([onePage(entry('1', 'label.png read.', { type: 'extraction.completed', revertTo: '11' }))]);
+    renderHistory([onePage(historyEntry('1', 'label.png read.', { type: 'extraction.completed', revertTo: '11' }))]);
     await open();
     await screen.findByText('label.png read.');
     expect(screen.queryByRole('button', { name: 'Revert' })).not.toBeInTheDocument();

@@ -1,12 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { jsonResponse } from '@/test/render';
+import { jsonResponse } from '@/test/fetch';
 import { apiRequest, connectApi } from './client.ts';
 
 const fetchMock = vi.fn(async () => jsonResponse({ ok: true }));
 let disconnect = () => {};
 beforeEach(() => vi.stubGlobal('fetch', fetchMock));
 afterEach(() => {
-  vi.unstubAllGlobals();
   fetchMock.mockClear();
   disconnect();
 });

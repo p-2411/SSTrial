@@ -1,12 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { connectApi } from './client.ts';
+import { stubFetch } from '@/test/fetch';
 import { fetchExport } from './uploads.ts';
 
 let disconnect = () => {};
-afterEach(() => {
-  vi.unstubAllGlobals();
-  disconnect();
-});
+afterEach(() => disconnect());
 
 describe('fetchExport', () => {
   it("fetches the export as the signed-in user, with the server's file name", async () => {
@@ -27,7 +25,7 @@ describe('fetchExport', () => {
   });
 
   it("names the file after the format when the server doesn't", async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('[]')));
+    stubFetch(() => new Response('[]'));
     expect((await fetchExport('json')).fileName).toBe('uploads.json');
   });
 });

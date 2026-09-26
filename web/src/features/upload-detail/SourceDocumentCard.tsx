@@ -4,7 +4,6 @@ import type { UploadDetail } from '@label-extractor/shared';
 import { FileTypeTag } from '@/components/FileTypeTile';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
 import { PdfFirstPage } from './PdfFirstPage';
 import { PreviewPlaceholder } from './PreviewPlaceholder';
 
@@ -59,7 +58,8 @@ function LabelImage({ url, fileName, onError }: { url: string; fileName: string;
         ref={(image) => {
           if (image?.complete && image.naturalWidth > 0) setLoaded(true);
         }}
-        className={cn('block h-auto w-full', !loaded && 'hidden')}
+        className="block h-auto w-full"
+        hidden={!loaded}
         src={url}
         alt={`Original label: ${fileName}`}
         onLoad={() => setLoaded(true)}

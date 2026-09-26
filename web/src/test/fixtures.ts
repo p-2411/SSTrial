@@ -1,4 +1,4 @@
-import type { UploadDetail, UploadSummary } from '@label-extractor/shared';
+import type { LogEvent, UploadDetail, UploadHistoryEntry, UploadSummary } from '@label-extractor/shared';
 
 /** An upload as a list gets it. A completed one is in Products unless `submittedAt: null` says it's in Review. */
 export function summary(overrides: Partial<UploadSummary> = {}): UploadSummary {
@@ -35,6 +35,40 @@ export function detail(overrides: Partial<UploadDetail> = {}): UploadDetail {
     uploadedBy: null,
     canDelete: false,
     canRevert: false,
+    ...overrides,
+  };
+}
+
+/** The upload most events below are about. */
+export const EVENT_UPLOAD_ID = '9e1b7c2a-0000-4000-8000-000000000001';
+
+/** An event in the activity log: an everyday one about EVENT_UPLOAD_ID, unless overridden. */
+export function logEvent(overrides: Partial<LogEvent> & Pick<LogEvent, 'id' | 'message'>): LogEvent {
+  return {
+    occurredAt: new Date().toISOString(),
+    source: 'worker',
+    level: 'info',
+    type: 'extraction.started',
+    uploadId: EVENT_UPLOAD_ID,
+    fileName: 'oat-milk.png',
+    hasDetails: false,
+    ...overrides,
+  };
+}
+
+/** An entry in an upload's history: an everyday one, with nothing to revert to, unless overridden. */
+export function historyEntry(id: string, message: string, overrides: Partial<UploadHistoryEntry> = {}): UploadHistoryEntry {
+  return {
+    id,
+    occurredAt: new Date().toISOString(),
+    source: 'api',
+    level: 'info',
+    type: 'upload.created',
+    uploadId: 'u1',
+    message,
+    fileName: 'label.png',
+    hasDetails: false,
+    revertTo: null,
     ...overrides,
   };
 }

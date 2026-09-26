@@ -9,21 +9,22 @@ describe('SourceDocumentCard', () => {
     renderWithProviders(
       <SourceDocumentCard upload={detail({ mimeType: 'image/png', fileName: 'label.png', fileUrl: 'https://storage.test/label.png' })} />,
     );
-    const image = screen.getByRole('img', { name: 'Original label: label.png' });
-    expect(screen.getByRole('status', { name: 'Loading preview' })).toBeInTheDocument();
-    expect(image).toHaveClass('hidden');
+    // Hidden images aren't in the accessibility tree, so it's found by its alt text.
+    const image = screen.getByAltText('Original label: label.png');
+    expect(screen.getByRole('status', { name: 'Loading preview' })).toBeVisible();
+    expect(image).not.toBeVisible();
 
     fireEvent.load(image);
 
     expect(screen.queryByRole('status', { name: 'Loading preview' })).not.toBeInTheDocument();
-    expect(image).not.toHaveClass('hidden');
+    expect(image).toBeVisible();
   });
 
   it('says so when the image can’t be shown', () => {
     renderWithProviders(
       <SourceDocumentCard upload={detail({ mimeType: 'image/png', fileName: 'label.png', fileUrl: 'https://storage.test/label.png' })} />,
     );
-    fireEvent.error(screen.getByRole('img', { name: 'Original label: label.png' }));
+    fireEvent.error(screen.getByAltText('Original label: label.png'));
     expect(screen.getByText('Preview unavailable')).toBeInTheDocument();
   });
 });

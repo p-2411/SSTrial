@@ -2,10 +2,11 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CurrentMember } from '@label-extractor/shared';
 import { apiRequest } from '@/api/client';
-import { createTestQueryClient, jsonResponse } from '@/test/render';
+import { jsonResponse, stubFetch } from '@/test/fetch';
+import { createTestQueryClient } from '@/test/render';
 import type { AuthClient } from './authClient';
 import { AuthProvider, useAuth } from './AuthProvider';
 import { RequireAuth, RequireRole } from './guards';
@@ -43,10 +44,8 @@ let me: Response;
 beforeEach(() => {
   auth = new FakeAuthClient();
   me = jsonResponse(MEMBER);
-  vi.stubGlobal('fetch', vi.fn(async () => me.clone()));
+  stubFetch(() => me.clone());
 });
-afterEach(() => vi.unstubAllGlobals());
-
 /** A page with a way to sign out, as the app's sidebar has. */
 function UploadsPage() {
   const { signOut } = useAuth();

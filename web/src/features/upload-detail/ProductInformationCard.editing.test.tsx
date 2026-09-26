@@ -1,6 +1,6 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   overallConfidence,
   type EditResultRequest,
@@ -11,7 +11,8 @@ import {
 } from '@label-extractor/shared';
 import { uploadKeys, useUploadDetail } from '@/api/queries';
 import { detail } from '@/test/fixtures';
-import { createTestQueryClient, jsonResponse, Providers, renderWithProviders } from '@/test/render';
+import { jsonResponse, stubFetch } from '@/test/fetch';
+import { createTestQueryClient, Providers, renderWithProviders } from '@/test/render';
 import { ProductInformationCard } from './ProductInformationCard';
 
 const RESULT: LabelExtraction = {
@@ -55,20 +56,15 @@ beforeEach(() => {
   onServer = upload();
   answer = (request) =>
     jsonResponse({ upload: upload({ result: { ...RESULT, ...request.changes } as LabelExtraction, revision: 1 } as Partial<UploadDetail>) });
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (url: string, init?: RequestInit) => {
-      if (init?.method === 'PATCH') {
-        const request = JSON.parse(String(init.body)) as EditResultRequest;
-        sent.push(request);
-        return answer(request);
-      }
-      if (url === '/api/uploads/u1') return jsonResponse({ upload: onServer });
-      return jsonResponse({ uploads: [], nextCursor: null });
-    }),
-  );
+  stubFetch(({ url, method, body }) => {
+    if (method === 'PATCH') {
+      sent.push(body as EditResultRequest);
+      return answer(body as EditResultRequest);
+    }
+    if (url === '/api/uploads/u1') return jsonResponse({ upload: onServer });
+    return jsonResponse({ uploads: [], nextCursor: null });
+  });
 });
-afterEach(() => vi.unstubAllGlobals());
 
 /** The card as the app shows it: fed from the cached upload, so a refetch reaches it. */
 function LiveCard() {

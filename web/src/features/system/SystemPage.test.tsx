@@ -1,10 +1,9 @@
 import { act, screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { OpsStatusResponse } from '@label-extractor/shared';
-import { jsonResponse, renderWithProviders } from '@/test/render';
+import { badGateway, jsonResponse, stubFetch } from '@/test/fetch';
+import { renderWithProviders } from '@/test/render';
 import { SystemPage } from './SystemPage.tsx';
-
-afterEach(() => vi.unstubAllGlobals());
 
 const now = new Date().toISOString();
 const healthy: OpsStatusResponse = {
@@ -18,13 +17,10 @@ const healthy: OpsStatusResponse = {
 let opsDown = false;
 function renderWith(status: OpsStatusResponse) {
   opsDown = false;
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (url: string) => {
-      if (!url.startsWith('/api/ops')) return jsonResponse({ events: [], nextCursor: null });
-      return opsDown ? new Response('Bad gateway', { status: 502 }) : jsonResponse(status);
-    }),
-  );
+  stubFetch(({ url }) => {
+    if (!url.startsWith('/api/ops')) return jsonResponse({ events: [], nextCursor: null });
+    return opsDown ? badGateway() : jsonResponse(status);
+  });
   return renderWithProviders(<SystemPage />, { url: '/system' });
 }
 

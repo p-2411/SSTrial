@@ -4,8 +4,9 @@ import { Link, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UploadDetail } from '@label-extractor/shared';
 import { uploadKeys } from '@/api/queries';
-import { jsonResponse, renderWithProviders } from '@/test/render';
+import { badGateway, jsonResponse, stubFetch, type SentRequest } from '@/test/fetch';
 import { detail } from '@/test/fixtures';
+import { renderWithProviders } from '@/test/render';
 import { UploadDetailPanel } from './UploadDetailPanel.tsx';
 import { panelWidth } from './usePanelResize.ts';
 
@@ -45,6 +46,8 @@ const uploads: Record<string, UploadDetail> = Object.fromEntries(
 let deleteResponse: () => Response;
 /** What the fake API answers a GET with, if not the upload: its refusal, by ID. */
 let refusals: Record<string, () => Response>;
+/** Every request made. */
+let requests: SentRequest[];
 
 /** Shows the current URL, and a link to another upload (standing in for a list row). */
 function Harness() {
@@ -71,22 +74,16 @@ function renderAt(url: string) {
 beforeEach(() => {
   deleteResponse = () => new Response(null, { status: 204 });
   refusals = {};
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (url: string, init?: RequestInit) => {
-      const id = url.split('/').pop()!;
-      if (init?.method === 'DELETE') return deleteResponse();
-      return refusals[id]?.() ?? jsonResponse({ upload: uploads[id] });
-    }),
-  );
+  requests = stubFetch(({ url, method }) => {
+    const id = url.split('/').pop()!;
+    if (method === 'DELETE') return deleteResponse();
+    return refusals[id]?.() ?? jsonResponse({ upload: uploads[id] });
+  });
 });
 
-const deleteCalls = () => vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'DELETE');
+const deletes = () => requests.filter(({ method }) => method === 'DELETE').map(({ url }) => url);
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-  vi.restoreAllMocks();
-});
+afterEach(() => vi.restoreAllMocks());
 
 describe('UploadDetailPanel', () => {
   it('shows nothing on the list', () => {
@@ -149,9 +146,7 @@ describe('UploadDetailPanel', () => {
   it('invites a check in the status pill when the upload is worth checking', async () => {
     renderAt('/uploads/abc');
     const panel = await screen.findByRole('complementary', { name: 'Maple Pecan Crunch' });
-    const pill = within(panel).getByText('Check');
-    expect(pill).toHaveClass('text-warning');
-    expect(pill).toHaveTextContent('72%');
+    expect(within(panel).getByText('Check')).toHaveTextContent('Completed, confidence 72%: Check (72%)');
 
     await userEvent.click(screen.getByRole('link', { name: 'Open oat milk' }));
     const unscored = await screen.findByRole('complementary', { name: 'Barista Oat Milk' });
@@ -224,7 +219,7 @@ describe('UploadDetailPanel', () => {
     const { client } = renderAt('/uploads/abc');
     await screen.findByRole('complementary', { name: 'Maple Pecan Crunch' });
 
-    refusals.abc = () => new Response('Bad gateway', { status: 502 });
+    refusals.abc = badGateway;
     await act(() => client.invalidateQueries({ queryKey: uploadKeys.detail('abc') }));
 
     const panel = screen.getByRole('complementary', { name: 'Maple Pecan Crunch' });
@@ -262,11 +257,11 @@ describe('UploadDetailPanel', () => {
       const dialog = screen.getByRole('alertdialog', { name: 'Delete My Crackers?' });
       // The product is what's deleted; its file goes with it.
       expect(dialog).toHaveTextContent('Its data and its file, my-label.png, are removed for good');
-      expect(deleteCalls()).toHaveLength(0);
+      expect(deletes()).toEqual([]);
 
       await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
-      expect(deleteCalls().map(([url]) => url)).toEqual(['/api/uploads/mine']);
+      expect(deletes()).toEqual(['/api/uploads/mine']);
       await waitFor(() => expect(screen.getByTestId('url')).toHaveTextContent(/^\/$/));
     });
 
@@ -277,7 +272,7 @@ describe('UploadDetailPanel', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Delete product' }));
       await userEvent.click(screen.getByRole('button', { name: 'Keep it' }));
 
-      expect(deleteCalls()).toHaveLength(0);
+      expect(deletes()).toEqual([]);
       expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
       expect(screen.getByTestId('url')).toHaveTextContent('/uploads/mine');
     });

@@ -1,32 +1,18 @@
 import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { UploadSummary } from '@label-extractor/shared';
+import { badGateway, jsonResponse, stubFetch, stubPages } from '@/test/fetch';
 import { summary } from '@/test/fixtures';
-import { jsonResponse, renderWithProviders } from '@/test/render';
+import { renderWithProviders } from '@/test/render';
 import { ProductList } from './ProductList.tsx';
 
-afterEach(() => vi.unstubAllGlobals());
-
-/** Answers the products list with the given pages, one per request. Returns the URLs asked for. */
-function stubProducts(...pages: Array<{ uploads: UploadSummary[]; nextCursor: string | null }>): string[] {
-  const requested: string[] = [];
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (input: string) => {
-      requested.push(input);
-      return jsonResponse(pages[Math.min(requested.length - 1, pages.length - 1)]);
-    }),
-  );
-  return requested;
-}
+/** One page of the list: these products, and no more to load. */
+const onePage = (...uploads: UploadSummary[]) => ({ uploads, nextCursor: null });
 
 describe('ProductList', () => {
   it("asks for everyone's finished products, and lists them", async () => {
-    const requested = stubProducts({
-      uploads: [summary({ id: 'a', productName: 'Maple Pecan Crunch' }), summary({ id: 'b', productName: 'Barista Oat Milk' })],
-      nextCursor: null,
-    });
+    const requested = stubPages(onePage(summary({ id: 'a', productName: 'Maple Pecan Crunch' }), summary({ id: 'b', productName: 'Barista Oat Milk' })));
     renderWithProviders(<ProductList />);
 
     const list = await screen.findByRole('region', { name: 'Products' });
@@ -38,7 +24,7 @@ describe('ProductList', () => {
   });
 
   it('invites a first upload while there are none, and offers no export', async () => {
-    stubProducts({ uploads: [], nextCursor: null });
+    stubPages(onePage());
     renderWithProviders(<ProductList />);
 
     expect(await screen.findByText('No products yet')).toBeInTheDocument();
@@ -46,7 +32,7 @@ describe('ProductList', () => {
   });
 
   it('loads the next page on "Load more"', async () => {
-    const requested = stubProducts(
+    const requested = stubPages(
       { uploads: [summary({ id: 'a', productName: 'First' })], nextCursor: 'a' },
       { uploads: [summary({ id: 'b', productName: 'Second' })], nextCursor: null },
     );
@@ -59,14 +45,10 @@ describe('ProductList', () => {
   });
 
   it("says so beside Load more when the next page can't be loaded, keeping what's shown", async () => {
-    let requests = 0;
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () =>
-        ++requests === 1
-          ? jsonResponse({ uploads: [summary({ id: 'a', productName: 'First' })], nextCursor: 'a' })
-          : jsonResponse({ error: { code: 'INTERNAL', message: "The server isn't responding right now." } }, 500),
-      ),
+    const requests = stubFetch(() =>
+      requests.length === 1
+        ? jsonResponse({ uploads: [summary({ id: 'a', productName: 'First' })], nextCursor: 'a' })
+        : jsonResponse({ error: { code: 'INTERNAL', message: "The server isn't responding right now." } }, 500),
     );
     renderWithProviders(<ProductList />);
 
@@ -81,10 +63,7 @@ describe('ProductList', () => {
 
   it("keeps the products shown when a refresh fails, saying they may be out of date", async () => {
     let down = false;
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => (down ? new Response('Bad gateway', { status: 502 }) : jsonResponse({ uploads: [summary({ id: 'a', productName: 'First' })], nextCursor: null }))),
-    );
+    stubFetch(() => (down ? badGateway() : jsonResponse(onePage(summary({ id: 'a', productName: 'First' })))));
     const { client } = renderWithProviders(<ProductList />);
     await screen.findByText('First');
 
@@ -96,7 +75,7 @@ describe('ProductList', () => {
   });
 
   it('says why when it can’t load', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('Bad gateway', { status: 502 })));
+    stubFetch(badGateway);
     renderWithProviders(<ProductList />);
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load the products");
   });
@@ -108,17 +87,9 @@ describe('searching, filtering and picking products', () => {
 
   /** Answers lists with `list(url)`, and POST /api/uploads/delete with every ID asked for. Returns the requests. */
   function stubApi(list: (url: string) => UploadSummary[]) {
-    const requests: Array<{ url: string; body?: unknown }> = [];
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (url: string, init?: RequestInit) => {
-        const body = init?.body ? JSON.parse(String(init.body)) : undefined;
-        requests.push({ url, body });
-        if (url === '/api/uploads/delete') return jsonResponse({ deleted: body.ids });
-        return jsonResponse({ uploads: list(url), nextCursor: null });
-      }),
+    return stubFetch(({ url, body }) =>
+      url === '/api/uploads/delete' ? jsonResponse({ deleted: (body as { ids: string[] }).ids }) : jsonResponse(onePage(...list(url))),
     );
-    return requests;
   }
 
   it('searches by what was typed, once typing pauses, and filters by when products were added', async () => {
@@ -168,14 +139,10 @@ describe('searching, filtering and picking products', () => {
   });
 
   it("can't start a second export while one is being prepared", async () => {
-    const exports: string[] = [];
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (url: string) => {
-        if (!url.startsWith('/api/exports/')) return jsonResponse({ uploads: [OAT], nextCursor: null });
-        exports.push(url);
-        return new Promise<Response>(() => {}); // the server is still preparing the file
-      }),
+    const requests = stubFetch(({ url }) =>
+      url.startsWith('/api/exports/')
+        ? new Promise<Response>(() => {}) // the server is still preparing the file
+        : jsonResponse(onePage(OAT)),
     );
     renderWithProviders(<ProductList />);
 
@@ -187,7 +154,7 @@ describe('searching, filtering and picking products', () => {
     expect(button).toHaveAttribute('aria-busy', 'true');
     await userEvent.click(button);
     expect(screen.queryByRole('menuitem', { name: 'CSV' })).not.toBeInTheDocument();
-    expect(exports).toEqual(['/api/exports/uploads.csv']);
+    expect(requests.filter(({ url }) => url.startsWith('/api/exports/'))).toHaveLength(1);
   });
 
   it('deletes the picked products together, once the person confirms', async () => {
@@ -200,7 +167,7 @@ describe('searching, filtering and picking products', () => {
     const dialog = screen.getByRole('alertdialog', { name: 'Delete 2 products?' });
     await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
-    await vi.waitFor(() => expect(requests).toContainEqual({ url: '/api/uploads/delete', body: { ids: ['a', 'b'] } }));
+    await vi.waitFor(() => expect(requests).toContainEqual({ url: '/api/uploads/delete', method: 'POST', body: { ids: ['a', 'b'] } }));
     await vi.waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
   });
 });

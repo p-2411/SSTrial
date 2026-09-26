@@ -4,7 +4,8 @@ import { renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ListUploadsResponse } from '@label-extractor/shared';
 import { detail, summary } from '@/test/fixtures';
-import { createTestQueryClient, jsonResponse, Providers } from '@/test/render';
+import { jsonResponse, stubFetch } from '@/test/fetch';
+import { createTestQueryClient, Providers } from '@/test/render';
 import { logKeys, refreshUploadLists, uploadKeys, useDeleteUpload, useEditResult, useRetryUpload, useRevertUpload } from './queries';
 
 /** A list query with an observer (so refreshes refetch it), whose fetches the test answers by hand. */
@@ -51,10 +52,7 @@ describe('refreshUploadLists', () => {
 
 describe('the refresh rule every change follows', () => {
   function setup() {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (_url: string, init?: RequestInit) => (init?.method === 'DELETE' ? new Response(null, { status: 204 }) : jsonResponse({ upload: detail({ id: 'u1' }) }))),
-    );
+    stubFetch(({ method }) => (method === 'DELETE' ? new Response(null, { status: 204 }) : jsonResponse({ upload: detail({ id: 'u1' }) })));
     const client = createTestQueryClient();
     const invalidated = vi.spyOn(client, 'invalidateQueries');
     const wrapper = ({ children }: { children: ReactNode }) => <Providers client={client}>{children}</Providers>;

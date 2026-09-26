@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { stubFetch } from '@/test/fetch';
 import { AuthorizedEventSource, EventStreamParser } from './eventStream.ts';
 
 describe('EventStreamParser', () => {
@@ -14,10 +15,7 @@ describe('EventStreamParser', () => {
 });
 
 describe('AuthorizedEventSource', () => {
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.unstubAllGlobals();
-  });
+  afterEach(() => vi.useRealTimers());
 
   it('sends the auth header, and waits before reconnecting when refused', async () => {
     vi.useFakeTimers();
@@ -56,7 +54,7 @@ describe('AuthorizedEventSource', () => {
 
   it('leaves no listener behind on the stream’s signal between retries', async () => {
     vi.useFakeTimers();
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 503 })));
+    stubFetch(() => new Response('', { status: 503 }));
     const added = vi.spyOn(AbortSignal.prototype, 'addEventListener');
     const removed = vi.spyOn(AbortSignal.prototype, 'removeEventListener');
     const abortListeners = () =>
@@ -72,7 +70,7 @@ describe('AuthorizedEventSource', () => {
 
   it('delivers events to their listeners once connected', async () => {
     const body = 'retry: 3000\n\nevent: upload\ndata: {"id":"9"}\n\n';
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(body, { headers: { 'content-type': 'text/event-stream' } })));
+    stubFetch(() => new Response(body, { headers: { 'content-type': 'text/event-stream' } }));
     const received: string[] = [];
     const opened = vi.fn();
 

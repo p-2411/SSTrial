@@ -1,8 +1,12 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
-import { afterEach } from 'vitest';
+import { afterEach, vi } from 'vitest';
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  // Whatever a test stubbed (fetch, above all: see test/fetch.ts) goes with it.
+  vi.unstubAllGlobals();
+});
 
 // jsdom has no matchMedia, which the sidebar uses to ask whether the screen is narrow. The app is
 // desktop-only, so tests always answer "no".

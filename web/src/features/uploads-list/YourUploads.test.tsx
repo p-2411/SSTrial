@@ -1,31 +1,26 @@
 import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { UploadSummary } from '@label-extractor/shared';
 import { uploadKeys } from '@/api/queries';
 import type { PendingUpload } from '@/features/upload/useFileUploads';
 import { summary } from '@/test/fixtures';
-import { jsonResponse, Providers, renderWithProviders } from '@/test/render';
+import { jsonResponse, stubFetch } from '@/test/fetch';
+import { Providers, renderWithProviders } from '@/test/render';
 import { YourUploads } from './YourUploads.tsx';
-
-afterEach(() => vi.unstubAllGlobals());
 
 /** What the server has in each of the person's lists. */
 let uploading: UploadSummary[] = [];
 let review: UploadSummary[] = [];
 
-/** Answers both lists, and the review actions as given. Returns what was posted where. */
+/** Answers both lists, and the review actions as given. Returns every request, and what was posted where. */
 function stubApi(answers: { submitted?: string[]; checked?: string[] } = {}) {
-  const posted: Array<{ url: string; body: unknown }> = [];
-  const fetch = vi.fn(async (url: string, init?: RequestInit) => {
-    if (init?.method === 'POST') {
-      posted.push({ url, body: JSON.parse(String(init.body)) });
-      return jsonResponse(url.endsWith('/submit') ? { submitted: answers.submitted ?? [] } : { checked: answers.checked ?? [] });
-    }
+  const requests = stubFetch(({ url, method }) => {
+    if (method === 'POST') return jsonResponse(url.endsWith('/submit') ? { submitted: answers.submitted ?? [] } : { checked: answers.checked ?? [] });
     return jsonResponse({ uploads: url.includes('view=review') ? review : uploading, nextCursor: null });
   });
-  vi.stubGlobal('fetch', fetch);
-  return { fetch, posted };
+  const posted = () => requests.filter(({ method }) => method === 'POST').map(({ url, body }) => ({ url, body }));
+  return { requests, posted };
 }
 
 const sending = (name: string): PendingUpload => ({
@@ -47,15 +42,14 @@ describe('YourUploads', () => {
   it("asks for the person's own lists, holding their place while they load, and shows nothing when both are empty", async () => {
     uploading = [];
     review = [];
-    const { fetch } = stubApi();
+    const { requests } = stubApi();
     renderYours();
 
     // The card's place is held while the lists load, so the page doesn't jump when they arrive.
     const card = screen.getByRole('region', { name: 'Your uploads' });
     expect(within(card).getByRole('status', { name: 'Loading your uploads' })).toBeInTheDocument();
 
-    await vi.waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/uploads?view=upload', expect.anything()));
-    await vi.waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/uploads?view=review', expect.anything()));
+    await vi.waitFor(() => expect(requests.map(({ url }) => url)).toEqual(expect.arrayContaining(['/api/uploads?view=upload', '/api/uploads?view=review'])));
     await vi.waitFor(() => expect(screen.queryByRole('region', { name: 'Your uploads' })).not.toBeInTheDocument());
   });
 
@@ -152,7 +146,7 @@ describe('YourUploads — Review', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Submit all ready (2)' }));
 
-    await vi.waitFor(() => expect(posted).toEqual([{ url: '/api/uploads/submit', body: { ids: ['a', 'd'] } }]));
+    await vi.waitFor(() => expect(posted()).toEqual([{ url: '/api/uploads/submit', body: { ids: ['a', 'd'] } }]));
   });
 
   it("can't submit anything until something is ready", async () => {
@@ -177,11 +171,11 @@ describe('YourUploads — Review', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Mark all as checked' }));
     const dialog = screen.getByRole('alertdialog', { name: 'Mark 2 products as checked?' });
-    expect(posted).toEqual([]); // nothing until they confirm
+    expect(posted()).toEqual([]); // nothing until they confirm
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Mark as checked' }));
 
-    await vi.waitFor(() => expect(posted).toEqual([{ url: '/api/uploads/check', body: { ids: ['b', 'c'] } }]));
+    await vi.waitFor(() => expect(posted()).toEqual([{ url: '/api/uploads/check', body: { ids: ['b', 'c'] } }]));
     await vi.waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
   });
 
@@ -197,7 +191,7 @@ describe('YourUploads — Review', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Submit 1 ready' }));
 
-    await vi.waitFor(() => expect(posted).toEqual([{ url: '/api/uploads/submit', body: { ids: ['c'] } }]));
+    await vi.waitFor(() => expect(posted()).toEqual([{ url: '/api/uploads/submit', body: { ids: ['c'] } }]));
   });
 
   it('selects all, and deselects all', async () => {

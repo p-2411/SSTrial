@@ -27,8 +27,3 @@ export function Providers({ children, client, url = '/' }: { children: ReactNode
 export function renderWithProviders(ui: ReactElement, { client = createTestQueryClient(), url = '/' } = {}) {
   return { client, ...render(<Providers client={client} url={url}>{ui}</Providers>) };
 }
-
-/** A JSON Response, as fetch would return it. */
-export function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
-}

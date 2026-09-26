@@ -36,10 +36,7 @@ vi.mock('./eventStream.ts', () => ({ AuthorizedEventSource: FakeEventSource }));
 beforeEach(() => {
   vi.useFakeTimers();
 });
-afterEach(() => {
-  vi.useRealTimers();
-  vi.unstubAllGlobals();
-});
+afterEach(() => vi.useRealTimers());
 
 function setup() {
   const client = createTestQueryClient();
