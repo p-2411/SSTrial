@@ -141,6 +141,18 @@ describe('reading a completed upload again', () => {
     expect(uploads.enqueued).toEqual([]);
   });
 
+  it('tells each person, in the detail, whether they may ask for it', async () => {
+    const canRetry = async () => (await app.inject({ method: 'GET', url: `/api/uploads/${ID}` })).json().upload.canRetry;
+    unreadable(ADMIN.id);
+    await signIn(MEMBER);
+    expect(await canRetry()).toBe(false);
+    await app.close();
+
+    unreadable(MEMBER.id);
+    await signIn(MEMBER);
+    expect(await canRetry()).toBe(true);
+  });
+
   it('is open to its uploader, and to admins', async () => {
     unreadable(MEMBER.id);
     await signIn(MEMBER);

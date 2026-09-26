@@ -1,4 +1,4 @@
-import { DATA_CHANGE_EVENT_TYPES, LOG_EVENT_TYPE_IDS, LOG_EVENT_TYPES, type LogEventType } from '@label-extractor/shared';
+import { DATA_CHANGE_EVENT_TYPES, LOG_EVENT_TYPE_IDS, LOG_EVENT_TYPES, type LogEventGroup, type LogEventType } from '@label-extractor/shared';
 import { midSentence } from '@/lib/text';
 
 /*
@@ -15,26 +15,12 @@ export function inCatalogueOrder(types: readonly string[]): LogEventType[] {
   return LOG_EVENT_TYPE_IDS.filter((type) => types.includes(type));
 }
 
-/** Which heading each type sits under in the menu. Keyed by type, so a new one needs a place here. */
-const TYPE_GROUP = {
-  'upload.created': 'Uploads',
-  'upload.duplicate': 'Uploads',
-  'upload.queued': 'Uploads',
-  'upload.rejected': 'Uploads',
-  'upload.discarded': 'Uploads',
-  'upload.retry_requested': 'Uploads',
-  'upload.edited': 'Uploads',
-  'upload.reverted': 'Uploads',
-  'upload.submitted': 'Uploads',
-  'upload.deleted': 'Uploads',
-  'extraction.started': 'Extraction',
-  'extraction.completed': 'Extraction',
-  'extraction.retry_scheduled': 'Extraction',
-  'extraction.failed': 'Extraction',
-  'extraction.abandoned': 'Extraction',
-  'ratelimit.paused': 'Extraction',
-  'process.started': 'System',
-} satisfies Record<LogEventType, string>;
+/** The menu's heading for each group of event types (see LOG_EVENT_TYPES). */
+const GROUP_HEADING = {
+  upload: 'Uploads',
+  extraction: 'Extraction',
+  system: 'System',
+} satisfies Record<LogEventGroup, string>;
 
 interface TypeMenuSection {
   heading: string;
@@ -45,7 +31,7 @@ interface TypeMenuSection {
 export function typeMenu(offered: readonly LogEventType[]): TypeMenuSection[] {
   const sections: TypeMenuSection[] = [];
   for (const type of inCatalogueOrder(offered)) {
-    const heading = TYPE_GROUP[type];
+    const heading = GROUP_HEADING[LOG_EVENT_TYPES[type].group];
     const section = sections.find((candidate) => candidate.heading === heading);
     if (section) section.types.push(type);
     else sections.push({ heading, types: [type] });

@@ -1,6 +1,6 @@
 import { FileWarning, Sparkles, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { canRetryUpload, type UploadDetail } from '@label-extractor/shared';
+import type { UploadDetail } from '@label-extractor/shared';
 import { errorMessage } from '@/api/client';
 import { useRetryUpload } from '@/api/queries';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -23,7 +23,7 @@ export function StatusNotice({ upload }: { upload: UploadDetail }) {
           <AlertTitle className="font-semibold">Couldn't extract this label</AlertTitle>
           <AlertDescription className="text-danger/90">
             <p>{failureMessage(state.error)}</p>
-            {canRetryUpload(upload) ? (
+            {upload.canRetry ? (
               <RetryButton uploadId={upload.id} label="Retry extraction" />
             ) : (
               <p className="mt-1 text-sm text-muted-foreground">Upload a different file to try again.</p>
@@ -40,7 +40,11 @@ export function StatusNotice({ upload }: { upload: UploadDetail }) {
           <AlertTitle className="font-semibold">This result can't be displayed</AlertTitle>
           <AlertDescription className="text-warning/90">
             <p>It was saved in a format this version of the app can't read. Run the extraction again to replace it.</p>
-            <RetryButton uploadId={upload.id} label="Run extraction again" />
+            {upload.canRetry ? (
+              <RetryButton uploadId={upload.id} label="Run extraction again" />
+            ) : (
+              <p className="mt-1 text-sm text-muted-foreground">Whoever uploaded it, or an admin, can run it again.</p>
+            )}
           </AlertDescription>
         </Alert>
       );

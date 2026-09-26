@@ -60,11 +60,3 @@ export function progressLine(state: UploadState): { text: string; tone: TextTone
       return null;
   }
 }
-
-/**
- * Read, and waiting in the uploader's Review tab to be submitted to Products. (Kept here until
- * shared has its own.)
- */
-export function isInReview(upload: Pick<UploadSummary, 'status' | 'submittedAt'>): boolean {
-  return upload.status === 'completed' && upload.submittedAt === null;
-}

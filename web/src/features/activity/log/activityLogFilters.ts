@@ -1,7 +1,7 @@
 import { useSearchParams } from 'react-router';
 import type { NavigateOptions } from 'react-router';
+import { MAX_SEARCH_LENGTH } from '@label-extractor/shared';
 import { NO_ACTIVITY_FILTERS, type LogFilters } from '@/api/logs';
-import { MAX_SEARCH_LENGTH } from '@/components/SearchInput';
 import { isDay } from '@/lib/dayRange';
 import { inCatalogueOrder } from '../eventTypes';
 

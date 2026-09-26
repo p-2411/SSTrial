@@ -1,6 +1,7 @@
 import {
   applyConfidenceChecks,
   canDeleteUpload,
+  canRetryUpload,
   canRevertUpload,
   canTransition,
   type CurrentMember,
@@ -75,6 +76,7 @@ export function toUploadDetail(
     fileUrl,
     uploadedBy: emailOf(record.uploadedBy),
     canDelete: canDeleteUpload(ownershipOf(record), viewer),
+    canRetry: canDeleteUpload(ownershipOf(record), viewer) && canRetryUpload(record),
     canRevert: canRevertUpload(ownershipOf(record), viewer) && canTransition('revert', record.status),
   };
 }

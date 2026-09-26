@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { NavLink } from 'react-router';
-import { isActiveStatus, type UploadSummary } from '@label-extractor/shared';
+import { isActiveStatus, isInReview, type UploadSummary } from '@label-extractor/shared';
 import { FileTypeTile } from '@/components/FileTypeTile';
 import { RelativeTime } from '@/components/RelativeTime';
 import { StatusPill } from '@/components/StatusPill';
@@ -8,7 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { rowClassName, RowTitle } from '@/components/UploadRowLayout';
 import { formatFileFacts } from '@/lib/format';
 import { TONE_TEXT_CLASSES } from '@/lib/tone';
-import { isInReview, progressLine, uploadState } from '@/lib/uploadState';
+import { progressLine, uploadState } from '@/lib/uploadState';
 import { cn } from '@/lib/utils';
 import { uploadPath } from '@/routes';
 

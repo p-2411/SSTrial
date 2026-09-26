@@ -1,6 +1,6 @@
 import type { ReactNode, Ref } from 'react';
 import { Loader2, Trash2 } from 'lucide-react';
-import { isActiveStatus, type FieldReview, type UploadDetail } from '@label-extractor/shared';
+import { isActiveStatus, isInReview, type FieldReview, type UploadDetail } from '@label-extractor/shared';
 import { errorMessage, isNotFound } from '@/api/client';
 import { useUploadDetail } from '@/api/queries';
 import { InlineError } from '@/components/InlineError';
@@ -11,7 +11,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatFileFacts } from '@/lib/format';
 import { TONE_CLASSES, TONE_TEXT_CLASSES } from '@/lib/tone';
-import { isInReview, progressLine, uploadState } from '@/lib/uploadState';
+import { progressLine, uploadState } from '@/lib/uploadState';
 import { useNow } from '@/lib/useNow';
 import { cn } from '@/lib/utils';
 import { DeleteUpload } from './DeleteUpload';
@@ -139,7 +139,7 @@ function Detail({ upload, titleRef, notice, readOnly }: DetailProps) {
           {/* Last, on its own row: it can't be undone, so it's out of the way of everything else. */}
           {upload.canDelete && !readOnly && <DeleteUpload upload={upload} />}
           {/* In Review: floats over the bottom of the panel, and ends up below Delete. */}
-          {isInReview(upload) && !upload.resultUnreadable && !readOnly && <SubmitToProducts upload={upload} />}
+          {isInReview(upload) && !readOnly && <SubmitToProducts upload={upload} />}
         </>
       )}
     </>
