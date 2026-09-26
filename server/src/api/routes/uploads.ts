@@ -1,12 +1,11 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import {
-  ADDED_WITHIN_DAYS,
-  ADDED_WITHIN_IDS,
   canViewUpload,
   createUploadRequestSchema,
   editResultRequestSchema,
   listUploadsQuerySchema,
+  uploadHistoryQuerySchema,
   revertRequestSchema,
   uploadIdsRequestSchema,
   MAX_OPEN_UPLOADS_PER_PERSON,
@@ -20,11 +19,12 @@ import {
   type ListUploadsResponse,
   type SubmitUploadsResponse,
   type UploadResponse,
+  type EventDetails,
   type UploadHistoryResponse,
 } from '@label-extractor/shared';
 import type { MemberStore } from '../../auth/members.ts';
 import type { FileStorage } from '../../infra/storage.ts';
-import { toLogEvent } from '../../logs/presenter.ts';
+import { eventDetails } from '../../logs/details.ts';
 import type { EventLog, EventQueries } from '../../logs/store.ts';
 import { editResult } from '../../uploads/edit.ts';
 import { finaliseUpload } from '../../uploads/finalise.ts';
@@ -33,12 +33,13 @@ import { loadUploadDetail } from '../../uploads/detail.ts';
 import { toUploadSummary, visibilityOf } from '../../uploads/presenter.ts';
 import { checkFlaggedFields } from '../../uploads/check.ts';
 import { submitUploads } from '../../uploads/submit.ts';
-import { withRevertPoints } from '../../uploads/history.ts';
+import { toHistoryEntries } from '../../uploads/history.ts';
 import { retryUpload } from '../../uploads/retry.ts';
 import { revertUpload } from '../../uploads/revert.ts';
 import { deleteUpload } from '../../uploads/delete.ts';
 import type { UploadIntake, UploadQueries, UploadRecord, UploadRemoval, UploadReviews } from '../../uploads/store.ts';
 import { requireRole } from '../auth.ts';
+import { ACTIVITY_QUERY_HELP, eventId } from './logs.ts';
 import { ApiError, notFound } from '../errors.ts';
 
 export interface UploadRoutesDeps {
@@ -51,9 +52,6 @@ export interface UploadRoutesDeps {
 }
 
 const idParams = z.object({ id: z.uuid() });
-
-/** More than any one upload collects: a few events per attempt, and one per review. */
-const UPLOAD_HISTORY_LIMIT = 200;
 
 /**
  * Upload endpoints: HTTP in, HTTP out. What each step does lives in uploads/ (intake, finalise,
@@ -146,10 +144,10 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
       throw new ApiError(
         400,
         'BAD_REQUEST',
-        `Use view=${UPLOAD_VIEW_IDS.join('|')}, q=words (up to 200 characters), added=${ADDED_WITHIN_IDS.join('|')}, a cursor from a previous page, and limit=1–100.`,
+        `Use view=${UPLOAD_VIEW_IDS.join('|')}, q=words (up to 200 characters), from= and to= as ISO date-times, a cursor from a previous page, and limit=1–100.`,
       );
     }
-    const { view, q, added, cursor, limit } = query.data;
+    const { view, q, from, to, cursor, limit } = query.data;
     const { statuses, submitted, own } = UPLOAD_VIEWS[view];
     // Ask for one extra row: if it comes back, there's another page after this one.
     const records = await uploads.list({
@@ -157,7 +155,8 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
       submitted: submitted ?? undefined,
       uploadedBy: own ? request.member!.id : undefined,
       search: q || undefined,
-      addedWithinDays: added && ADDED_WITHIN_DAYS[added],
+      addedFrom: from ? new Date(from) : undefined,
+      addedBefore: to ? new Date(to) : undefined,
       limit: limit + 1,
       after: cursor,
     });
@@ -221,14 +220,38 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
   });
 
   // One upload's history, for its detail: open to anyone who can see the upload, unlike the whole
-  // activity log. Newest first from the store, turned round so the story reads in order.
+  // activity log. Newest first, a page at a time, searched and filtered like the log.
   app.get('/api/uploads/:id/history', async (request): Promise<UploadHistoryResponse> => {
+    const query = uploadHistoryQuerySchema.safeParse(request.query);
+    if (!query.success) throw new ApiError(400, 'BAD_REQUEST', `${ACTIVITY_QUERY_HELP}, and limit=1–200.`);
     const { id } = await visibleUpload(request);
-    const [newestFirst, versions] = await Promise.all([
-      events.list({ types: [], uploadId: id, limit: UPLOAD_HISTORY_LIMIT }),
-      uploads.listVersions(id),
+    const { q, type, from, to, cursor, limit } = query.data;
+    const [records, currentVersionId] = await Promise.all([
+      // One extra row: if it comes back, there's another page after this one.
+      events.list({
+        types: type,
+        search: q || undefined,
+        from: from ? new Date(from) : undefined,
+        to: to ? new Date(to) : undefined,
+        uploadId: id,
+        limit: limit + 1,
+        after: cursor,
+      }),
+      uploads.latestVersionId(id),
     ]);
-    return { entries: withRevertPoints(newestFirst.map(toLogEvent).reverse(), versions) };
+    const page = records.slice(0, limit);
+    return {
+      entries: toHistoryEntries(page, currentVersionId),
+      nextCursor: records.length > limit ? page.at(-1)!.id : null,
+    };
+  });
+
+  // One history entry's details (what was read, or what changed), read only when someone opens it.
+  app.get('/api/uploads/:id/history/:eventId', async (request): Promise<EventDetails> => {
+    const { id } = await visibleUpload(request);
+    const event = await events.find(eventId(request.params));
+    if (!event || event.uploadId !== id) throw notFound('Event');
+    return eventDetails(event, uploads);
   });
 
   // An admin putting a product's data back to an earlier version ------------------------------

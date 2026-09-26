@@ -10,7 +10,8 @@ const at = (occurredAt: Date, id: string): LogEvent => ({
   type: 'extraction.started',
   uploadId: null,
   message: id,
-  data: {},
+  fileName: null,
+  hasDetails: false,
 });
 
 // Local times, as the page shows them: the day boundary is the viewer's midnight.

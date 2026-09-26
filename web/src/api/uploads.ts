@@ -1,6 +1,5 @@
 import { RESULT_EDIT_PATH } from '@label-extractor/shared';
 import type {
-  AddedWithin,
   CheckUploadsResponse,
   DeleteUploadsResponse,
   EditResultRequest,
@@ -14,22 +13,27 @@ import type {
   UploadView,
   UploadResponse,
 } from '@label-extractor/shared';
+import { ANY_TIME, toInstants, type DayRange } from '@/lib/dayRange';
 import { apiFetch, apiRequest } from './client.ts';
 
 /** Plain functions for each API endpoint. React Query hooks wrap these in queries.ts. */
 
-/** Narrowing Products: words in a product's name, brand or file name ('' for any), and when it was added. */
-export interface ProductFilter {
+/**
+ * Narrowing Products: words in a product's name, brand or file name ('' for any), and the days it
+ * was added to Products in (see DayRange).
+ */
+export interface ProductFilter extends DayRange {
   search: string;
-  added: AddedWithin | null;
 }
 
-export const NO_PRODUCT_FILTER: ProductFilter = { search: '', added: null };
+export const NO_PRODUCT_FILTER: ProductFilter = { search: '', ...ANY_TIME };
 
-/** The filter as query parameters, which the list and the export take alike. */
-function filterParams({ search, added }: ProductFilter, params = new URLSearchParams()): URLSearchParams {
-  if (search) params.set('q', search);
-  if (added) params.set('added', added);
+/** The filter as query parameters, which the list and the export take alike: the days as the viewer's own midnights. */
+function filterParams(filter: ProductFilter, params = new URLSearchParams()): URLSearchParams {
+  if (filter.search) params.set('q', filter.search);
+  const { from, to } = toInstants(filter);
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
   return params;
 }
 

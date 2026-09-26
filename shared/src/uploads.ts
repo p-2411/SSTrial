@@ -36,11 +36,6 @@ export const UPLOAD_VIEWS = {
 export type UploadView = keyof typeof UPLOAD_VIEWS;
 export const UPLOAD_VIEW_IDS = Object.keys(UPLOAD_VIEWS) as UploadView[];
 
-/** "Date added" choices for Products: added to it within this many days. */
-export const ADDED_WITHIN_DAYS = { '7d': 7, '30d': 30 } as const;
-export type AddedWithin = keyof typeof ADDED_WITHIN_DAYS;
-export const ADDED_WITHIN_IDS = Object.keys(ADDED_WITHIN_DAYS) as AddedWithin[];
-
 /** Statuses still being worked on: worth watching for changes, and not ready to open. */
 const ACTIVE_STATUSES: readonly UploadStatus[] = ['queued', 'processing'];
 

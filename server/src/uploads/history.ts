@@ -1,38 +1,15 @@
-import type { LogEvent, LogEventType, UploadHistoryEntry } from '@label-extractor/shared';
-import type { UploadVersion } from './store.ts';
-
-/** The events that change an upload's data, each saving the new state as a version. */
-const DATA_CHANGES: readonly LogEventType[] = ['extraction.completed', 'upload.edited', 'upload.reverted'];
+import { DATA_CHANGE_EVENT_TYPES, type UploadHistoryEntry } from '@label-extractor/shared';
+import { toLogEvent } from '../logs/presenter.ts';
+import type { LogEventSummary } from '../logs/store.ts';
 
 /**
- * An upload's history (its events, oldest first) with, for each entry that changed the data, the
- * version "Revert" would put it back to. The state the data is in now is left out: there's
- * nothing to revert to there.
- *
- * Entries name their version in `data.versionId`. Uploads read before versions existed have one
- * saved reading without an entry naming it (see the upload_versions migration); it belongs to
- * their last "Extraction completed".
+ * A page of an upload's history, each entry with the version "Revert" would put the data back to:
+ * the one its change saved (`versionId`), unless that's the state the data is in now
+ * (`currentVersionId`), where there's nothing to go back to.
  */
-export function withRevertPoints(events: LogEvent[], versions: UploadVersion[]): UploadHistoryEntry[] {
-  const saved = new Set(versions.map((version) => version.id));
-  const named = new Set(events.map(versionNamedBy).filter((id) => id !== null));
-  const unnamedReading = versions.findLast((version) => version.source === 'extraction' && !named.has(version.id))?.id ?? null;
-  const lastUnnamedReading = events.findLast((event) => event.type === 'extraction.completed' && versionNamedBy(event) === null);
-
-  const versionOf = (event: LogEvent): string | null => {
-    if (!DATA_CHANGES.includes(event.type)) return null;
-    const id = versionNamedBy(event) ?? (event === lastUnnamedReading ? unnamedReading : null);
-    return id !== null && saved.has(id) ? id : null;
-  };
-  const latestChange = events.findLast((event) => DATA_CHANGES.includes(event.type));
-  const current = latestChange ? versionOf(latestChange) : null;
-
+export function toHistoryEntries(events: LogEventSummary[], currentVersionId: string | null): UploadHistoryEntry[] {
   return events.map((event) => {
-    const version = versionOf(event);
-    return { ...event, revertTo: version !== current ? version : null };
+    const version = DATA_CHANGE_EVENT_TYPES.includes(event.type) ? event.versionId : null;
+    return { ...toLogEvent(event, 'history'), revertTo: version !== currentVersionId ? version : null };
   });
-}
-
-function versionNamedBy(event: LogEvent): string | null {
-  return typeof event.data.versionId === 'string' ? event.data.versionId : null;
 }

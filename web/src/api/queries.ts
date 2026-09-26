@@ -2,7 +2,7 @@ import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClie
 import { isActiveStatus, type EditResultRequest, type RevertRequest, type UploadDetail, type UploadView } from '@label-extractor/shared';
 import { ApiRequestError } from './client.ts';
 import { isLiveConnected } from './liveConnection.ts';
-import { getUploadHistory, listLogs, type LogFilters } from './logs.ts';
+import { getEventDetails, getUploadHistory, listLogs, type ActivityFilters, type EventDetailsSource, type LogFilters } from './logs.ts';
 import {
   checkUploads,
   deleteUpload,
@@ -50,8 +50,14 @@ export const opsKeys = {
 export const logKeys = {
   all: ['logs'] as const,
   list: (filters: LogFilters) => [...logKeys.all, 'list', filters] as const,
-  /** One upload's history, on its detail. Under `all`, so new events refresh it like the log. */
+  /** One upload's history, however filtered, on its detail. Under `all`, so new events refresh it like the log. */
   upload: (id: string) => [...logKeys.all, 'upload', id] as const,
+  uploadHistory: (id: string, filters: ActivityFilters) => [...logKeys.upload(id), filters] as const,
+};
+
+/** Kept apart from `logKeys`, so new events don't refetch details: an event never changes. */
+export const eventDetailsKeys = {
+  event: (source: EventDetailsSource, eventId: string) => ['event-details', source.uploadId ?? 'log', eventId] as const,
 };
 
 /** How often the activity log polls when the live update stream is down (it's live otherwise). */
@@ -232,12 +238,31 @@ export function useLogs(filters: LogFilters) {
   });
 }
 
-/** One upload's history, oldest first. Live like the activity log; polls only without the stream. */
-export function useUploadHistory(id: string) {
-  return useQuery({
-    queryKey: logKeys.upload(id),
-    queryFn: () => getUploadHistory(id),
+/**
+ * One upload's history, newest first, filtered and paginated by the server like the activity log.
+ * Live like it too; polls only without the stream.
+ */
+export function useUploadHistory(id: string, filters: ActivityFilters) {
+  return useInfiniteQuery({
+    queryKey: logKeys.uploadHistory(id, filters),
+    queryFn: ({ pageParam }) => getUploadHistory(id, filters, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    placeholderData: keepPreviousData,
     refetchInterval: () => (isLiveConnected() ? false : LOG_POLL_INTERVAL_MS),
+  });
+}
+
+/**
+ * One event's details, fetched when someone opens them (`enabled`), never before. An event never
+ * changes once written, so they're fetched once and kept while the page is open.
+ */
+export function useEventDetails(source: EventDetailsSource, eventId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: eventDetailsKeys.event(source, eventId),
+    queryFn: () => getEventDetails(source, eventId),
+    enabled,
+    staleTime: Infinity,
   });
 }
 

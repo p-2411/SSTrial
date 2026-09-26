@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useMatch } from 'react-router';
 import { toast } from 'sonner';
-import { CalendarDays, ChevronDown, Inbox, SearchX } from 'lucide-react';
-import { ADDED_WITHIN_IDS, type AddedWithin } from '@label-extractor/shared';
+import { Inbox, SearchX } from 'lucide-react';
 import { errorMessage } from '@/api/client';
 import { useDeleteUploads, useUploadList } from '@/api/queries';
 import { NO_PRODUCT_FILTER, type ProductFilter } from '@/api/uploads';
+import { DayRangeMenu } from '@/components/DayRangeMenu';
 import { InlineError } from '@/components/InlineError';
 import { SearchInput } from '@/components/SearchInput';
 import {
@@ -19,13 +19,6 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { useCloseDetail } from '@/features/upload-detail/UploadDetailPanel';
 import { productCount } from '@/lib/format';
 import { useNow } from '@/lib/useNow';
@@ -34,8 +27,6 @@ import { UPLOAD_PATH_PATTERN } from '@/routes';
 import { ExportMenu } from './ExportMenu';
 import { ListSkeleton, StaleListBanner } from './listParts';
 import { UploadRow } from './UploadRow';
-
-const ADDED_LABELS: Record<AddedWithin | 'any', string> = { any: 'any time', '7d': 'in the last 7 days', '30d': 'in the last 30 days' };
 
 /**
  * Everyone's products: the shared, lasting list. Uploads being read, failed or waiting for review
@@ -56,7 +47,7 @@ export function ProductList() {
   const selection = useSelection(ids);
   const [confirmingDelete, setConfirmingDelete] = useState<string[] | null>(null);
   const { isPending, isError, error, refetch, isRefetching, isPlaceholderData } = list;
-  const isFiltered = filter.search !== '' || filter.added !== null;
+  const isFiltered = filter.search !== '' || filter.from !== null || filter.to !== null;
   const picked = selection.selected;
 
   const changeFilter = (changes: Partial<ProductFilter>) => {
@@ -101,7 +92,7 @@ export function ProductList() {
             label="Search products"
             placeholder="Search by product, brand or file"
           />
-          <AddedMenu added={filter.added} onChange={(added) => changeFilter({ added })} />
+          <DayRangeMenu label="Added" range={filter} onChange={({ from, to }) => changeFilter({ from, to })} />
         </div>
       )}
 
@@ -136,31 +127,6 @@ export function ProductList() {
 
       <DeleteDialog ids={confirmingDelete} onClose={() => setConfirmingDelete(null)} />
     </Card>
-  );
-}
-
-/** When products were added: any time, or within the last week or month. */
-function AddedMenu({ added, onChange }: { added: AddedWithin | null; onChange: (added: AddedWithin | null) => void }) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="h-9">
-          <CalendarDays data-icon="inline-start" aria-hidden />
-          {/* The space keeps the accessible name "Added any time" rather than "Addedany time". */}
-          <span className="font-normal">Added</span> {ADDED_LABELS[added ?? 'any']}
-          <ChevronDown data-icon="inline-end" aria-hidden />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-52">
-        <DropdownMenuRadioGroup value={added ?? 'any'} onValueChange={(value) => onChange(value === 'any' ? null : (value as AddedWithin))}>
-          {(['any', ...ADDED_WITHIN_IDS] as const).map((value) => (
-            <DropdownMenuRadioItem key={value} value={value}>
-              {ADDED_LABELS[value].charAt(0).toUpperCase() + ADDED_LABELS[value].slice(1)}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 

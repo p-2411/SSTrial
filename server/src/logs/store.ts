@@ -1,5 +1,12 @@
 import type postgres from 'postgres';
-import { LOG_EVENT_TYPE_IDS, LOG_EVENT_TYPES, type LogEventType, type LogLevel, type LogSource } from '@label-extractor/shared';
+import {
+  LOG_EVENT_TYPE_IDS,
+  LOG_EVENT_TYPES,
+  UPLOAD_GONE_EVENT_TYPES,
+  type LogEventType,
+  type LogLevel,
+  type LogSource,
+} from '@label-extractor/shared';
 import type { Logger } from '../infra/logger.ts';
 import { containsPattern } from '../infra/search.ts';
 
@@ -41,6 +48,29 @@ export interface EventLog {
   record(event: NewLogEvent): Promise<void>;
 }
 
+/**
+ * An event as a list reads it: without its data, which is only read when someone opens its details
+ * (`find`), just enough to say whether there's anything to open.
+ */
+export interface LogEventSummary extends Omit<LogEventRecord, 'data'> {
+  fileName: string | null;
+  /** The version of its upload's data it saved, if it changed the data. */
+  versionId: string | null;
+  /** Whether its data says more than the file name. */
+  hasFacts: boolean;
+}
+
+/** What a list of events is narrowed to. Every one is optional but `types` (empty: every type). */
+export interface EventFilters {
+  types: LogEventType[];
+  /** Words in the message, ignoring case. */
+  search?: string;
+  /** At or after. */
+  from?: Date;
+  /** Before. */
+  to?: Date;
+}
+
 /** Reading the activity log, for the API. */
 export interface EventQueries {
   /**
@@ -49,12 +79,18 @@ export interface EventQueries {
    * `after` is the ID of the last event on the previous page (keyset pagination: stable while new
    * events arrive, and fast at any depth).
    */
-  list(options: { types: LogEventType[]; search?: string; uploadId?: string; limit: number; after?: string }): Promise<LogEventRecord[]>;
+  list(options: EventFilters & { uploadId?: string; limit: number; after?: string }): Promise<LogEventSummary[]>;
+  /** One event, data and all, if it exists and is of a known type. */
+  find(id: string): Promise<LogEventRecord | null>;
 }
 
 /** Keeping the table to a bounded size, for the worker's once-a-minute housekeeping. */
 export interface EventRetention {
-  /** Deletes events older than `days`. Returns how many went. */
+  /**
+   * Deletes what's no longer needed, `days` on: events about no upload once they're that old, and
+   * all of an upload's once it's been deleted that long. A product's history stays while it exists.
+   * Returns how many went.
+   */
   pruneOlderThan(days: number): Promise<number>;
 }
 
@@ -75,37 +111,59 @@ export function createEventStore(sql: postgres.Sql, options: { source: LogSource
       }
     },
 
-    async list({ types, search, uploadId, limit, after }) {
+    async list({ types, search, from, to, uploadId, limit, after }) {
       const rows = await sql`
-        select * from events
+        select id, occurred_at, source, type, upload_id, message,
+               data->>'fileName' as file_name, data->>'versionId' as version_id,
+               (data - 'fileName') <> '{}'::jsonb as has_facts
+        from events
         where true
           and type = any(${types.length > 0 ? types : LOG_EVENT_TYPE_IDS}::text[])
-          -- A scan, but the table only holds LOG_RETENTION_DAYS of events.
+          -- Through a trigram index (events_message_search), so any depth of history stays quick.
           ${search ? sql`and message ilike ${containsPattern(search)}` : sql``}
           ${uploadId ? sql`and upload_id = ${uploadId}` : sql``}
+          ${from ? sql`and occurred_at >= ${from}` : sql``}
+          ${to ? sql`and occurred_at < ${to}` : sql``}
           ${after ? sql`and id < ${after}::bigint` : sql``}
         order by id desc
         limit ${limit}`;
-      return rows.map(toRecord);
+      return rows.map((row) => ({
+        ...toRecordWithoutData(row),
+        fileName: row.file_name ?? null,
+        versionId: row.version_id ?? null,
+        hasFacts: row.has_facts,
+      }));
+    },
+
+    async find(id) {
+      const [row] = await sql`select * from events where id = ${id}::bigint and type = any(${LOG_EVENT_TYPE_IDS}::text[])`;
+      return row ? { ...toRecordWithoutData(row), data: row.data ?? {} } : null;
     },
 
     async pruneOlderThan(days) {
-      const result = await sql`delete from events where occurred_at < now() - make_interval(days => ${days})`;
-      return result.count;
+      const cutoff = () => sql`now() - make_interval(days => ${days})`;
+      const system = await sql`delete from events where upload_id is null and occurred_at < ${cutoff()}`;
+      // An upload's events all go together, once its "deleted" (or "rejected", "discarded") event is
+      // old enough: that event goes too, so each deleted upload is looked at only until then.
+      const deleted = await sql`
+        delete from events
+        where upload_id in (
+          select upload_id from events
+          where type = any(${UPLOAD_GONE_EVENT_TYPES}::text[]) and occurred_at < ${cutoff()})`;
+      return system.count + deleted.count;
     },
   };
 }
 
-function toRecord(row: postgres.Row): LogEventRecord {
+function toRecordWithoutData(row: postgres.Row): Omit<LogEventRecord, 'data'> {
   return {
     id: String(row.id),
     occurredAt: row.occurred_at,
     source: row.source,
-    // `list` only returns known types, and a type's level is fixed (see LOG_EVENT_TYPES).
+    // Only known types are read, and a type's level is fixed (see LOG_EVENT_TYPES).
     type: row.type,
     level: LOG_EVENT_TYPES[row.type as LogEventType].level,
     uploadId: row.upload_id ?? null,
     message: row.message,
-    data: row.data ?? {},
   };
 }

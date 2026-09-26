@@ -1,6 +1,6 @@
 import { Readable } from 'node:stream';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { ADDED_WITHIN_DAYS, exportQuerySchema, MAX_UPLOADS_PER_REQUEST } from '@label-extractor/shared';
+import { exportQuerySchema, MAX_UPLOADS_PER_REQUEST } from '@label-extractor/shared';
 import { toCsv, toJson } from '../../uploads/export.ts';
 import type { UploadQueries } from '../../uploads/store.ts';
 import { ApiError } from '../errors.ts';
@@ -19,10 +19,15 @@ export async function exportRoutes(app: FastifyInstance, { uploads }: ExportRout
   function products(request: FastifyRequest) {
     const query = exportQuerySchema.safeParse(request.query);
     if (!query.success) {
-      throw new ApiError(400, 'BAD_REQUEST', `Use id=… for up to ${MAX_UPLOADS_PER_REQUEST} products, or q=… and added=7d|30d.`);
+      throw new ApiError(400, 'BAD_REQUEST', `Use id=… for up to ${MAX_UPLOADS_PER_REQUEST} products, or q=… and from= and to= as ISO date-times.`);
     }
-    const { id: ids, q, added } = query.data;
-    return uploads.streamProducts({ ids, search: q || undefined, addedWithinDays: added && ADDED_WITHIN_DAYS[added] });
+    const { id: ids, q, from, to } = query.data;
+    return uploads.streamProducts({
+      ids,
+      search: q || undefined,
+      addedFrom: from ? new Date(from) : undefined,
+      addedBefore: to ? new Date(to) : undefined,
+    });
   }
 
   app.get('/api/exports/uploads.csv', async (request, reply) => {

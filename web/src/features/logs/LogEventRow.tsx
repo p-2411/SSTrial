@@ -1,8 +1,8 @@
 import { Link } from 'react-router';
-import { ChevronRight } from 'lucide-react';
 import { UPLOAD_GONE_EVENT_TYPES, type LogEvent, type LogLevel } from '@label-extractor/shared';
 import { Badge } from '@/components/ui/badge';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
+import { EventDetails, EventDetailsTrigger } from '@/features/activity/EventDetails';
 import { formatDateTimeWithSeconds, formatTimeOfDay } from '@/lib/format';
 import { TONE_CLASSES, type Tone } from '@/lib/tone';
 import { cn } from '@/lib/utils';
@@ -15,16 +15,18 @@ const LEVEL_BADGE: Record<LogLevel, { label: string; tone: Tone } | null> = {
   error: { label: 'Error', tone: 'danger' },
 };
 
+/** Details opened from the Logs page are fetched through the log's own endpoint. */
+const FROM_THE_LOG = {};
+
 /**
  * One event, written for the business rather than engineers: its time, level and message (which
- * already says what happened), then the structured details one click away, for the codes and
- * numbers the sentence leaves out, and a link to its upload.
+ * already says what happened), then its details one click away (what a change did to the data, or
+ * the codes and numbers the sentence leaves out), fetched only then, and a link to its upload.
  */
 export function LogEventRow({ event }: { event: LogEvent }) {
   const badge = LEVEL_BADGE[event.level];
   // Rejected and discarded uploads are deleted, so there's nothing to open.
   const uploadId = event.uploadId !== null && !UPLOAD_GONE_EVENT_TYPES.includes(event.type) ? event.uploadId : null;
-  const hasDetails = Object.keys(event.data).length > 0;
 
   return (
     <li className="border-b border-border/70">
@@ -45,16 +47,10 @@ export function LogEventRow({ event }: { event: LogEvent }) {
         </span>
         <div className="grid min-w-0 gap-0.5">
           <p className="text-sm break-words text-foreground">{event.message}</p>
-          {(hasDetails || uploadId) && (
+          {(event.hasDetails || uploadId) && (
             <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-              {hasDetails && (
-                <CollapsibleTrigger className="inline-flex items-center gap-0.5 rounded-sm hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none">
-                  {/* Points right when collapsed, down when open. */}
-                  <ChevronRight className="size-3 transition-transform group-data-[state=open]/event:rotate-90" aria-hidden />
-                  Details
-                </CollapsibleTrigger>
-              )}
-              {hasDetails && uploadId && <Dot />}
+              {event.hasDetails && <EventDetailsTrigger />}
+              {event.hasDetails && uploadId && <Dot />}
               {uploadId && (
                 <Link to={uploadPath(uploadId)} className="font-medium text-brand hover:underline">
                   View upload
@@ -63,9 +59,7 @@ export function LogEventRow({ event }: { event: LogEvent }) {
             </p>
           )}
           <CollapsibleContent>
-            <pre className="mt-1.5 rounded-md border bg-muted/40 px-3 py-2 text-xs leading-relaxed break-words whitespace-pre-wrap">
-              {JSON.stringify(event.data, null, 2)}
-            </pre>
+            <EventDetails source={FROM_THE_LOG} eventId={event.id} />
           </CollapsibleContent>
         </div>
       </Collapsible>

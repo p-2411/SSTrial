@@ -4,7 +4,7 @@ import type { NetQuantity, NetQuantityUnit } from '@label-extractor/shared';
 const UNIT_DISPLAY: Partial<Record<NetQuantityUnit, string>> = { l: 'L' };
 
 /** { 500, g } → "500 g"; { 1.5, l } → "1.5 L"; long decimals are rounded to 2 places. */
-export function formatQuantity({ value, unit }: NetQuantity): string {
+export function formatQuantity({ value, unit }: Pick<NetQuantity, 'value' | 'unit'>): string {
   const amount = Number.isInteger(value) ? String(value) : String(Number(value.toFixed(2)));
   return `${amount} ${UNIT_DISPLAY[unit] ?? unit}`;
 }

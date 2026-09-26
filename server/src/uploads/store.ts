@@ -110,11 +110,12 @@ export interface NewUpload {
 
 /**
  * Narrowing a list: words found in the product name, brand or file name (ignoring case), and, for
- * products, how recently they were added to Products.
+ * products, when they were added to Products (at or after `addedFrom`, before `addedBefore`).
  */
 export interface UploadFilter {
   search?: string;
-  addedWithinDays?: number;
+  addedFrom?: Date;
+  addedBefore?: Date;
 }
 
 /** Options for the two ways an upload leaves `uploading`. */
@@ -149,8 +150,21 @@ export interface UploadQueries {
    * read in batches so an export of any size can stream.
    */
   streamProducts(filter?: UploadFilter & { ids?: readonly string[] }): AsyncIterable<UploadRecord>;
-  /** The saved states of an upload's data, oldest first. */
-  listVersions(id: string): Promise<UploadVersion[]>;
+  /** One saved state of an upload's data, if it's one of this upload's. */
+  findVersion(id: string, versionId: string): Promise<UploadVersion | null>;
+  /** The state the upload's data is in now: its newest version, if it has any. */
+  latestVersionId(id: string): Promise<string | null>;
+  /**
+   * A version's data as saved, and the version's before it (null for the first), to show what a
+   * change did. Null if it's not one of this upload's.
+   */
+  readVersion(id: string, versionId: string): Promise<{ version: SavedData; previous: SavedData | null } | null>;
+}
+
+/** A version's data as it was saved: the result (in whatever shape it had then), and the fields a person had reviewed. */
+export interface SavedData {
+  result: unknown;
+  reviewed: string[];
 }
 
 /** Getting uploads into the queue: creating, confirming or discarding them, and running them again. */
@@ -260,9 +274,10 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
   /** The status a lifecycle transition leads to. */
   const statusAfter = (transition: UploadTransitionKeepingRow) => UPLOAD_TRANSITIONS[transition].to;
   /** SQL conditions for a filter (each `and …`), nothing for what it leaves out. A scan: uploads are few enough. */
-  const matching = ({ search, addedWithinDays }: UploadFilter) => sql`
+  const matching = ({ search, addedFrom, addedBefore }: UploadFilter) => sql`
     ${search ? sql`and (file_name ilike ${containsPattern(search)} or result->>'productName' ilike ${containsPattern(search)} or result->>'brand' ilike ${containsPattern(search)})` : sql``}
-    ${addedWithinDays ? sql`and submitted_at >= now() - make_interval(days => ${addedWithinDays})` : sql``}`;
+    ${addedFrom ? sql`and submitted_at >= ${addedFrom}` : sql``}
+    ${addedBefore ? sql`and submitted_at < ${addedBefore}` : sql``}`;
 
   return {
     async create(upload) {
@@ -460,9 +475,27 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
         select done.*, (select id from version) as version_id from done`);
     },
 
-    async listVersions(id) {
-      const rows = await sql`select id, source, created_at from upload_versions where upload_id = ${id} order by id`;
-      return rows.map((row) => ({ id: String(row.id), source: row.source, createdAt: row.created_at }));
+    async findVersion(id, versionId) {
+      const [row] = await sql`
+        select id, source, created_at from upload_versions where id = ${versionId}::bigint and upload_id = ${id}`;
+      return row ? { id: String(row.id), source: row.source, createdAt: row.created_at } : null;
+    },
+
+    async latestVersionId(id) {
+      const [row] = await sql`select max(id) as id from upload_versions where upload_id = ${id}`;
+      return row?.id == null ? null : String(row.id);
+    },
+
+    async readVersion(id, versionId) {
+      // The version, and the one before it: both through upload_versions_by_upload.
+      const [version, previous] = await sql`
+        select id, result, field_reviews from upload_versions
+        where upload_id = ${id} and id <= ${versionId}::bigint
+        order by id desc
+        limit 2`;
+      if (!version || String(version.id) !== versionId) return null;
+      const saved = (row: postgres.Row): SavedData => ({ result: row.result, reviewed: Object.keys(row.field_reviews ?? {}) });
+      return { version: saved(version), previous: previous ? saved(previous) : null };
     },
 
     scheduleRetry(id, claimToken, code) {

@@ -94,8 +94,13 @@ describe('searching, filtering and picking products', () => {
     await vi.waitFor(() => expect(screen.queryByText('Maple Pecan Crunch')).not.toBeInTheDocument());
 
     await userEvent.click(screen.getByRole('button', { name: 'Added any time' }));
-    await userEvent.click(screen.getByRole('menuitemradio', { name: 'In the last 7 days' }));
-    await vi.waitFor(() => expect(requests.at(-1)?.url).toBe('/api/uploads?view=products&q=oat&added=7d'));
+    await userEvent.click(screen.getByRole('button', { name: 'Last 7 days' }));
+    // The last 7 days, counting today, as the viewer's own midnights: to the start of tomorrow.
+    const today = new Date();
+    const midnight = (daysFromToday: number) => new Date(today.getFullYear(), today.getMonth(), today.getDate() + daysFromToday).toISOString();
+    const days = new URLSearchParams({ from: midnight(-6), to: midnight(1) });
+    await vi.waitFor(() => expect(requests.at(-1)?.url).toBe(`/api/uploads?view=products&q=oat&${days}`));
+    expect(screen.getByRole('button', { name: 'Added last 7 days' })).toBeInTheDocument();
   });
 
   it('says when nothing matches, and clears the search and filter', async () => {

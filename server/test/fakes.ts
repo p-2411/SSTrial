@@ -2,6 +2,7 @@ import { pino } from 'pino';
 import {
   canTransition,
   LOG_EVENT_TYPES,
+  UPLOAD_GONE_EVENT_TYPES,
   UPLOAD_TRANSITIONS,
   type UploadTransitionKeepingRow,
   type HealthReport,
@@ -20,7 +21,7 @@ import { ExtractionError } from '../src/extraction/errors.ts';
 import type { RateLimiter } from '../src/extraction/rate-limiter.ts';
 import type { ChangeFeed } from '../src/infra/change-feed.ts';
 import { StorageUnavailableError, type FileStorage } from '../src/infra/storage.ts';
-import type { EventStore, LogEventRecord, NewLogEvent } from '../src/logs/store.ts';
+import type { EventFilters, EventStore, LogEventRecord, LogEventSummary, NewLogEvent } from '../src/logs/store.ts';
 import type { OpsSnapshot } from '../src/ops/store.ts';
 import type {
   NewUpload,
@@ -139,11 +140,12 @@ export class InMemoryUploadStore implements UploadStore {
     return [...this.rows.values()].filter(predicate).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
   }
   /** Whether a row matches a list's search and date filter, as the real store's SQL decides. */
-  private matches(row: UploadRecord, { search, addedWithinDays }: UploadFilter) {
+  private matches(row: UploadRecord, { search, addedFrom, addedBefore }: UploadFilter) {
     const words = search?.toLowerCase();
     const found = [row.fileName, row.result?.productName, row.result?.brand].some((text) => text?.toLowerCase().includes(words ?? ''));
-    const since = addedWithinDays === undefined ? null : Date.now() - addedWithinDays * 24 * 60 * 60 * 1000;
-    return (!words || found) && (since === null || (row.submittedAt !== null && row.submittedAt.getTime() >= since));
+    const added = row.submittedAt;
+    const inRange = (!addedFrom || (added !== null && added >= addedFrom)) && (!addedBefore || (added !== null && added < addedBefore));
+    return (!words || found) && inRange;
   }
   async list({
     statuses,
@@ -263,8 +265,19 @@ export class InMemoryUploadStore implements UploadStore {
     this.submittedBy.set(id, by);
     return submitted;
   }
-  async listVersions(id: string) {
-    return this.versions.filter((v) => v.uploadId === id).map(({ id: versionId, source, createdAt }) => ({ id: versionId, source, createdAt }));
+  async findVersion(id: string, versionId: string) {
+    const version = this.versions.find((v) => v.id === versionId && v.uploadId === id);
+    return version ? { id: version.id, source: version.source, createdAt: version.createdAt } : null;
+  }
+  async latestVersionId(id: string) {
+    return this.versions.findLast((v) => v.uploadId === id)?.id ?? null;
+  }
+  async readVersion(id: string, versionId: string) {
+    const own = this.versions.filter((v) => v.uploadId === id);
+    const at = own.findIndex((v) => v.id === versionId);
+    if (at === -1) return null;
+    const saved = (version: (typeof own)[number]) => ({ result: version.state.result, reviewed: Object.keys(version.state.fieldReviews) });
+    return { version: saved(own[at]!), previous: at > 0 ? saved(own[at - 1]!) : null };
   }
   async complete(id: string, claimToken: string, result: LabelExtraction, confidence: ExtractionConfidence | null) {
     const done = await this.transition(id, 'complete', { result, confidence, error: null, completedAt: new Date(), claimToken: null }, claimToken);
@@ -392,31 +405,38 @@ export class InMemoryEventStore implements EventStore {
     this.seed(event);
   }
 
-  async list({
-    types,
-    search,
-    uploadId,
-    limit,
-    after,
-  }: {
-    types: LogEventType[];
-    search?: string;
-    uploadId?: string;
-    limit: number;
-    after?: string;
-  }) {
+  async list({ types, search, from, to, uploadId, limit, after }: EventFilters & { uploadId?: string; limit: number; after?: string }) {
     return this.events
       .filter((event) => types.length === 0 || types.includes(event.type))
       .filter((event) => !search || event.message.toLowerCase().includes(search.toLowerCase()))
       .filter((event) => !uploadId || event.uploadId === uploadId)
+      .filter((event) => !from || event.occurredAt >= from)
+      .filter((event) => !to || event.occurredAt < to)
       .filter((event) => !after || Number(event.id) < Number(after))
       .toSorted((a, b) => Number(b.id) - Number(a.id))
-      .slice(0, limit);
+      .slice(0, limit)
+      .map(({ data, ...event }): LogEventSummary => {
+        const { fileName, ...facts } = data;
+        return {
+          ...event,
+          fileName: typeof fileName === 'string' ? fileName : null,
+          versionId: typeof data.versionId === 'string' ? data.versionId : null,
+          hasFacts: Object.keys(facts).length > 0,
+        };
+      });
+  }
+
+  async find(id: string) {
+    return this.events.find((event) => event.id === id) ?? null;
   }
 
   async pruneOlderThan(days: number) {
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-    const kept = this.events.filter((event) => event.occurredAt.getTime() >= cutoff);
+    const old = (event: LogEventRecord) => event.occurredAt.getTime() < cutoff;
+    const deletedLongAgo = new Set(
+      this.events.filter((event) => UPLOAD_GONE_EVENT_TYPES.includes(event.type) && old(event)).map((event) => event.uploadId),
+    );
+    const kept = this.events.filter((event) => (event.uploadId === null ? !old(event) : !deletedLongAgo.has(event.uploadId)));
     const pruned = this.events.length - kept.length;
     this.events.splice(0, this.events.length, ...kept);
     return pruned;

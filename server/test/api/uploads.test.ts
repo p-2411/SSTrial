@@ -286,9 +286,11 @@ describe('GET /api/uploads — the three lists', () => {
     expect(await names('?q=harvest')).toEqual(['Maple Pecan Crunch', 'Sea Salt Crackers']); // brand
     expect(await names('?q=OAT')).toEqual(['Barista Oat Milk']); // name
     expect(await names('?q=.pdf')).toEqual(['Sea Salt Crackers']); // file name
-    expect(await names('?added=7d')).toEqual(['Maple Pecan Crunch']);
-    expect(await names('?added=30d')).toEqual(['Maple Pecan Crunch', 'Barista Oat Milk']);
-    expect(await names('?q=harvest&added=30d')).toEqual(['Maple Pecan Crunch']);
+    const daysAgo = (days: number) => encodeURIComponent(new Date(Date.now() - days * day).toISOString());
+    expect(await names(`?from=${daysAgo(7)}`)).toEqual(['Maple Pecan Crunch']);
+    expect(await names(`?from=${daysAgo(30)}`)).toEqual(['Maple Pecan Crunch', 'Barista Oat Milk']);
+    expect(await names(`?from=${daysAgo(30)}&to=${daysAgo(7)}`)).toEqual(['Barista Oat Milk']); // to is exclusive
+    expect(await names(`?q=harvest&from=${daysAgo(30)}`)).toEqual(['Maple Pecan Crunch']);
     expect(await names('?q=%20%20')).toHaveLength(3); // blank words find everything
   });
 
@@ -298,7 +300,7 @@ describe('GET /api/uploads — the three lists', () => {
   });
 
   it('rejects an invalid limit, view or cursor', async () => {
-    for (const query of ['limit=0', 'limit=500', 'view=everything', 'cursor=not-an-id', 'added=1y', `q=${'a'.repeat(201)}`]) {
+    for (const query of ['limit=0', 'limit=500', 'view=everything', 'cursor=not-an-id', 'from=last-week', `q=${'a'.repeat(201)}`]) {
       expect((await app.inject({ method: 'GET', url: `/api/uploads?${query}` })).statusCode).toBe(400);
     }
   });
@@ -521,7 +523,7 @@ describe('unknown routes', () => {
 describe('GET /api/uploads/:id/history', () => {
   const history = (id = ID) => app.inject({ method: 'GET', url: `/api/uploads/${id}/history` });
 
-  it("tells one upload's story, oldest first, leaving out other uploads", async () => {
+  it("tells one upload's story, newest first, leaving out other uploads", async () => {
     uploads.seed({ id: ID, status: 'completed', result: SAMPLE_EXTRACTION });
     events.seed({ type: 'upload.created', uploadId: ID, message: 'uploaded' });
     events.seed({ type: 'extraction.completed', uploadId: 'someone-else', message: 'not this one' });
@@ -530,7 +532,36 @@ describe('GET /api/uploads/:id/history', () => {
     const response = await history();
 
     expect(response.statusCode).toBe(200);
-    expect(response.json().entries.map((entry: { message: string }) => entry.message)).toEqual(['uploaded', 'edited']);
+    expect(response.json().entries.map((entry: { message: string }) => entry.message)).toEqual(['edited', 'uploaded']);
+    expect(response.json().nextCursor).toBeNull();
+  });
+
+  it('pages, and is searched and filtered like the activity log', async () => {
+    uploads.seed({ id: ID, status: 'completed', result: SAMPLE_EXTRACTION });
+    for (let i = 1; i <= 5; i++) events.seed({ type: 'upload.edited', uploadId: ID, message: `edit ${i}` });
+    events.seed({ type: 'extraction.failed', uploadId: ID, message: 'failed once', occurredAt: new Date('2026-01-01T00:00:00Z') });
+    const messages = async (query: string) =>
+      (await app.inject({ method: 'GET', url: `/api/uploads/${ID}/history${query}` })).json().entries.map((entry: { message: string }) => entry.message);
+
+    const first = (await app.inject({ method: 'GET', url: `/api/uploads/${ID}/history?limit=2` })).json();
+    expect(first.entries.map((entry: { message: string }) => entry.message)).toEqual(['failed once', 'edit 5']);
+    expect(await messages(`?limit=2&cursor=${first.nextCursor}`)).toEqual(['edit 4', 'edit 3']);
+    expect(await messages('?q=EDIT%202')).toEqual(['edit 2']);
+    expect(await messages('?type=extraction.failed')).toEqual(['failed once']);
+    expect(await messages('?to=2026-06-01T00:00:00Z')).toEqual(['failed once']);
+  });
+
+  it('shows an entry’s details to anyone who can see the upload, and only its own events’', async () => {
+    await app.close();
+    app = await buildApp(testAppDeps({ uploads, storage, events, authenticator: signedInAs(MEMBER) }));
+    uploads.seed({ id: ID, status: 'completed', result: SAMPLE_EXTRACTION });
+    const edit = events.seed({ type: 'upload.edited', uploadId: ID, message: 'edited', data: { changes: { brand: { from: 'A', to: 'B' } }, checked: [] } });
+    const elsewhere = events.seed({ type: 'upload.edited', uploadId: 'someone-else', message: 'edited', data: {} });
+
+    const details = await app.inject({ method: 'GET', url: `/api/uploads/${ID}/history/${edit.id}` });
+    expect(details.statusCode).toBe(200);
+    expect(details.json()).toEqual({ kind: 'changes', changes: [{ field: 'brand', from: 'A', to: 'B' }], checked: [], unchecked: [] });
+    expect((await app.inject({ method: 'GET', url: `/api/uploads/${ID}/history/${elsewhere.id}` })).statusCode).toBe(404);
   });
 
   it('is open to members, not just admins', async () => {

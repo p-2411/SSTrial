@@ -24,7 +24,7 @@ import {
   FINALISE_DELAY_SECONDS,
   FINALISE_QUEUE,
 } from '../../src/uploads/jobs.ts';
-import { createUploadStore, type UploadRecord, type UploadStore } from '../../src/uploads/store.ts';
+import { createUploadStore, type UploadFilter, type UploadRecord, type UploadStore } from '../../src/uploads/store.ts';
 import { createPostgresRateLimiter } from '../../src/extraction/rate-limiter.ts';
 import { createEventStore, type EventStore } from '../../src/logs/store.ts';
 import { createOpsStore } from '../../src/ops/store.ts';
@@ -472,8 +472,40 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       expect(await messages({ types: ['extraction.retry_scheduled'] })).toEqual(['two']);
 
       const [latest] = await events.list({ uploadId, types: ['extraction.retry_scheduled'], limit: 1 });
-      expect(latest).toMatchObject({ source: 'worker', level: 'warn', uploadId, data: { code: 'LLM_TIMEOUT' } });
+      expect(latest).toMatchObject({ source: 'worker', level: 'warn', uploadId, hasFacts: true });
+      expect(latest).not.toHaveProperty('data'); // read only when someone opens it
       expect(latest!.occurredAt).toBeInstanceOf(Date);
+      expect(await events.find(latest!.id)).toMatchObject({ message: 'two', data: { code: 'LLM_TIMEOUT' } });
+    });
+
+    it('lists what each event needs to say what it has to open, without its data', async () => {
+      const uploadId = testUploadId();
+      await events.record({ type: 'upload.discarded', uploadId, message: 'just a file', data: { fileName: 'oats.png' } });
+      await events.record({ type: 'upload.edited', uploadId, message: 'edited', data: { fileName: 'oats.png', versionId: '42' } });
+
+      expect(await events.list({ types: [], uploadId, limit: 10 })).toMatchObject([
+        { message: 'edited', fileName: 'oats.png', versionId: '42', hasFacts: true },
+        { message: 'just a file', fileName: 'oats.png', versionId: null, hasFacts: false },
+      ]);
+    });
+
+    it('finds events between two instants: from inclusive, to exclusive', async () => {
+      const uploadId = testUploadId();
+      for (const message of ['3 days ago', '2 days ago', '1 day ago']) await events.record({ type: 'extraction.started', uploadId, message });
+      await sql`
+        update events set occurred_at = date_trunc('day', now()) - (left(message, 1)::int * interval '1 day')
+        where upload_id = ${uploadId}`;
+      const day = (daysAgo: number) => {
+        const date = new Date();
+        date.setUTCHours(0, 0, 0, 0);
+        return new Date(date.getTime() - daysAgo * 24 * 60 * 60 * 1000);
+      };
+      const found = async (from?: Date, to?: Date) =>
+        (await events.list({ types: [], uploadId, from, to, limit: 10 })).map((event) => event.message);
+
+      expect(await found(day(2))).toEqual(['1 day ago', '2 days ago']);
+      expect(await found(undefined, day(2))).toEqual(['3 days ago']);
+      expect(await found(day(3), day(1))).toEqual(['2 days ago', '3 days ago']);
     });
 
     it('finds words anywhere in the message, ignoring case, with % and _ taken literally', async () => {
@@ -518,14 +550,40 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       expect(seen).toEqual(['7', '6', '5', '4', '3', '2', '1']);
     });
 
-    it('prunes only events older than the retention period', async () => {
-      const uploadId = testUploadId();
-      await events.record({ type: 'extraction.started', uploadId, message: 'old' });
-      await events.record({ type: 'extraction.started', uploadId, message: 'recent' });
-      await sql`update events set occurred_at = now() - interval '31 days' where upload_id = ${uploadId} and message = 'old'`;
+    it("keeps a product's history while it exists, and all of it for the retention period once it's deleted", async () => {
+      const kept = testUploadId();
+      const deletedLongAgo = testUploadId();
+      const deletedRecently = testUploadId();
+      for (const uploadId of [kept, deletedLongAgo, deletedRecently]) {
+        await events.record({ type: 'extraction.started', uploadId, message: 'read long ago' });
+      }
+      await events.record({ type: 'upload.deleted', uploadId: deletedLongAgo, message: 'deleted long ago' });
+      await events.record({ type: 'upload.deleted', uploadId: deletedRecently, message: 'deleted recently' });
+      await sql`
+        update events set occurred_at = now() - interval '40 days'
+        where upload_id in ${sql([kept, deletedLongAgo, deletedRecently])} and message = 'read long ago'`;
+      await sql`update events set occurred_at = now() - interval '31 days' where upload_id = ${deletedLongAgo}`;
+      const messages = async (uploadId: string) =>
+        (await events.list({ types: [], uploadId, limit: 10 })).map((event) => event.message);
 
-      expect(await events.pruneOlderThan(30)).toBeGreaterThanOrEqual(1);
-      expect((await events.list({ types: [], uploadId, limit: 10 })).map((event) => event.message)).toEqual(['recent']);
+      expect(await events.pruneOlderThan(30)).toBeGreaterThanOrEqual(2);
+
+      expect(await messages(kept)).toEqual(['read long ago']);
+      expect(await messages(deletedLongAgo)).toEqual([]);
+      expect(await messages(deletedRecently)).toEqual(['deleted recently', 'read long ago']);
+    });
+
+    it('prunes events about no upload once they pass the retention period', async () => {
+      const marker = crypto.randomUUID();
+      await events.record({ type: 'process.started', message: `old ${marker}` });
+      await events.record({ type: 'process.started', message: `recent ${marker}` });
+      await sql`update events set occurred_at = now() - interval '31 days' where message = ${`old ${marker}`}`;
+
+      await events.pruneOlderThan(30);
+
+      const left = await events.list({ types: ['process.started'], search: marker, limit: 10 });
+      expect(left.map((event) => event.message)).toEqual([`recent ${marker}`]);
+      await sql`delete from events where message like ${`%${marker}`}`;
     });
 
     it("never rejects when a write fails: it's reported to stdout instead", async () => {
@@ -654,25 +712,40 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       const edited = await uploads.saveReview(id, 0, { ...SAMPLE_EXTRACTION, brand: 'Edited' }, { brand: { kind: 'edited', by, at: new Date() } });
       await sql`update uploads set confidence = null where id = ${id}`; // as if a re-run had lost the scores
 
-      expect((await uploads.listVersions(id)).map((v) => [v.id, v.source])).toEqual([
-        [reading, 'extraction'],
-        [edited!.versionId, 'review'],
-      ]);
+      expect(await uploads.findVersion(id, reading)).toMatchObject({ id: reading, source: 'extraction' });
+      expect(await uploads.findVersion(id, edited!.versionId)).toMatchObject({ source: 'review' });
+      expect(await uploads.latestVersionId(id)).toBe(edited!.versionId);
 
       const reverted = await uploads.revert(id, 1, reading);
 
       expect(reverted?.upload).toMatchObject({ result: { brand: SAMPLE_EXTRACTION.brand }, fieldReviews: {}, resultRevision: 2 });
       expect(reverted?.upload.confidence?.brand.score).toBe(90);
-      expect((await uploads.listVersions(id)).at(-1)).toMatchObject({ id: reverted!.versionId, source: 'revert' });
+      expect(await uploads.findVersion(id, reverted!.versionId)).toMatchObject({ source: 'revert' });
+      expect(await uploads.latestVersionId(id)).toBe(reverted!.versionId);
+    });
+
+    it('reads a version with the one before it, to show what a change did', async () => {
+      const { id, reading } = await readUpload();
+      const check = { kind: 'checked' as const, by: crypto.randomUUID(), at: new Date() };
+      const edited = await uploads.saveReview(id, 0, { ...SAMPLE_EXTRACTION, brand: 'Edited' }, { allergens: check });
+
+      expect(await uploads.readVersion(id, reading)).toEqual({ version: { result: SAMPLE_EXTRACTION, reviewed: [] }, previous: null });
+      expect(await uploads.readVersion(id, edited!.versionId)).toEqual({
+        version: { result: { ...SAMPLE_EXTRACTION, brand: 'Edited' }, reviewed: ['allergens'] },
+        previous: { result: SAMPLE_EXTRACTION, reviewed: [] },
+      });
+      const other = await readUpload();
+      expect(await uploads.readVersion(id, other.reading)).toBeNull(); // not this upload's
     });
 
     it("won't revert from an older revision, or to another upload's version", async () => {
-      const { id } = await readUpload();
+      const { id, reading } = await readUpload();
       const other = await readUpload();
       await uploads.saveReview(id, 0, { ...SAMPLE_EXTRACTION, brand: 'Edited' }, {});
 
-      expect(await uploads.revert(id, 0, (await uploads.listVersions(id))[0]!.id)).toBeNull(); // stale revision
+      expect(await uploads.revert(id, 0, reading)).toBeNull(); // stale revision
       expect(await uploads.revert(id, 1, other.reading)).toBeNull(); // not this upload's
+      expect(await uploads.findVersion(id, other.reading)).toBeNull();
       expect((await uploads.findById(id))?.result?.brand).toBe('Edited');
     });
   });
@@ -727,7 +800,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       };
       const fresh = await product('granola.png', 'Maple Pecan Crunch', 1);
       const older = await product('milk.png', 'Barista Oat Milk', 20);
-      const names = async (filter: { search?: string; addedWithinDays?: number }) =>
+      const names = async (filter: UploadFilter) =>
         (await uploads.list({ statuses: ['completed'], submitted: true, limit: 100, ...filter }))
           .filter((upload) => upload.fileName.startsWith(tag))
           .map((upload) => upload.fileName.slice(tag.length + 1));
@@ -736,7 +809,9 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       expect(await names({ search: `${tag}-granola` })).toEqual(['granola.png']);
       expect(await names({ search: 'brand_50%' })).toEqual(['milk.png', 'granola.png']); // wildcards taken literally, newest first
       expect(await names({ search: 'brand_5_%' })).toEqual([]);
-      expect(await names({ addedWithinDays: 7 })).toEqual(['granola.png']);
+      const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+      expect(await names({ addedFrom: daysAgo(7) })).toEqual(['granola.png']);
+      expect(await names({ addedFrom: daysAgo(30), addedBefore: daysAgo(7) })).toEqual(['milk.png']);
 
       const exported: string[] = [];
       for await (const upload of uploads.streamProducts({ ids: [older, crypto.randomUUID()] })) exported.push(upload.id);

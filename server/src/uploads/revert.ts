@@ -13,7 +13,7 @@ export type RevertOutcome =
   | { outcome: 'not-found' };
 
 export interface RevertDeps {
-  uploads: Pick<UploadQueries, 'findById' | 'listVersions'> & Pick<UploadReviews, 'revert'>;
+  uploads: Pick<UploadQueries, 'findById' | 'findVersion'> & Pick<UploadReviews, 'revert'>;
   events: EventLog;
 }
 
@@ -33,7 +33,7 @@ export async function revertUpload(
   const upload = await deps.uploads.findById(id);
   if (!upload) return { outcome: 'not-found' };
   if (!canTransition('review', upload.status)) return { outcome: 'not-revertible' };
-  const to = (await deps.uploads.listVersions(id)).find((version) => version.id === request.versionId);
+  const to = await deps.uploads.findVersion(id, request.versionId);
   if (!to) return { outcome: 'not-found' };
 
   const reverted = await deps.uploads.revert(id, request.revision, to.id);

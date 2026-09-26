@@ -16,7 +16,8 @@ function event(overrides: Partial<LogEvent> & Pick<LogEvent, 'id' | 'message'>):
     level: 'info',
     type: 'extraction.started',
     uploadId: UPLOAD,
-    data: { fileName: 'oat-milk.png' },
+    fileName: 'oat-milk.png',
+    hasDetails: false,
     ...overrides,
   };
 }
@@ -34,13 +35,26 @@ function stubLogs(...pages: ListLogsResponse[]): string[] {
   return requested;
 }
 
+/** Answers each request with the response for its path (before any query). Returns the URLs requested. */
+function stubRoutes(responses: Record<string, unknown>): string[] {
+  const requested: string[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string) => {
+      requested.push(input);
+      return jsonResponse(responses[input.split('?')[0]!]);
+    }),
+  );
+  return requested;
+}
+
 const renderPage = (url = '/logs') => renderWithProviders(<LogsPage />, { url });
 
 describe('LogsPage', () => {
   it('shows events newest first under their day, with warnings and errors marked', async () => {
     stubLogs({
       events: [
-        event({ id: '3', level: 'error', type: 'extraction.failed', message: 'oat-milk.png failed: The AI service took too long.', data: { fileName: 'oat-milk.png', code: 'LLM_TIMEOUT' } }),
+        event({ id: '3', level: 'error', type: 'extraction.failed', message: 'oat-milk.png failed: The AI service took too long.', hasDetails: true }),
         event({ id: '2', level: 'warn', type: 'extraction.retry_scheduled', message: 'oat-milk.png failed on attempt 1 of 5.' }),
         event({ id: '1', source: 'api', type: 'upload.created', message: 'oat-milk.png started uploading.' }),
       ],
@@ -77,14 +91,50 @@ describe('LogsPage', () => {
     expect(screen.queryByRole('link', { name: 'View upload' })).not.toBeInTheDocument();
   });
 
-  it('shows the structured details on request', async () => {
+  it('fetches an event’s details only when they’re opened', async () => {
     const user = userEvent.setup();
-    stubLogs({ events: [event({ id: '1', message: 'Reading oat-milk.png.', data: { fileName: 'oat-milk.png', attempt: 2 } })], nextCursor: null });
+    const requested = stubRoutes({
+      '/api/logs': { events: [event({ id: '7', message: 'Reading oat-milk.png.', hasDetails: true })], nextCursor: null },
+      '/api/logs/7/details': { kind: 'facts', facts: { fileName: 'oat-milk.png', attempt: 2 } },
+    });
+    renderPage();
+
+    const details = await screen.findByRole('button', { name: 'Details' });
+    expect(requested).toEqual(['/api/logs']);
+    await user.click(details);
+
+    expect(await screen.findByText(/"attempt": 2/)).toBeInTheDocument();
+    expect(requested).toEqual(['/api/logs', '/api/logs/7/details']);
+  });
+
+  it('shows what an edit changed, as a diff', async () => {
+    const user = userEvent.setup();
+    stubRoutes({
+      '/api/logs': { events: [event({ id: '8', type: 'upload.edited', message: 'ana changed the brand of oat-milk.png.', hasDetails: true })], nextCursor: null },
+      '/api/logs/8/details': {
+        kind: 'changes',
+        changes: [{ field: 'allergens', from: ['oats', 'milk'], to: ['oats', 'soy'] }],
+        checked: ['brand'],
+        unchecked: [],
+      },
+    });
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'Details' }));
 
-    expect(screen.getByText(/"attempt": 2/)).toBeInTheDocument();
+    const diff = await screen.findByRole('group', { name: 'What changed' });
+    expect(within(diff).getByText('Allergens')).toBeInTheDocument();
+    expect(within(diff).getAllByRole('listitem').map((line) => line.textContent)).toEqual(['oats', '−Removed: milk', '+Added: soy']);
+    expect(within(diff).getByText('Confirmed the brand as it was.')).toBeInTheDocument();
+  });
+
+  it('filters by the days in the URL, asking for the viewer’s own midnights', async () => {
+    const requested = stubLogs({ events: [], nextCursor: null });
+    renderPage('/logs?from=2026-09-01&to=2026-09-26');
+
+    expect(await screen.findByRole('button', { name: 'Dates: Sep 1 – Sep 26' })).toBeInTheDocument();
+    const params = new URLSearchParams({ from: new Date(2026, 8, 1).toISOString(), to: new Date(2026, 8, 27).toISOString() });
+    expect(requested[0]).toBe(`/api/logs?${params}`);
   });
 
   it('shows any number of types of event, ticked in one menu', async () => {

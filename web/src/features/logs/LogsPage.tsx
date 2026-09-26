@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { ScrollText } from 'lucide-react';
 import { LOG_RETENTION_DAYS, type LogEvent } from '@label-extractor/shared';
 import { errorMessage } from '@/api/client';
-import type { LogFilters } from '@/api/logs';
+import { isFiltered, type LogFilters } from '@/api/logs';
 import { useLogs } from '@/api/queries';
 import { InlineError } from '@/components/InlineError';
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,7 @@ import { NO_LOG_FILTERS, useLogFilters } from './logFilters';
 
 /**
  * Route: /logs — the activity log: what happened to each upload and to the system, newest first,
- * grouped by day. Searchable, and filtered by type of event and by upload, all in the URL. Live:
+ * grouped by day. Searchable, and filtered by type of event, by day and by upload, all in the URL. Live:
  * new events appear as they're written (see useLiveUpdates).
  */
 export function LogsPage() {
@@ -96,13 +96,12 @@ export function LogsPage() {
 
 /** Every upload event records its file's name, so the upload filter can name the file. */
 function fileNameIn(events: LogEvent[] | undefined): string | null {
-  const fileName = events?.find((event) => typeof event.data.fileName === 'string')?.data.fileName;
-  return typeof fileName === 'string' ? fileName : null;
+  return events?.find((event) => event.fileName !== null)?.fileName ?? null;
 }
 
 function EmptyState({ filters, onClearFilters }: { filters: LogFilters; onClearFilters: () => void }) {
-  const isFiltered = filters.search !== '' || filters.types.length > 0 || filters.upload !== null;
-  const justOneUpload = filters.upload !== null && filters.types.length === 0 && filters.search === '';
+  const filtered = isFiltered(filters) || filters.upload !== null;
+  const justOneUpload = filters.upload !== null && !isFiltered(filters);
   return (
     <div className="flex flex-col items-center gap-2 px-6 py-10 text-center">
       <span className="grid size-10 place-items-center rounded-full bg-muted text-muted-foreground">
@@ -113,25 +112,20 @@ function EmptyState({ filters, onClearFilters }: { filters: LogFilters; onClearF
           ? 'Nothing recorded for this upload'
           : filters.search
             ? `No events mention “${filters.search}”`
-            : isFiltered
+            : filtered
               ? 'No events match these filters'
               : 'Nothing has happened yet'}
       </p>
-      {filters.search && (
-        <p className="max-w-sm text-sm text-muted-foreground">
-          {filters.types.length > 0 || filters.upload ? 'With these filters, in' : 'In'} the last {LOG_RETENTION_DAYS} days. Try
-          fewer words, or part of a file name.
-        </p>
-      )}
+      {filters.search && <p className="max-w-sm text-sm text-muted-foreground">Try fewer words, or part of a file name.</p>}
       {justOneUpload && (
         <p className="max-w-sm text-sm text-muted-foreground">
-          Events are kept for {LOG_RETENTION_DAYS} days, and uploads from before the activity log existed have none.
+          A deleted upload's events are kept for {LOG_RETENTION_DAYS} days, and uploads from before the activity log existed have none.
         </p>
       )}
-      {!isFiltered && (
+      {!filtered && (
         <p className="max-w-sm text-sm text-muted-foreground">Upload a label and each step of its journey appears here.</p>
       )}
-      {isFiltered && (
+      {filtered && (
         <Button variant="outline" size="sm" onClick={onClearFilters}>
           Show every event
         </Button>

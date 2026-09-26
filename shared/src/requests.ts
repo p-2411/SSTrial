@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { LABEL_FIELDS, type LabelField } from './fields.ts';
 import { LOG_EVENT_TYPE_IDS, type LogEventType } from './logs.ts';
 import { NET_QUANTITY_UNITS } from './units.ts';
-import { ADDED_WITHIN_IDS, MAX_UPLOADS_PER_REQUEST, UPLOAD_VIEW_IDS, type AddedWithin, type UploadView } from './uploads.ts';
+import { MAX_UPLOADS_PER_REQUEST, UPLOAD_VIEW_IDS, type UploadView } from './uploads.ts';
 
 /**
  * Zod schemas for request bodies and query strings, which the API validates.
@@ -22,13 +22,18 @@ export const createUploadRequestSchema = z.object({
 });
 export type CreateUploadRequest = z.infer<typeof createUploadRequestSchema>;
 
-/** Narrowing a list of products: words in its name, brand or file name, and when it was added. */
+/**
+ * Narrowing a list of products: words in its name, brand or file name, and when it was added to
+ * Products (`from` inclusive, `to` exclusive, as instants: the browser turns the days picked into
+ * its own midnights).
+ */
 const productFilterSchema = z.object({
   q: z.string().trim().max(200).optional(),
-  added: z.enum(ADDED_WITHIN_IDS as [AddedWithin, ...AddedWithin[]]).optional(),
+  from: z.iso.datetime({ offset: true }).optional(),
+  to: z.iso.datetime({ offset: true }).optional(),
 });
 
-/** GET /api/uploads?view=…&q=…&added=…&cursor=…&limit=… — newest first, one page at a time. */
+/** GET /api/uploads?view=…&q=…&from=…&to=…&cursor=…&limit=… — newest first, one page at a time. */
 export const listUploadsQuerySchema = productFilterSchema.extend({
   view: z.enum(UPLOAD_VIEW_IDS as [UploadView, ...UploadView[]]).default('products'),
   /** The `nextCursor` of the previous page. */
@@ -37,7 +42,7 @@ export const listUploadsQuerySchema = productFilterSchema.extend({
 });
 
 /**
- * GET /api/exports/uploads.csv|json?id=…&id=… or ?q=…&added=… — the products picked (one `id`
+ * GET /api/exports/uploads.csv|json?id=…&id=… or ?q=…&from=…&to=… — the products picked (one `id`
  * each), or else every product matching the filter.
  */
 export const exportQuerySchema = productFilterSchema.extend({
@@ -49,8 +54,12 @@ export const exportQuerySchema = productFilterSchema.extend({
 
 const logEventType = z.enum(LOG_EVENT_TYPE_IDS as [LogEventType, ...LogEventType[]]);
 
-/** GET /api/logs?q=…&type=…&type=…&upload=…&cursor=…&limit=… — newest first, one page at a time. */
-export const listLogsQuerySchema = z.object({
+/**
+ * What the activity log, or one upload's history, is narrowed to: words in the messages, types of
+ * event, and a span of time (`from` inclusive, `to` exclusive, as instants: the browser turns the
+ * days picked into its own midnights).
+ */
+const activityFilters = {
   /** Words to find in the events' messages, ignoring case. */
   q: z.string().trim().max(200).optional(),
   /** One `type` parameter per type of event wanted; none means every type. */
@@ -58,11 +67,26 @@ export const listLogsQuerySchema = z.object({
     .union([logEventType, z.array(logEventType)])
     .optional()
     .transform((value) => [...new Set(value === undefined ? [] : [value].flat())]),
-  /** Only this upload's events. */
-  upload: z.uuid().optional(),
+  /** Only events at or after this instant. */
+  from: z.iso.datetime({ offset: true }).optional(),
+  /** Only events before this instant. */
+  to: z.iso.datetime({ offset: true }).optional(),
   /** The `nextCursor` of the previous page: an event ID. */
   cursor: z.string().regex(/^\d{1,19}$/).optional(),
+};
+
+/** GET /api/logs?q=…&type=…&type=…&upload=…&from=…&to=…&cursor=…&limit=… — newest first, one page at a time. */
+export const listLogsQuerySchema = z.object({
+  ...activityFilters,
+  /** Only this upload's events. */
+  upload: z.uuid().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+/** GET /api/uploads/:id/history?q=…&type=…&from=…&to=…&cursor=…&limit=… — newest first, one page at a time. */
+export const uploadHistoryQuerySchema = z.object({
+  ...activityFilters,
+  limit: z.coerce.number().int().min(1).max(200).default(20),
 });
 
 /**
