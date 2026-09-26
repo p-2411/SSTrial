@@ -13,6 +13,7 @@ import {
   type SupportedMimeType,
   type UploadErrorCode,
   type UploadStatus,
+  type UploadCursor,
   type UploadTransition,
   type UploadTransitionKeepingRow,
 } from '@label-extractor/shared';
@@ -118,6 +119,9 @@ export interface ProductFilter {
   to?: Date;
 }
 
+/** An upload as a list returns it: with the place just after it, for the next page to carry on from. */
+export type ListedUpload = UploadRecord & { cursor: UploadCursor };
+
 /** Options for the two ways an upload leaves `uploading`. */
 export interface SettleOptions {
   /** Cancel the upload's finalise job in the same transaction (see UploadJobs.cancelFinalise). */
@@ -136,8 +140,9 @@ export interface UploadQueries {
   findDuplicate(sha256: string, personId: string): Promise<UploadRecord | null>;
   /**
    * One page of uploads in the given statuses, newest first: only those in Products, or only those
-   * not, if `submitted` says; only `uploadedBy`'s if given. `after` is the ID of the last upload on
-   * the previous page (keyset pagination: stable while new uploads arrive, and fast at any depth).
+   * not, if `submitted` says; only `uploadedBy`'s if given. `after` is the cursor of the last upload
+   * on the previous page (keyset pagination: stable while new uploads arrive, fast at any depth,
+   * and unaffected by that upload having been deleted since).
    */
   list(
     options: {
@@ -145,9 +150,9 @@ export interface UploadQueries {
       submitted?: boolean;
       uploadedBy?: string;
       limit: number;
-      after?: string;
+      after?: UploadCursor;
     } & ProductFilter,
-  ): Promise<UploadRecord[]>;
+  ): Promise<ListedUpload[]>;
   /** How many uploads this person has under way (uploading, waiting or being read). */
   countUnderWay(uploadedBy: string): Promise<number>;
   /**
@@ -354,18 +359,19 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
     },
 
     async list({ statuses, submitted, uploadedBy, limit, after, ...filter }) {
-      // The cursor row's own values are looked up in the database, so the comparison uses
-      // Postgres's full microsecond timestamps rather than a millisecond-rounded copy.
+      // Each row's creation time goes into its cursor as Postgres holds it, to the microsecond: a
+      // JavaScript Date keeps only milliseconds, and uploads created within one would be skipped.
       const rows = await sql`
-        select * from uploads
+        select *, to_char(created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_created_at
+        from uploads
         where status = any(${statuses as string[]}::upload_status[])
           ${submitted === undefined ? sql`` : submitted ? sql`and submitted_at is not null` : sql`and submitted_at is null`}
           ${uploadedBy ? sql`and uploaded_by = ${uploadedBy}` : sql``}
           ${matching(filter)}
-          ${after ? sql`and (created_at, id) < (select created_at, id from uploads where id = ${after})` : sql``}
+          ${after ? sql`and (created_at, id) < (${after.createdAt}::timestamptz, ${after.id}::uuid)` : sql``}
         order by created_at desc, id desc
         limit ${limit}`;
-      return rows.map(toRecord);
+      return rows.map((row) => ({ ...toRecord(row), cursor: { createdAt: row.cursor_created_at, id: row.id } }));
     },
 
     async countUnderWay(uploadedBy) {

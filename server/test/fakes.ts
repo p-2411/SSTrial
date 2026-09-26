@@ -10,6 +10,7 @@ import {
   type LabelExtraction,
   type LogEventType,
   type SupportedMimeType,
+  type UploadCursor,
   type UploadErrorCode,
   type CurrentMember,
   type ExtractionConfidence,
@@ -167,15 +168,19 @@ export class InMemoryUploadStore implements UploadStore {
     submitted?: boolean;
     uploadedBy?: string;
     limit: number;
-    after?: string;
+    after?: UploadCursor;
   } & ProductFilter) {
-    const newestFirst = [...this.rows.values()]
+    // Newest first, then by ID as Postgres compares them; the cursor is a place in that order.
+    const order = (a: { at: number; id: string }, b: { at: number; id: string }) => b.at - a.at || (b.id > a.id ? 1 : b.id < a.id ? -1 : 0);
+    const place = (row: UploadRecord) => ({ at: row.createdAt.getTime(), id: row.id });
+    return [...this.rows.values()]
       .filter((row) => statuses.includes(row.status) && (!uploadedBy || row.uploadedBy === uploadedBy))
       .filter((row) => submitted === undefined || (row.submittedAt !== null) === submitted)
       .filter((row) => this.matches(row, filter))
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id));
-    const start = after ? newestFirst.findIndex((row) => row.id === after) + 1 : 0;
-    return newestFirst.slice(start, start + limit);
+      .filter((row) => !after || order(place(row), { at: new Date(after.createdAt).getTime(), id: after.id }) > 0)
+      .sort((a, b) => order(place(a), place(b)))
+      .slice(0, limit)
+      .map((row) => ({ ...row, cursor: { createdAt: row.createdAt.toISOString().replace('Z', '000Z'), id: row.id } }));
   }
   async countUnderWay(uploadedBy: string) {
     const underWay: readonly UploadRecord['status'][] = ['uploading', 'queued', 'processing'];

@@ -6,6 +6,7 @@ import {
   UPLOAD_STATUSES,
   UPLOAD_TRANSITIONS,
   type ExtractionConfidence,
+  type UploadCursor,
   type UploadStatus,
   type UploadTransition,
 } from '@label-extractor/shared';
@@ -328,18 +329,39 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       }
 
       const seen: string[] = [];
-      let after: string | undefined;
+      let after: UploadCursor | undefined;
       for (;;) {
         const page = await uploads.list({ statuses: ['failed'], limit: 3, after });
         if (page.length === 0) break;
         seen.push(...page.map((u) => u.id));
-        after = page.at(-1)!.id;
+        after = page.at(-1)!.cursor;
       }
 
       const ours = seen.filter((id) => ids.includes(id));
       expect(new Set(ours).size).toBe(ids.length);
       const all = await uploads.list({ statuses: ['failed'], limit: 1000 });
       expect(ours).toEqual(all.map((u) => u.id).filter((id) => ids.includes(id)));
+    });
+
+    it('carries on from where a page ended, even once the upload it ended with is deleted', async () => {
+      const ids: string[] = [];
+      for (let i = 0; i < 5; i++) {
+        const id = crypto.randomUUID();
+        createdIds.push(id);
+        ids.push(id);
+        await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png`, contentSha256: null, uploadedBy: person });
+        await sql`update uploads set status = 'failed', error_code = 'LLM_TIMEOUT' where id = ${id}`;
+      }
+      const list = (after?: UploadCursor) => uploads.list({ statuses: ['failed'], uploadedBy: person, limit: 2, after });
+
+      const first = await list();
+      expect(first.map((u) => u.id)).toEqual([ids[4], ids[3]]);
+      expect(first[1]!.cursor.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/); // to the microsecond
+      await uploads.remove(ids[3]!);
+
+      const second = await list(first[1]!.cursor);
+      const third = await list(second.at(-1)!.cursor);
+      expect([...second, ...third].map((u) => u.id)).toEqual([ids[2], ids[1], ids[0]]);
     });
 
     it("lists one person's uploads, and counts the ones they have under way", async () => {

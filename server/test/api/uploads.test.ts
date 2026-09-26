@@ -311,7 +311,8 @@ describe('GET /api/uploads — the three lists', () => {
   });
 
   it('rejects an invalid limit, view or cursor', async () => {
-    for (const query of ['limit=0', 'limit=500', 'view=everything', 'cursor=not-an-id', 'from=last-week', `q=${'a'.repeat(201)}`]) {
+    const cursors = ['not-an-id', ID, `2026-01-01T00:00:00.000Z|${ID}`, `2026-01-01T00:00:00.000000Z|nope`, `2026-01-01T00:00:00.000000Z|${ID}|x`];
+    for (const query of ['limit=0', 'limit=500', 'view=everything', 'from=last-week', `q=${'a'.repeat(201)}`, ...cursors.map((c) => `cursor=${encodeURIComponent(c)}`)]) {
       expect((await app.inject({ method: 'GET', url: `/api/uploads?${query}` })).statusCode).toBe(400);
     }
   });
@@ -328,6 +329,19 @@ describe('GET /api/uploads — the three lists', () => {
     } while (cursor);
 
     expect(seen).toEqual([...ids].reverse());
+  });
+
+  it('carries on from where a page ended, even once the upload it ended with is deleted', async () => {
+    const ids = seedMany(Array<'completed'>(5).fill('completed'));
+    const page = async (cursor?: string) =>
+      (await app.inject({ method: 'GET', url: `/api/uploads?limit=2${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}` })).json();
+
+    const first = await page();
+    expect(first.nextCursor).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z\|/);
+    uploads.rows.delete(ids[3]!); // the last one on the first page
+
+    const second = await page(first.nextCursor);
+    expect(second.uploads.map((u: { id: string }) => u.id)).toEqual([ids[2], ids[1]]);
   });
 });
 

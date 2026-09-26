@@ -11,6 +11,7 @@ import {
   MAX_UPLOADS_PER_REQUEST,
   PAGE_SIZES,
   SUPPORTED_TYPES_LABEL,
+  uploadCursor,
   UPLOAD_VIEW_IDS,
   UPLOAD_VIEWS,
   type CheckUploadsResponse,
@@ -143,7 +144,7 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
       limit: limit + 1,
       after: cursor,
     });
-    const { page, nextCursor } = pageOf(records, limit, (upload) => upload.id);
+    const { page, nextCursor } = pageOf(records, limit, (upload) => uploadCursor(upload.cursor));
     return { uploads: page.map(toUploadSummary), nextCursor };
   });
 

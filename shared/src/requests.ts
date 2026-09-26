@@ -44,12 +44,33 @@ const pageSize = ({ default: size, max }: { default: number; max: number }) => z
  */
 export const eventIdSchema = z.string().regex(/^\d{1,19}$/);
 
+/**
+ * A place in an upload list: just after the upload a page ended with, by when it was created (to
+ * the microsecond, as the database keeps it) and its ID, as `<created_at>|<id>`. It carries
+ * everything the next page needs, so paging goes on even if that upload is deleted in between. The
+ * browser only ever hands back a `nextCursor` it was given.
+ */
+const uploadCursorSchema = z
+  .string()
+  .regex(/^[^|]+\|[^|]+$/)
+  .transform((cursor) => {
+    const [createdAt, id] = cursor.split('|');
+    return { createdAt, id };
+  })
+  .pipe(z.object({ createdAt: z.iso.datetime({ precision: 6 }), id: z.uuid() }));
+export type UploadCursor = z.output<typeof uploadCursorSchema>;
+
+/** The cursor for the page after `position` (see uploadCursorSchema). */
+export function uploadCursor(position: UploadCursor): string {
+  return `${position.createdAt}|${position.id}`;
+}
+
 /** GET /api/uploads?view=…&q=…&from=…&to=…&cursor=…&limit=… — newest first, one page at a time. */
 export const listUploadsQuerySchema = z.object({
   view: z.enum(UPLOAD_VIEW_IDS as [UploadView, ...UploadView[]]).default('products'),
   ...wordsAndTime,
   /** The `nextCursor` of the previous page. */
-  cursor: z.uuid().optional(),
+  cursor: uploadCursorSchema.optional(),
   limit: pageSize(PAGE_SIZES.uploads),
 });
 
