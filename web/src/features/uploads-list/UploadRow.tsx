@@ -7,7 +7,8 @@ import { StatusPill } from '@/components/StatusPill';
 import { Checkbox } from '@/components/ui/checkbox';
 import { rowClassName, RowTitle } from '@/components/UploadRowLayout';
 import { formatFileFacts } from '@/lib/format';
-import { uploadState } from '@/lib/uploadState';
+import { TONE_TEXT_CLASSES } from '@/lib/tone';
+import { isInReview, progressLine, uploadState } from '@/lib/uploadState';
 import { cn } from '@/lib/utils';
 import { uploadPath } from '@/routes';
 
@@ -59,7 +60,7 @@ export const UploadRow = memo(function UploadRow({
         )}
       >
         {/* A completed upload's pill also says whether it's worth checking ("Check (72%)"). */}
-        <StatusPill status={upload.status} confidence={upload.confidence} inReview={upload.submittedAt === null} />
+        <StatusPill status={upload.status} confidence={upload.confidence} inReview={isInReview(upload)} />
         <RelativeTime className="text-xs text-muted-foreground tabular-nums" iso={upload.createdAt} now={now} />
       </div>
     </>
@@ -114,28 +115,15 @@ export const UploadRow = memo(function UploadRow({
  * Kept to one line; the full message is in the tooltip and the detail panel.
  */
 function StatusDetail({ upload }: { upload: UploadSummary }) {
-  const line = (text: string, tone: string) => (
-    <p className={cn('mt-0.5 truncate text-sm', tone)} title={text}>
+  const state = uploadState(upload);
+  const { text, tone } =
+    state.kind === 'unreadable'
+      ? { text: "Saved result can't be displayed. Run it again to replace it.", tone: 'warning' as const }
+      : // Read fine, but the label had no product name to lead with.
+        (progressLine(state) ?? { text: 'No product name on label', tone: 'muted' as const });
+  return (
+    <p className={cn('mt-0.5 truncate text-sm', TONE_TEXT_CLASSES[tone])} title={text}>
       {text}
     </p>
   );
-  const state = uploadState(upload);
-  switch (state.kind) {
-    case 'unreadable':
-      return line("Saved result can't be displayed. Run it again to replace it.", 'text-warning');
-    case 'completed':
-      // Read fine, but the label had no product name to lead with.
-      return line('No product name on label', 'text-muted-foreground');
-    case 'failed':
-      return line(state.error?.message ?? 'Processing failed.', 'text-danger');
-    case 'processing':
-      return line('Reading label', 'text-brand');
-    case 'retrying':
-      // Queued again after a failed attempt: say why, and that it's handled.
-      return line(`${state.error.message} Retrying automatically.`, 'text-warning');
-    case 'waiting':
-      return line('Waiting to be processed', 'text-muted-foreground');
-    case 'uploading':
-      return line('Uploading', 'text-muted-foreground');
-  }
 }

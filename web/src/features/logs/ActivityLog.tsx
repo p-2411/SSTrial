@@ -109,17 +109,17 @@ function NoEvents({ filters, onClearFilters }: { filters: LogFilters; onClearFil
 
 function LogSkeleton() {
   return (
-    <ul aria-label="Loading the activity log">
+    <div role="status" aria-label="Loading the activity log">
       {[0, 1, 2, 3, 4].map((i) => (
-        <li key={i} className="grid grid-cols-[4.5rem_4.75rem_minmax(0,1fr)] gap-x-3 border-b border-border/70 px-5 py-3 last:border-b-0">
+        <div key={i} className="grid grid-cols-[4.5rem_4.75rem_minmax(0,1fr)] gap-x-3 border-b border-border/70 px-5 py-3 last:border-b-0">
           <Skeleton className="h-3.5 w-14" />
           <span />
           <div className="space-y-2">
             <Skeleton className="h-3.5 w-3/4" />
             <Skeleton className="h-3 w-1/3" />
           </div>
-        </li>
+        </div>
       ))}
-    </ul>
+    </div>
   );
 }

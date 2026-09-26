@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { HOME_PATH, UPLOAD_PATH_PATTERN } from '@/routes';
 import { DETAIL_TITLE_ID, DetailFailed, UploadDetailView } from './UploadDetailView';
+import { usePanelFocus } from './usePanelFocus';
 
 /**
  * The open panel's default width, which is also the narrowest it can be dragged to: a share of the
@@ -43,7 +44,7 @@ export function panelWidth(chosenPx: number | null): string {
  * what the panel shows.
  *
  * The URL drives it: /uploads/:id opens it, so links, refresh and the back button work. Closing it
- * (the × or Esc) goes back to the list, keeping the status filter.
+ * (the × or Esc) goes back to the list. Focus follows it in and back out (see usePanelFocus).
  *
  * Its left edge can be dragged to widen it (or moved with the arrow keys; double-click resets it).
  * The default width is also the minimum.
@@ -58,6 +59,7 @@ export const UploadDetailPanel = memo(function UploadDetailPanel() {
   const id = useMatch(UPLOAD_PATH_PATTERN)?.params.id;
   const open = Boolean(id);
   const panelRef = useRef<HTMLElement>(null);
+  const titleRef = usePanelFocus(id, panelRef);
   // null: the default width. Kept while the app is open, so each upload opens at the chosen width.
   const [chosenWidth, setChosenWidth] = useState<number | null>(null);
   const [resizing, setResizing] = useState(false);
@@ -156,8 +158,8 @@ export const UploadDetailPanel = memo(function UploadDetailPanel() {
               showed up under everything, as extra space. */}
           <div className="h-full overflow-x-hidden overflow-y-auto px-6 pt-6 pb-3 [scrollbar-gutter:stable]" style={{ width }}>
             {/* One upload failing to render breaks only this panel, and the next upload starts afresh. */}
-            <ErrorBoundary key={shownId} fallback={(retry) => <DetailFailed onRetry={retry} />}>
-              <UploadDetailView id={shownId} />
+            <ErrorBoundary key={shownId} fallback={(retry) => <DetailFailed onRetry={retry} titleRef={titleRef} />}>
+              <UploadDetailView id={shownId} titleRef={titleRef} />
             </ErrorBoundary>
           </div>
         </>

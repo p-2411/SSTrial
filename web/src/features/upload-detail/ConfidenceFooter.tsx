@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { AlertTriangle, OctagonAlert, ShieldCheck } from 'lucide-react';
 import { confidenceBand, type UploadDetail } from '@label-extractor/shared';
@@ -66,27 +67,29 @@ export function ConfidenceFooter({
   checking,
 }: {
   upload: Upload;
-  /** Confirms the flagged fields as right; offered while any are flagged (medium or low). */
-  onCheck: () => void;
+  /** Confirms the flagged fields as right; offered while any are flagged (medium or low), if given. */
+  onCheck?: () => void;
   checking: boolean;
 }) {
   const state = overallState(upload);
   const { icon: Icon, bar, text } = STATES[state];
   const flagged = state === 'medium' || state === 'low';
+  const verdictId = useId();
 
   return (
     <div className={cn('flex items-center gap-2 px-6 py-3 text-sm font-medium', bar)}>
       <Icon className="size-4 shrink-0" aria-hidden />
-      <p role="status" title={flagged || state === 'high' ? OVERALL_CONFIDENCE_MEANING : undefined}>
+      <p id={verdictId} role="status" title={flagged || state === 'high' ? OVERALL_CONFIDENCE_MEANING : undefined}>
         {text(upload.confidence)}
       </p>
-      {flagged && (
+      {flagged && onCheck && (
         // Bold text in the footer's own colour, underlined on hover: still a button, so it spins while saving.
+        // Described by the verdict beside it, which says it's the flagged fields it marks.
         <Button
           variant="link"
           size="sm"
           className="ml-auto h-auto shrink-0 p-0 font-bold text-current hover:underline"
-          aria-label="Mark flagged fields as checked"
+          aria-describedby={verdictId}
           loading={checking}
           onClick={onCheck}
         >

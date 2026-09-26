@@ -3,7 +3,7 @@ import { FIELD_LABELS, formatList, type EventDetails as Details, type FieldChang
 import { errorMessage } from '@/api/client';
 import type { EventDetailsSource } from '@/api/logs';
 import { useEventDetails } from '@/api/queries';
-import { Button } from '@/components/ui/button';
+import { InlineError } from '@/components/InlineError';
 import { CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
@@ -44,7 +44,7 @@ export function EventDetails({ source, eventId }: { source: EventDetailsSource; 
 
   if (isPending) {
     return (
-      <div aria-label="Loading details" className="mt-1.5 grid gap-1.5 rounded-md border bg-muted/30 p-3">
+      <div role="status" aria-label="Loading details" className="mt-1.5 grid gap-1.5 rounded-md border bg-muted/30 p-3">
         <Skeleton className="h-3 w-2/3" />
         <Skeleton className="h-3 w-1/2" />
       </div>
@@ -52,12 +52,9 @@ export function EventDetails({ source, eventId }: { source: EventDetailsSource; 
   }
   if (isError) {
     return (
-      <p role="alert" className="mt-1.5 flex flex-wrap items-center gap-x-2 text-xs text-danger">
-        Couldn't load the details. {errorMessage(error)}
-        <Button variant="link" size="xs" className="h-auto p-0 text-xs" loading={isRefetching} onClick={() => void refetch()}>
-          Try again
-        </Button>
-      </p>
+      <div className="mt-1.5">
+        <InlineError compact title="Couldn't load the details" message={errorMessage(error)} onRetry={() => void refetch()} retrying={isRefetching} />
+      </div>
     );
   }
   return <DetailsBody details={data} />;

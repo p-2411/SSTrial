@@ -17,3 +17,11 @@ window.matchMedia ??= (query: string) =>
     removeListener() {},
     dispatchEvent: () => false,
   }) as MediaQueryList;
+
+// jsdom has no ResizeObserver, which a tooltip's arrow uses to measure itself. Nothing in the tests
+// depends on sizes, so one that never reports is enough.
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};

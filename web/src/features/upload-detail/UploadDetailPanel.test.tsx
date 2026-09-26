@@ -1,8 +1,9 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Link, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UploadDetail } from '@label-extractor/shared';
+import { uploadKeys } from '@/api/queries';
 import { jsonResponse, renderWithProviders } from '@/test/render';
 import { detail } from '@/test/fixtures';
 import { panelWidth, UploadDetailPanel } from './UploadDetailPanel.tsx';
@@ -41,6 +42,8 @@ const uploads: Record<string, UploadDetail> = Object.fromEntries(
 
 /** What the fake API answers a DELETE with. */
 let deleteResponse: () => Response;
+/** What the fake API answers a GET with, if not the upload: its refusal, by ID. */
+let refusals: Record<string, () => Response>;
 
 /** Shows the current URL, and a link to another upload (standing in for a list row). */
 function Harness() {
@@ -66,11 +69,14 @@ function renderAt(url: string) {
 
 beforeEach(() => {
   deleteResponse = () => new Response(null, { status: 204 });
+  refusals = {};
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (url: string, init?: RequestInit) =>
-      init?.method === 'DELETE' ? deleteResponse() : jsonResponse({ upload: uploads[url.split('/').pop()!] }),
-    ),
+    vi.fn(async (url: string, init?: RequestInit) => {
+      const id = url.split('/').pop()!;
+      if (init?.method === 'DELETE') return deleteResponse();
+      return refusals[id]?.() ?? jsonResponse({ upload: uploads[id] });
+    }),
   );
 });
 
@@ -173,14 +179,56 @@ describe('UploadDetailPanel', () => {
     expect(panelWidth(900)).toBe('clamp(min(42rem, 55cqw), 900px, max(min(42rem, 55cqw), calc(100cqw - 30rem)))');
   });
 
-  it("shows an upload that's still being read as loading, not as a half-finished page", async () => {
+  it("names an upload that's still being read, and says what's happening to it, rather than a half-finished page", async () => {
     renderAt('/uploads/reading');
-    await vi.waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/uploads/reading', expect.anything()));
-    await new Promise((resolve) => setTimeout(resolve, 20)); // its data has arrived by now
 
-    // Named after its heading, which still says it's loading: nothing half-finished is shown.
-    expect(screen.getByRole('complementary', { name: 'Loading upload' })).toBeInTheDocument();
-    expect(screen.queryByText('still-reading.png')).not.toBeInTheDocument();
+    const panel = await screen.findByRole('complementary', { name: 'still-reading.png' });
+    expect(within(panel).getByText('Processing')).toBeVisible(); // its status pill
+    expect(within(panel).getByRole('status')).toHaveTextContent('Reading label');
+    // Nothing to act on, and no empty data card, until it's read.
+    expect(screen.queryByRole('region', { name: 'Product information' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Delete/ })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['the close button', () => userEvent.click(screen.getByRole('button', { name: 'Close details' }))],
+    ['Esc', () => userEvent.keyboard('{Escape}')],
+  ])('moves focus to the title as it opens, and back to what opened it when closed with %s', async (_how, closePanel) => {
+    renderAt('/');
+    const opener = screen.getByRole('link', { name: 'Open granola' });
+    await userEvent.click(opener);
+
+    expect(await screen.findByRole('heading', { level: 2, name: 'Maple Pecan Crunch' })).toHaveFocus();
+    await closePanel();
+
+    expect(opener).toHaveFocus();
+  });
+
+  it('says so when the open upload is deleted meanwhile, and offers nothing to act on', async () => {
+    const { client } = renderAt('/uploads/mine');
+    await screen.findByRole('complementary', { name: 'My Crackers' });
+    expect(screen.getByRole('button', { name: 'Delete product' })).toBeVisible();
+
+    // Someone else deletes it; the next refresh finds it gone.
+    refusals.mine = () => jsonResponse({ error: { code: 'NOT_FOUND', message: 'No such upload.' } }, 404);
+    await act(() => client.invalidateQueries({ queryKey: uploadKeys.detail('mine') }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('This upload has been deleted');
+    expect(screen.getByRole('heading', { level: 2, name: 'My Crackers' })).toBeVisible(); // as it was
+    expect(screen.queryByRole('button', { name: 'Delete product' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Edit / })).not.toBeInTheDocument();
+  });
+
+  it("keeps showing the upload when a refresh fails, saying it may be out of date", async () => {
+    const { client } = renderAt('/uploads/abc');
+    await screen.findByRole('complementary', { name: 'Maple Pecan Crunch' });
+
+    refusals.abc = () => new Response('Bad gateway', { status: 502 });
+    await act(() => client.invalidateQueries({ queryKey: uploadKeys.detail('abc') }));
+
+    const panel = screen.getByRole('complementary', { name: 'Maple Pecan Crunch' });
+    expect(await within(panel).findByText(/Couldn't refresh this upload, so it may be out of date/)).toBeVisible();
+    expect(within(panel).getByRole('button', { name: 'Try again' })).toBeVisible();
   });
 
   it('shows an upload it cannot display as a problem with that upload alone, and still closes', async () => {

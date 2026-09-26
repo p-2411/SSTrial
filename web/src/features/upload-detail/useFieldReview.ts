@@ -2,8 +2,8 @@ import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { LabelExtraction, LabelField, ResultChanges, UploadDetail } from '@label-extractor/shared';
-import { errorMessage } from '@/api/client';
-import { fetchUpload, isEditConflict, refreshUpload, useEditResult } from '@/api/queries';
+import { errorMessage, isEditConflict } from '@/api/client';
+import { fetchUpload, refreshUpload, useEditResult } from '@/api/queries';
 import { formatQuantity } from '@/lib/quantity';
 import type { EditConflict, EditorFormState } from './FieldEditors';
 

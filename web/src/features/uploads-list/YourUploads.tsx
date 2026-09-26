@@ -7,11 +7,13 @@ import { LoadMoreButton } from '@/components/LoadMoreButton';
 import { SegmentedTabsList, SegmentedTabsTrigger } from '@/components/SegmentedTabs';
 import { StaleDataNotice } from '@/components/StaleDataNotice';
 import { Card } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { PendingUploadRow } from '@/features/upload/PendingUploadRow';
 import type { PendingUpload } from '@/features/upload/useFileUploads';
 import { useNow } from '@/lib/useNow';
 import { useSelection, type Selection } from '@/lib/useSelection';
+import { ListSkeleton } from './listParts';
 import { ReviewActions } from './ReviewActions';
 import { UploadRow } from './UploadRow';
 import { useUploadAnnouncements } from './useUploadAnnouncements';
@@ -30,7 +32,9 @@ interface YourUploadsProps {
  * Uploading: files still being sent from this browser, then the server's queued, processing and
  * failed ones. Review: the read ones, waiting to be checked and submitted (see ReviewActions).
  * A tab is only there while it has something in it (or its list couldn't load, to say so), and the
- * card only while it has a tab. Nobody else sees these (see canViewUpload).
+ * card only while it has a tab. Until both lists have first loaded, the card holds their place
+ * with a skeleton, so the page below doesn't jump when they arrive; it goes if both are empty.
+ * Nobody else sees these (see canViewUpload).
  */
 export function YourUploads({ pending, onRetry, onDismiss }: YourUploadsProps) {
   const uploadingList = useUploadList('upload');
@@ -47,9 +51,11 @@ export function YourUploads({ pending, onRetry, onDismiss }: YourUploadsProps) {
     review: counts.review > 0 || (reviewList.isError && !review),
   };
   const [tab, setTab] = useActiveTab(shown, pending.length);
+  const loading = !shown.uploading && !shown.review && (uploadingList.isPending || reviewList.isPending);
 
   return (
     <>
+      {loading && <YourUploadsSkeleton />}
       {(shown.uploading || shown.review) && (
         <Card aria-label="Your uploads" className="gap-0 py-0" role="region">
           <Tabs value={tab} onValueChange={(value) => setTab(value as Tab)} className="gap-0">
@@ -96,6 +102,18 @@ export function YourUploads({ pending, onRetry, onDismiss }: YourUploadsProps) {
         {announcement}
       </p>
     </>
+  );
+}
+
+/** The card as it will be, tabs and rows, while its lists first load. */
+function YourUploadsSkeleton() {
+  return (
+    <Card aria-label="Your uploads" className="gap-0 py-0" role="region">
+      <div className="flex min-h-15 items-center border-b border-border/70 px-4 py-3">
+        <Skeleton className="h-9 w-48 rounded-lg" />
+      </div>
+      <ListSkeleton label="Loading your uploads" />
+    </Card>
   );
 }
 

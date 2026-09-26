@@ -140,6 +140,23 @@ describe('UploadHistory', () => {
     expect(await screen.findByLabelText('The data as it was read')).toHaveTextContent('"productName": "Maple Pecan Crunch"');
   });
 
+  it("says why the history couldn't load, and tries again", async () => {
+    let fail = true;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => (fail ? new Response('Bad gateway', { status: 502 }) : jsonResponse(onePage(entry('1', 'label.png read.'))))),
+    );
+    renderWithProviders(<UploadHistory upload={detail({ id: 'u1' })} />);
+    await open();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load the history");
+    fail = false;
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('label.png read.')).toBeVisible();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('says so when nothing was recorded', async () => {
     renderHistory([onePage()]);
     await open();

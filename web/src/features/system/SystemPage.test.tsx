@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { OpsStatusResponse } from '@label-extractor/shared';
 import { jsonResponse, renderWithProviders } from '@/test/render';
@@ -14,13 +14,18 @@ const healthy: OpsStatusResponse = {
   last24h: { completed: 40, failed: 2, failureRate: 2 / 42, medianSecondsToResult: 7 },
 };
 
-/** Answers the status with `status`, and the activity log with nothing. */
+/** Answers the status with `status` (or a failure, once `opsDown`), and the activity log with nothing. */
+let opsDown = false;
 function renderWith(status: OpsStatusResponse) {
+  opsDown = false;
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (url: string) => (url.startsWith('/api/ops') ? jsonResponse(status) : jsonResponse({ events: [], nextCursor: null }))),
+    vi.fn(async (url: string) => {
+      if (!url.startsWith('/api/ops')) return jsonResponse({ events: [], nextCursor: null });
+      return opsDown ? new Response('Bad gateway', { status: 502 }) : jsonResponse(status);
+    }),
   );
-  renderWithProviders(<SystemPage />, { url: '/system' });
+  return renderWithProviders(<SystemPage />, { url: '/system' });
 }
 
 /** A figure on the status strip, by its label. */
@@ -74,5 +79,16 @@ describe('SystemPage', () => {
     });
 
     expect((await screen.findByText('Systems')).parentElement!).toHaveTextContent('Database and queue down');
+  });
+
+  it("doesn't go on saying All OK unchallenged when the status can't be refreshed", async () => {
+    const { client } = renderWith(healthy);
+    await screen.findByText('All OK');
+
+    opsDown = true;
+    await act(() => client.invalidateQueries());
+
+    expect(await screen.findByText(/Couldn't refresh the system status, so it may be out of date/)).toBeVisible();
+    expect(screen.getByText('All OK')).toBeVisible(); // the last figures stay, with the warning above them
   });
 });

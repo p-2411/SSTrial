@@ -6,12 +6,12 @@ import { useRetryUpload } from '@/api/queries';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { TONE_CLASSES } from '@/lib/tone';
-import { uploadState } from '@/lib/uploadState';
+import { failureMessage, uploadState } from '@/lib/uploadState';
 
 /**
  * Explains an upload that didn't end in readable data: it failed (with a retry button, if running
  * it again could help), or its saved result can't be read. Uploads still being worked on never get
- * here: the detail shows its loading state until they're done.
+ * here: the detail says what's happening to them instead (see UploadDetailView).
  */
 export function StatusNotice({ upload }: { upload: UploadDetail }) {
   const state = uploadState(upload);
@@ -22,7 +22,7 @@ export function StatusNotice({ upload }: { upload: UploadDetail }) {
           <XCircle />
           <AlertTitle className="font-semibold">Couldn't extract this label</AlertTitle>
           <AlertDescription className="text-danger/90">
-            <p>{state.error?.message ?? 'Processing failed.'}</p>
+            <p>{failureMessage(state.error)}</p>
             {canRetryUpload(upload) ? (
               <RetryButton uploadId={upload.id} label="Retry extraction" />
             ) : (
@@ -63,7 +63,11 @@ function RetryButton({ uploadId, label }: { uploadId: string; label: string }) {
         <Sparkles data-icon="inline-start" aria-hidden />
         {label}
       </Button>
-      {retry.isError && <span className="text-sm">{errorMessage(retry.error)}</span>}
+      {retry.isError && (
+        <p role="alert" className="text-sm">
+          {errorMessage(retry.error)}
+        </p>
+      )}
     </div>
   );
 }

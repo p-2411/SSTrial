@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { UploadSummary } from '@label-extractor/shared';
@@ -79,6 +79,22 @@ describe('ProductList', () => {
     expect(screen.getByRole('button', { name: 'Load more' })).toBeEnabled();
   });
 
+  it("keeps the products shown when a refresh fails, saying they may be out of date", async () => {
+    let down = false;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => (down ? new Response('Bad gateway', { status: 502 }) : jsonResponse({ uploads: [summary({ id: 'a', productName: 'First' })], nextCursor: null }))),
+    );
+    const { client } = renderWithProviders(<ProductList />);
+    await screen.findByText('First');
+
+    down = true;
+    await act(() => client.invalidateQueries());
+
+    expect(await screen.findByText(/Couldn't refresh the products, so it may be out of date/)).toBeVisible();
+    expect(screen.getByText('First')).toBeVisible();
+  });
+
   it('says why when it can’t load', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('Bad gateway', { status: 502 })));
     renderWithProviders(<ProductList />);
@@ -149,6 +165,29 @@ describe('searching, filtering and picking products', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Export' }));
     expect(screen.getByText('2 products selected')).toBeInTheDocument();
+  });
+
+  it("can't start a second export while one is being prepared", async () => {
+    const exports: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (!url.startsWith('/api/exports/')) return jsonResponse({ uploads: [OAT], nextCursor: null });
+        exports.push(url);
+        return new Promise<Response>(() => {}); // the server is still preparing the file
+      }),
+    );
+    renderWithProviders(<ProductList />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Export' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'CSV' }));
+
+    const button = screen.getByRole('button', { name: 'Export' });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('aria-busy', 'true');
+    await userEvent.click(button);
+    expect(screen.queryByRole('menuitem', { name: 'CSV' })).not.toBeInTheDocument();
+    expect(exports).toEqual(['/api/exports/uploads.csv']);
   });
 
   it('deletes the picked products together, once the person confirms', async () => {

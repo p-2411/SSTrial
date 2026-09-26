@@ -105,7 +105,8 @@ describe('editing extracted data', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(sent).toEqual([{ revision: 3, changes: { brand: 'Hearth & Co' } }]);
-    expect(await screen.findByRole('button', { name: 'Edit brand' })).toBeInTheDocument(); // editor closed
+    // The editor closes, and focus goes back to where it started.
+    expect(await screen.findByRole('button', { name: 'Edit brand' })).toHaveFocus();
   });
 
   it('saves an empty value as "not on the label"', async () => {
@@ -125,6 +126,15 @@ describe('editing extracted data', () => {
     expect(screen.queryByRole('textbox', { name: 'Brand' })).not.toBeInTheDocument();
     expect(screen.getByText('Harvest & Hearth')).toBeInTheDocument();
     expect(sent).toEqual([]);
+    expect(screen.getByRole('button', { name: 'Edit brand' })).toHaveFocus();
+  });
+
+  it('puts focus back on Edit when Cancel closes the editor', async () => {
+    renderCard();
+    await userEvent.click(screen.getByRole('button', { name: 'Edit brand' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.getByRole('button', { name: 'Edit brand' })).toHaveFocus();
   });
 
   it('keeps the editor open with the reason when a value is refused', async () => {
@@ -188,7 +198,10 @@ describe('reviewing', () => {
     // One button for the upload, not one per field.
     expect(screen.getAllByRole('button', { name: /as checked/ })).toHaveLength(1);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Mark flagged fields as checked' }));
+    const markChecked = screen.getByRole('button', { name: 'Mark as checked' });
+    // It says which: the flagged fields, as the verdict beside it does.
+    expect(markChecked).toHaveAccessibleDescription(/Check flagged fields/);
+    await userEvent.click(markChecked);
     expect(sent).toEqual([{ revision: 0, checked: ['brand', 'netWeight'] }]);
   });
 
@@ -199,7 +212,7 @@ describe('reviewing', () => {
     expect(within(card).getByTitle('Checked by alice@example.com')).toHaveTextContent('Checked');
     expect(within(card).queryByText('58%')).not.toBeInTheDocument();
     // Nothing flagged is left, so there's nothing to confirm.
-    expect(within(card).queryByRole('button', { name: 'Mark flagged fields as checked' })).not.toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: 'Mark as checked' })).not.toBeInTheDocument();
   });
 
   it("shows someone else's change to the open field beside the draft, and saves over it only when told to", async () => {
@@ -285,7 +298,7 @@ describe('reviewing', () => {
     renderCard();
     await userEvent.click(screen.getByRole('button', { name: 'Edit brand' }));
     await userEvent.type(screen.getByRole('textbox', { name: 'Brand' }), ' Mine');
-    await userEvent.click(screen.getByRole('button', { name: 'Mark flagged fields as checked' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Mark as checked' }));
 
     await vi.waitFor(() => expect(sent).toHaveLength(1));
     expect(screen.getByRole('textbox', { name: 'Brand' })).toHaveValue('Harvest & Hearth Mine');
@@ -296,7 +309,7 @@ describe('reviewing', () => {
     let release: (response: Response) => void = () => {};
     answer = () => new Promise<Response>((resolve) => (release = resolve)) as unknown as Response;
     renderCard();
-    const check = screen.getByRole('button', { name: 'Mark flagged fields as checked' });
+    const check = screen.getByRole('button', { name: 'Mark as checked' });
     await userEvent.dblClick(check);
 
     expect(sent).toHaveLength(1);

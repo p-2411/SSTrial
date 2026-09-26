@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { canSubmitUpload, stillToCheck, type UploadSummary } from '@label-extractor/shared';
 import { errorMessage } from '@/api/client';
 import { useCheckUploads, useSubmitUploads } from '@/api/queries';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { productCount } from '@/lib/format';
 import type { Selection } from '@/lib/useSelection';
 
@@ -51,17 +52,37 @@ export function ReviewActions({ uploads, selection }: { uploads: UploadSummary[]
           {picked ? `Mark ${toCheck.length} as checked` : 'Mark all as checked'}
         </Button>
       )}
-      <Button
-        size="sm"
-        disabled={ready.length === 0}
-        loading={submit.isPending}
-        title={ready.length === 0 ? 'Check the flagged products first' : undefined}
-        onClick={submitReady}
-      >
-        {picked ? `Submit ${ready.length} ready` : `Submit all ready${ready.length > 0 ? ` (${ready.length})` : ''}`}
-      </Button>
+      <WhyDisabled reason={ready.length === 0 ? 'Check the flagged products first' : null}>
+        {(describedBy) => (
+          <Button size="sm" disabled={ready.length === 0} loading={submit.isPending} aria-describedby={describedBy} onClick={submitReady}>
+            {picked ? `Submit ${ready.length} ready` : `Submit all ready${ready.length > 0 ? ` (${ready.length})` : ''}`}
+          </Button>
+        )}
+      </WhyDisabled>
       <CheckAllDialog uploads={confirmingCheck} onClose={() => setConfirmingCheck(null)} />
     </div>
+  );
+}
+
+/**
+ * Why a button is disabled, when it is (`reason`): in a tooltip on hover or focus, and read out with
+ * the button. A disabled button takes neither, so the tooltip hangs on a wrapper around it.
+ */
+function WhyDisabled({ reason, children }: { reason: string | null; children: (describedBy: string | undefined) => ReactNode }) {
+  const id = useId();
+  if (!reason) return children(undefined);
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span tabIndex={0} className="rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+          {children(id)}
+          <span id={id} className="sr-only">
+            {reason}
+          </span>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{reason}</TooltipContent>
+    </Tooltip>
   );
 }
 

@@ -44,15 +44,30 @@ const renderYours = (pending: PendingUpload[] = []) =>
   renderWithProviders(<YourUploads pending={pending} onRetry={() => {}} onDismiss={() => {}} />);
 
 describe('YourUploads', () => {
-  it("asks for the person's own lists, and shows nothing when both are empty", async () => {
+  it("asks for the person's own lists, holding their place while they load, and shows nothing when both are empty", async () => {
     uploading = [];
     review = [];
     const { fetch } = stubApi();
     renderYours();
 
+    // The card's place is held while the lists load, so the page doesn't jump when they arrive.
+    const card = screen.getByRole('region', { name: 'Your uploads' });
+    expect(within(card).getByRole('status', { name: 'Loading your uploads' })).toBeInTheDocument();
+
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/uploads?view=upload', expect.anything()));
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/uploads?view=review', expect.anything()));
-    expect(screen.queryByRole('region', { name: 'Your uploads' })).not.toBeInTheDocument();
+    await vi.waitFor(() => expect(screen.queryByRole('region', { name: 'Your uploads' })).not.toBeInTheDocument());
+  });
+
+  it('replaces the placeholder with the lists once they arrive', async () => {
+    uploading = [];
+    review = [inReview('r', 'Maple Pecan Crunch', 92)];
+    stubApi();
+    renderYours();
+
+    expect(await screen.findByRole('list', { name: 'Review' })).toHaveTextContent('Maple Pecan Crunch');
+    expect(screen.queryByRole('status', { name: 'Loading your uploads' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('region', { name: 'Your uploads' })).toHaveLength(1);
   });
 
   it("shows files still being sent, then the server's, under Uploading", async () => {
@@ -146,7 +161,12 @@ describe('YourUploads — Review', () => {
     stubApi();
     renderYours();
 
-    expect(await screen.findByRole('button', { name: 'Submit all ready' })).toBeDisabled();
+    const submit = await screen.findByRole('button', { name: 'Submit all ready' });
+    expect(submit).toBeDisabled();
+    // And says why, in its description and on hover.
+    expect(submit).toHaveAccessibleDescription('Check the flagged products first');
+    await userEvent.hover(submit.parentElement!);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Check the flagged products first');
   });
 
   it('marks every flagged product as checked, once the person confirms', async () => {

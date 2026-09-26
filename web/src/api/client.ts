@@ -72,7 +72,7 @@ export async function apiFetch(path: string, init: { method?: string; body?: unk
     const fallback =
       response.status >= 500
         ? "The server isn't responding right now. Please try again in a moment."
-        : `The request failed (HTTP ${response.status}).`;
+        : "That didn't go through. Please try again.";
     throw new ApiRequestError(response.status, body?.error?.code ?? 'HTTP_ERROR', body?.error?.message ?? fallback);
   }
   return response;
@@ -81,6 +81,16 @@ export async function apiFetch(path: string, init: { method?: string; body?: unk
 /** Calls our API and reads the JSON response. */
 export async function apiRequest<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
   return (await (await apiFetch(path, init)).json()) as T;
+}
+
+/** Whether what was asked for isn't there (any more): a wrong link, or deleted meanwhile. */
+export function isNotFound(error: unknown): boolean {
+  return error instanceof ApiRequestError && error.status === 404;
+}
+
+/** Whether a save was refused because someone else saved a change to the upload first. */
+export function isEditConflict(error: unknown): boolean {
+  return error instanceof ApiRequestError && error.code === 'EDIT_CONFLICT';
 }
 
 /** A message suitable for showing to the user, whatever was thrown. */

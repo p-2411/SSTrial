@@ -28,9 +28,9 @@ import { useFieldReview } from './useFieldReview';
  * a column headed "Confidence". The footer's "Mark as checked" confirms every flagged field as
  * right at once. A checked or corrected field says "Checked" or "Edited" in place of its score,
  * and counts as 100% towards the upload's confidence; who did it, and when, is in the detail's
- * header.
+ * header. `readOnly` (an upload deleted while open) offers none of that.
  */
-export function ProductInformationCard({ upload }: { upload: UploadDetail & { result: LabelExtraction } }) {
+export function ProductInformationCard({ upload, readOnly = false }: { upload: UploadDetail & { result: LabelExtraction }; readOnly?: boolean }) {
   const { productName, brand, netWeight, allergens, ingredients } = upload.result;
   const fields = useFieldReview(upload);
 
@@ -38,7 +38,7 @@ export function ProductInformationCard({ upload }: { upload: UploadDetail & { re
     field,
     confidence: upload.fieldConfidence?.[field],
     review: upload.fieldReviews[field],
-    onEdit: () => fields.edit(field),
+    onEdit: readOnly ? undefined : () => fields.edit(field),
   });
 
   return (
@@ -110,7 +110,7 @@ export function ProductInformationCard({ upload }: { upload: UploadDetail & { re
 
       <ConfidenceFooter
         upload={upload}
-        onCheck={() => fields.check(flaggedFields(upload.fieldConfidence, Object.keys(upload.fieldReviews) as LabelField[]))}
+        onCheck={readOnly ? undefined : () => fields.check(flaggedFields(upload.fieldConfidence, Object.keys(upload.fieldReviews) as LabelField[]))}
         checking={fields.checking}
       />
     </Card>

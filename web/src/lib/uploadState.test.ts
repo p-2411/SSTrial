@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { summary } from '@/test/fixtures';
-import { uploadState } from './uploadState';
+import { progressLine, uploadState } from './uploadState';
 
 const rateLimited = { code: 'LLM_RATE_LIMITED', message: 'The AI service is rate-limiting requests.' } as const;
 
@@ -23,5 +23,20 @@ describe('uploadState', () => {
   it('passes the in-flight statuses through', () => {
     expect(uploadState(summary({ status: 'uploading' }))).toEqual({ kind: 'uploading' });
     expect(uploadState(summary({ status: 'processing' }))).toEqual({ kind: 'processing' });
+  });
+});
+
+describe('progressLine', () => {
+  it('says what is happening while an upload is worked on, and why one failed', () => {
+    expect(progressLine(uploadState(summary({ status: 'processing' })))).toEqual({ text: 'Reading label', tone: 'brand' });
+    expect(progressLine(uploadState(summary({ status: 'queued', error: rateLimited })))).toEqual({
+      text: 'The AI service is rate-limiting requests. Retrying automatically.',
+      tone: 'warning',
+    });
+    expect(progressLine(uploadState(summary({ status: 'failed', error: null })))).toEqual({ text: 'Processing failed.', tone: 'danger' });
+  });
+
+  it('has nothing to say once the label is read', () => {
+    expect(progressLine(uploadState(summary({ status: 'completed' })))).toBeNull();
   });
 });

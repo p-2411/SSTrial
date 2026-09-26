@@ -1,6 +1,7 @@
 import { errorMessage } from '@/api/client';
 import { OPS_REFRESH_MS, useOpsStatus } from '@/api/queries';
 import { InlineError } from '@/components/InlineError';
+import { StaleDataNotice } from '@/components/StaleDataNotice';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ActivityLog } from '@/features/logs/ActivityLog';
 import { useNow } from '@/lib/useNow';
@@ -20,9 +21,13 @@ export function SystemPage() {
     // scrollbar's space is reserved so the page doesn't shift as its height changes.
     <div className="min-h-0 flex-1 overflow-y-auto p-6 [scrollbar-gutter:stable_both-edges]">
       <div className="mx-auto grid max-w-5xl gap-4">
-        {isPending && <Skeleton aria-label="Loading the system status" className="h-[5.25rem] w-full rounded-xl" />}
+        {isPending && <Skeleton role="status" aria-label="Loading the system status" className="h-[5.25rem] w-full rounded-xl" />}
         {isError && !data && (
           <InlineError title="Couldn't load the system status" message={errorMessage(error)} onRetry={() => void refetch()} retrying={isRefetching} />
+        )}
+        {/* The strip keeps its last figures, so it mustn't go on saying "All OK" unchallenged. */}
+        {isError && data && (
+          <StaleDataNotice what="the system status" error={error} onRetry={() => void refetch()} retrying={isRefetching} className="rounded-xl border" />
         )}
         {data && <StatusStrip status={data} now={now} />}
         <ActivityLog />

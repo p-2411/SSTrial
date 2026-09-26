@@ -17,7 +17,6 @@ import {
   type UploadHistoryResponse,
   type UploadView,
 } from '@label-extractor/shared';
-import { ApiRequestError } from './client.ts';
 import { isLiveConnected } from './liveConnection.ts';
 import { getEventDetails, getUploadHistory, listLogs, type ActivityFilters, type EventDetailsSource, type LogFilters } from './logs.ts';
 import {
@@ -159,15 +158,10 @@ export function fetchUpload(queryClient: QueryClient, id: string): Promise<Uploa
   return queryClient.fetchQuery({ queryKey: uploadKeys.detail(id), queryFn: () => getUpload(id), staleTime: 0 });
 }
 
-/** Whether a save was refused because someone else saved a change to the upload first. */
-export function isEditConflict(error: unknown): boolean {
-  return error instanceof ApiRequestError && error.code === 'EDIT_CONFLICT';
-}
-
 /**
  * Save corrections to an upload's data, or confirm fields as right. The cached detail is replaced
  * with the saved one, and the lists refresh (the upload's confidence there may change). When
- * someone else saved first (isEditConflict), the caller decides what to do about it: whether their
+ * someone else saved first (see isEditConflict), the caller decides what to do about it: whether their
  * change matters depends on which field it touched.
  */
 export function useEditResult(uploadId: string) {

@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { ChevronRight, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { UPLOAD_EVENT_TYPE_IDS, type LogLevel, type UploadDetail, type UploadHistoryEntry } from '@label-extractor/shared';
-import { errorMessage } from '@/api/client';
+import { errorMessage, isEditConflict } from '@/api/client';
 import { isFiltered, NO_ACTIVITY_FILTERS, type ActivityFilters } from '@/api/logs';
-import { isEditConflict, useRevertUpload, useUploadHistory } from '@/api/queries';
+import { useRevertUpload, useUploadHistory } from '@/api/queries';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { EmptyState } from '@/components/EmptyState';
 import { FadeWhileLoading } from '@/components/FadeWhileLoading';
@@ -81,7 +81,7 @@ function HistoryBody({ upload }: { upload: Upload }) {
         searchClassName="w-auto min-w-36 flex-1"
       />
       {isPending && (
-        <div aria-label="Loading history" className="grid gap-2">
+        <div role="status" aria-label="Loading history" className="grid gap-2">
           <Skeleton className="h-4 w-3/4" />
           <Skeleton className="h-4 w-2/3" />
         </div>

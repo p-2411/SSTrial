@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode, type Ref } from 'react';
 import { Pencil } from 'lucide-react';
 import { FIELD_LABELS, type FieldConfidence, type FieldReview, type LabelField } from '@label-extractor/shared';
 import { confidenceDotClass, ConfidenceScore } from '@/components/Confidence';
@@ -19,6 +19,8 @@ interface ReviewState {
  *
  * As a `row` (the default) it's a term and its value, for a <dl>. As a `block` it's a section of
  * its own, headed by the label with the value at full width underneath, for long values.
+ *
+ * Save or Cancel closes the editor, and focus goes back to Edit, where it started.
  */
 export function ReviewableField({
   field,
@@ -39,20 +41,22 @@ export function ReviewableField({
   count?: number;
   /** The editor while this field is being edited; anything falsy shows the value (children) instead. */
   editor: ReactNode;
-  onEdit: () => void;
+  /** Opens the editor. Without it, there's no Edit button (nothing may be changed). */
+  onEdit?: () => void;
   children: ReactNode;
 }) {
   const headingId = useId();
   const state = { confidence, review };
   const name = label.toLowerCase();
   const editing = Boolean(editor);
+  const editButton = useRefocusAfterEditing(editing);
   const marker = (
     <span aria-hidden className={cn('size-2 rounded-full', markerClass(state), layout === 'row' && 'translate-y-[-1px]')} />
   );
   const actions = !editing && (
     <>
       {review ? <ReviewedMark review={review} /> : confidence && <ConfidenceScore score={confidence.score} />}
-      <EditButton name={name} onClick={onEdit} />
+      {onEdit && <EditButton ref={editButton} name={name} onClick={onEdit} />}
     </>
   );
 
@@ -126,9 +130,26 @@ function ReviewNotes({ state: { confidence, review } }: { state: ReviewState }) 
   );
 }
 
-function EditButton({ name, onClick }: { name: string; onClick: () => void }) {
+/**
+ * The Edit button's ref. When the editor closes (Save, Cancel), the button it replaced comes back,
+ * and focus, lost with the editor's own buttons, goes to it.
+ */
+function useRefocusAfterEditing(editing: boolean) {
+  const button = useRef<HTMLButtonElement>(null);
+  const wasEditing = useRef(editing);
+  useEffect(() => {
+    const active = document.activeElement;
+    const focusLost = !active || active === document.body || !active.isConnected;
+    if (wasEditing.current && !editing && focusLost) button.current?.focus();
+    wasEditing.current = editing;
+  }, [editing]);
+  return button;
+}
+
+function EditButton({ ref, name, onClick }: { ref: Ref<HTMLButtonElement>; name: string; onClick: () => void }) {
   return (
     <Button
+      ref={ref}
       variant="ghost"
       size="icon-xs"
       aria-label={`Edit ${name}`}

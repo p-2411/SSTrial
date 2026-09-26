@@ -13,7 +13,7 @@ const BANDS: Record<ConfidenceBand, { tone: Tone | null; text: string; spoken: s
   low: { tone: 'danger', text: 'font-medium text-danger', spoken: ', low' },
 };
 
-const MEANING = `How sure the AI is that it read this correctly. Below ${CONFIDENT_SCORE}% it's worth checking.`;
+const MEANING = `How likely it is that this was read correctly. Below ${CONFIDENT_SCORE}% it's worth checking.`;
 
 /**
  * The colour of a field's marker dot: amber or red by band, and green when there's nothing to
