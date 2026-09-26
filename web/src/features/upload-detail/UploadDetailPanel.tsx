@@ -150,7 +150,9 @@ export const UploadDetailPanel = memo(function UploadDetailPanel() {
           </Button>
           {/* Fixed at the open width, so content doesn't reflow while the panel animates. The
               scrollbar's space is reserved too, so short and long uploads line up the same. */}
-          <div className="h-full overflow-y-auto p-6 [scrollbar-gutter:stable]" style={{ width }}>
+          {/* 20px at the bottom, like the gap between the detail's cards: the floating Submit button
+              (SubmitToProducts) keeps that distance whether floating or at the end. */}
+          <div className="h-full overflow-y-auto px-6 pt-6 pb-5 [scrollbar-gutter:stable]" style={{ width }}>
             <UploadDetailView id={shownId} />
           </div>
         </>

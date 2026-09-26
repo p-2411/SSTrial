@@ -39,18 +39,20 @@ export function needsChecking(score: number): boolean {
   return confidenceBand(score) !== 'ok';
 }
 
+/** A field a person has checked, or corrected: as certain as it gets. */
+export const REVIEWED_SCORE = 100;
+
 /**
  * The upload's score: its least certain field, because one doubtful field is what makes a label
- * need review (an average would let four good fields hide a bad one). Fields a person has already
- * reviewed don't count; with none left, or no scores at all, there's nothing to say.
+ * need review (an average would let four good fields hide a bad one). A field a person has checked
+ * or corrected counts as certain (REVIEWED_SCORE). Null when nothing was scored.
  */
 export function overallConfidence(
   confidence: ExtractionConfidence | null,
   reviewed: readonly LabelField[] = [],
 ): number | null {
   if (!confidence) return null;
-  const scores = LABEL_FIELDS.filter((field) => !reviewed.includes(field)).map((field) => confidence[field].score);
-  return scores.length > 0 ? Math.min(...scores) : null;
+  return Math.min(...LABEL_FIELDS.map((field) => (reviewed.includes(field) ? REVIEWED_SCORE : confidence[field].score)));
 }
 
 /**

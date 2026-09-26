@@ -57,7 +57,7 @@ describe('PATCH /api/uploads/:id/result', () => {
     expect((await patch({ revision: 0, checked: ['brand'] }, '4b8c1d2e-0000-4000-8000-00000000ffff')).statusCode).toBe(404);
   });
 
-  it('stops counting a reviewed field towards the upload’s confidence', async () => {
+  it('counts a checked field as certain in the upload’s confidence', async () => {
     const confidence: ExtractionConfidence = {
       productName: { score: 95, reasons: [] },
       brand: { score: 95, reasons: [] },

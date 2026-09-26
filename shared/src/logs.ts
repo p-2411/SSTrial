@@ -74,7 +74,7 @@ export interface LogEvent {
 
 /** One entry in an upload's history: an event, and whether an admin can put the data back to it. */
 export type UploadHistoryEntry = LogEvent & {
-  /** The version "Revert to here" restores; null where the data didn't change, or can't go back. */
+  /** The version "Revert" restores; null where the data didn't change, or can't go back. */
   revertTo: string | null;
 };
 

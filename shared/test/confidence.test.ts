@@ -27,12 +27,12 @@ describe('overallConfidence', () => {
     expect(overallConfidence(scores(92, 88, 40, 97, 91))).toBe(40);
   });
 
-  it('leaves out fields a person has already reviewed', () => {
+  it('counts a field a person has reviewed as certain', () => {
     expect(overallConfidence(scores(92, 88, 40, 97, 91), ['netWeight'])).toBe(88);
+    expect(overallConfidence(scores(50), ['productName', 'brand', 'netWeight', 'allergens', 'ingredients'])).toBe(100);
   });
 
-  it('has nothing to say once every field is reviewed, or when nothing was scored', () => {
-    expect(overallConfidence(scores(50), ['productName', 'brand', 'netWeight', 'allergens', 'ingredients'])).toBeNull();
+  it('has nothing to say when nothing was scored', () => {
     expect(overallConfidence(null)).toBeNull();
   });
 });

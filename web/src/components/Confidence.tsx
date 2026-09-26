@@ -28,10 +28,10 @@ export function confidenceDotClass(score: number | null): string {
  * A score, as just the number: "95%". What it is shows on hover, and is read out to screen readers
  * ("Confidence 95%").
  */
-export function ConfidenceScore({ score }: { score: number }) {
+export function ConfidenceScore({ score, title = MEANING }: { score: number; title?: string }) {
   const band = BANDS[confidenceBand(score)];
   return (
-    <span className={cn('shrink-0 text-xs whitespace-nowrap tabular-nums', band.text)} title={MEANING}>
+    <span className={cn('shrink-0 text-xs whitespace-nowrap tabular-nums', band.text)} title={title}>
       <span className="sr-only">Confidence </span>
       {score}%{band.spoken && <span className="sr-only">{band.spoken}</span>}
     </span>
@@ -39,4 +39,4 @@ export function ConfidenceScore({ score }: { score: number }) {
 }
 
 /** What an upload's overall score is, for the tooltips that show it. */
-export const OVERALL_CONFIDENCE_MEANING = `The upload's confidence is its least certain field that nobody has checked yet. ${MEANING}`;
+export const OVERALL_CONFIDENCE_MEANING = `The upload's confidence is its least certain field; one a person has checked counts as 100%. ${MEANING}`;

@@ -144,13 +144,13 @@ describe('ProductInformationCard', () => {
       expect(footer(card)).toHaveTextContent('High confidence (88%)');
     });
 
-    it('says so when a person has reviewed every field', () => {
+    it('is 100% once a person has reviewed every field', () => {
       const at = new Date().toISOString();
       const review = { kind: 'checked' as const, by: 'alice@example.com', at };
       const card = renderCard(full, scored([97, 72, 45, 90, 88]), {
         productName: review, brand: review, netWeight: review, allergens: review, ingredients: review,
       });
-      expect(footer(card)).toHaveTextContent('Every field checked by a person');
+      expect(footer(card)).toHaveTextContent('High confidence (100%)');
     });
   });
 });

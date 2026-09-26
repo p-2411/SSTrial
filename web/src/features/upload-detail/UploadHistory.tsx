@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { LogLevel, UploadDetail, UploadHistoryEntry } from '@label-extractor/shared';
 import { ApiRequestError, errorMessage } from '@/api/client';
@@ -31,7 +32,7 @@ type Upload = Pick<UploadDetail, 'id' | 'revision' | 'canRevert'>;
  * The upload's history, oldest first: from being uploaded, through each attempt to read it, to
  * who edited or checked its fields. Its entries come from the activity log, and update live.
  *
- * An admin can put a completed upload's data back to any point where it changed: "Revert to here",
+ * An admin can put a completed upload's data back to any point where it changed: "Revert",
  * on the entries the server says can be gone back to (`revertTo`), when it says they may (`canRevert`).
  */
 export function UploadHistory({ upload }: { upload: Upload }) {
@@ -71,7 +72,7 @@ export function UploadHistory({ upload }: { upload: Upload }) {
   );
 }
 
-/** When it happened (to the second, on hover), what happened, and for an admin, "Revert to here". */
+/** When it happened (to the second, on hover), what happened, and for an admin, "Revert". */
 function HistoryEntry({ entry, onRevert }: { entry: UploadHistoryEntry; onRevert?: () => void }) {
   return (
     <li className="grid grid-cols-[7rem_minmax(0,1fr)_auto] items-baseline gap-x-3 text-sm">
@@ -87,10 +88,11 @@ function HistoryEntry({ entry, onRevert }: { entry: UploadHistoryEntry; onRevert
         <Button
           variant="link"
           size="xs"
-          className="h-auto p-0 text-xs font-medium text-muted-foreground hover:text-foreground"
+          className="h-auto gap-1 p-0 text-xs font-medium text-muted-foreground hover:text-foreground"
           onClick={onRevert}
         >
-          Revert to here
+          Revert
+          <Undo2 data-icon="inline-end" aria-hidden />
         </Button>
       ) : (
         <span />

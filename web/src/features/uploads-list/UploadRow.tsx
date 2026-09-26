@@ -18,7 +18,7 @@ import { uploadPath } from '@/routes';
  * its detail view; one still being worked on has nothing to open yet, so it isn't a link.
  *
  * In a list that can act on several at once, `onSelect` gives the row a checkbox. It takes the
- * status column's place while the row is hovered (or focused), and stays once ticked. It sits over
+ * status column's place while the row is hovered (or focused from the keyboard), and stays once ticked. It sits over
  * the link rather than in it: a control can't be inside a link. The swap is instant, by opacity on
  * the whole column: hiding it with `visibility` let the pill's own transition lag behind the time,
  * so the two went one after the other and the pill briefly overlapped the box.
@@ -55,7 +55,7 @@ export const UploadRow = memo(function UploadRow({
       <div
         className={cn(
           'flex flex-col items-end gap-1.5',
-          onSelect && (selected ? 'opacity-0' : 'group-focus-within/row:opacity-0 group-hover/row:opacity-0'),
+          onSelect && (selected ? 'opacity-0' : 'group-hover/row:opacity-0 group-has-focus-visible/row:opacity-0'),
         )}
       >
         {/* A completed upload's pill also says whether it's worth checking ("Check (72%)"). */}
@@ -95,7 +95,7 @@ export const UploadRow = memo(function UploadRow({
         <label
           className={cn(
             'absolute top-1/2 right-2 flex -translate-y-1/2 cursor-pointer p-2',
-            !selected && 'opacity-0 group-focus-within/row:opacity-100 group-hover/row:opacity-100',
+            !selected && 'opacity-0 group-hover/row:opacity-100 group-has-focus-visible/row:opacity-100',
           )}
         >
           <Checkbox

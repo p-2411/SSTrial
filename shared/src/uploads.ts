@@ -160,8 +160,9 @@ export interface UploadSummary {
    */
   resultUnreadable: boolean;
   /**
-   * How sure the extraction is, out of 100: its least certain field (see confidence.ts). Null when
-   * it wasn't scored, or the upload isn't completed.
+   * How sure the extraction is, out of 100: its least certain field, a field a person has checked
+   * or corrected counting as 100 (see confidence.ts). Null when it wasn't scored, or the upload isn't
+   * completed.
    */
   confidence: number | null;
   createdAt: string;

@@ -106,7 +106,7 @@ export const logEvents = {
       by: string;
       changes: Partial<Record<LabelField, { from: unknown; to: unknown }>>;
       checked: LabelField[];
-      /** The data after this review, as saved: what "Revert to here" goes back to. */
+      /** The data after this review, as saved: what "Revert" goes back to. */
       versionId: string;
     },
   ): NewLogEvent {

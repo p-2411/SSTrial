@@ -13,6 +13,7 @@ import { ProductInformationCard } from './ProductInformationCard';
 import { DeleteUpload } from './DeleteUpload';
 import { JsonDisclosure } from './JsonDisclosure';
 import { SourceDocumentCard } from './SourceDocumentCard';
+import { SubmitToProducts } from './SubmitToProducts';
 import { StatusNotice } from './StatusNotice';
 import { UploadHistory } from './UploadHistory';
 
@@ -127,6 +128,8 @@ function Detail({ upload }: { upload: UploadDetail }) {
       <UploadHistory upload={upload} />
       {/* Last, on its own row: it can't be undone, so it's out of the way of everything else. */}
       {upload.canDelete && <DeleteUpload upload={upload} />}
+      {/* In Review: floats over the bottom of the panel, and ends up below Delete. */}
+      {upload.status === 'completed' && upload.submittedAt === null && !upload.resultUnreadable && <SubmitToProducts upload={upload} />}
     </>
   );
 }

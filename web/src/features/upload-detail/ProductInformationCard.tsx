@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { toast } from 'sonner';
 import {
   flaggedFields,
   isVolumeUnit,
@@ -8,8 +7,6 @@ import {
   type LabelField,
   type UploadDetail,
 } from '@label-extractor/shared';
-import { errorMessage } from '@/api/client';
-import { useSubmitUploads } from '@/api/queries';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatQuantity } from '@/lib/quantity';
 import { TONE_CLASSES } from '@/lib/tone';
@@ -29,22 +26,12 @@ import { useFieldReview } from './useFieldReview';
  * Every field can be corrected in place, one at a time (see useFieldReview). When the extraction
  * was scored, each field's marker takes its confidence colour and its score sits on the right, in
  * a column headed "Confidence". The footer's "Mark as checked" confirms every flagged field as
- * right at once; while the upload waits in Review, once nothing is flagged, its "Submit to
- * Products" puts it in. Once a person has edited or confirmed a field, it says so in place of its
- * score; who did it, and when, is in the detail's header.
+ * right at once. A checked field's score becomes 100%, and a corrected one says "Edited"; who did
+ * it, and when, is in the detail's header.
  */
 export function ProductInformationCard({ upload }: { upload: UploadDetail & { result: LabelExtraction } }) {
   const { productName, brand, netWeight, allergens, ingredients } = upload.result;
   const fields = useFieldReview(upload);
-  const submit = useSubmitUploads();
-  const submitToProducts = (id: string) =>
-    submit.mutate([id], {
-      onSuccess: ([submitted]) => {
-        if (submitted) toast.success('Added to Products');
-        else toast.warning("It wasn't submitted", { description: 'It changed since you opened it. Check it again.' });
-      },
-      onError: (failure) => toast.error("Couldn't submit", { description: errorMessage(failure) }),
-    });
 
   const fieldProps = (field: LabelField) => ({
     field,
@@ -124,8 +111,6 @@ export function ProductInformationCard({ upload }: { upload: UploadDetail & { re
         upload={upload}
         onCheck={() => fields.check(flaggedFields(upload.fieldConfidence, Object.keys(upload.fieldReviews) as LabelField[]))}
         checking={fields.checking}
-        onSubmit={upload.submittedAt === null ? () => submitToProducts(upload.id) : undefined}
-        submitting={submit.isPending}
       />
     </Card>
   );

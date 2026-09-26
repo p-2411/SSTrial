@@ -18,7 +18,7 @@ export interface RevertDeps {
 }
 
 /**
- * Puts a completed upload's data back to a saved version (an admin's "Revert to here" in its
+ * Puts a completed upload's data back to a saved version (an admin's "Revert" in its
  * history): the result, the scores it had then, and who had reviewed what, so checks made since
  * are undone. Nothing is erased: the revert is itself a new version and a history entry, so it
  * can be reverted too. Made against the revision the admin saw, like an edit, so it can't undo a

@@ -6,7 +6,7 @@ const DATA_CHANGES: readonly LogEventType[] = ['extraction.completed', 'upload.e
 
 /**
  * An upload's history (its events, oldest first) with, for each entry that changed the data, the
- * version "Revert to here" would put it back to. The state the data is in now is left out: there's
+ * version "Revert" would put it back to. The state the data is in now is left out: there's
  * nothing to revert to there.
  *
  * Entries name their version in `data.versionId`. Uploads read before versions existed have one

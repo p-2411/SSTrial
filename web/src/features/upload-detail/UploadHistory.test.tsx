@@ -72,7 +72,7 @@ describe('UploadHistory', () => {
       ],
       true,
     );
-    const buttons = await screen.findAllByRole('button', { name: 'Revert to here' });
+    const buttons = await screen.findAllByRole('button', { name: 'Revert' });
     expect(buttons).toHaveLength(1); // only where it changed, and not where it is now
 
     await userEvent.click(buttons[0]!);
@@ -86,6 +86,6 @@ describe('UploadHistory', () => {
   it("offers members nothing to revert", async () => {
     renderHistory([entry('1', 'label.png read.', { type: 'extraction.completed', revertTo: '11' })], false);
     await screen.findByText('label.png read.');
-    expect(screen.queryByRole('button', { name: 'Revert to here' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Revert' })).not.toBeInTheDocument();
   });
 });
