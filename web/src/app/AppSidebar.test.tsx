@@ -53,7 +53,10 @@ describe('AppSidebar', () => {
     renderSidebar('member');
     expect(screen.getByText('member@example.com')).toBeInTheDocument();
     expect(screen.getByText('Member')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+
+    // Signing out is in the profile's menu.
+    await userEvent.click(screen.getByRole('button', { name: /member@example\.com/ }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Sign out' }));
     expect(auth.signOut).toHaveBeenCalled();
   });
 
@@ -61,14 +64,20 @@ describe('AppSidebar', () => {
     uploads.busy = true;
     renderSidebar('member');
 
-    await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    const signOut = async () => {
+      await userEvent.click(screen.getByRole('button', { name: /member@example\.com/ }));
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Sign out' }));
+    };
+
+    await signOut();
     expect(auth.signOut).not.toHaveBeenCalled();
-    expect(screen.getByRole('group', { name: /Files are still uploading/ })).toBeInTheDocument();
+    expect(screen.getByRole('alertdialog', { name: 'Files are still uploading' })).toHaveTextContent('Signing out now stops them.');
 
     await userEvent.click(screen.getByRole('button', { name: 'Keep uploading' }));
     expect(auth.signOut).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    await signOut();
     await userEvent.click(screen.getByRole('button', { name: 'Sign out anyway' }));
     expect(auth.signOut).toHaveBeenCalled();
   });

@@ -1,6 +1,6 @@
-import { useId, useState } from 'react';
+import { useState } from 'react';
 import { Link, matchPath, useLocation } from 'react-router';
-import { Activity, Files, LogOut, ScanText, ScrollText, type LucideIcon } from 'lucide-react';
+import { Activity, ChevronsUpDown, Files, LogOut, ScanText, ScrollText, type LucideIcon } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -15,7 +15,17 @@ import {
 } from '@/components/ui/sidebar';
 import { useAuth, useSignedInMember } from '@/auth/AuthProvider';
 import { ROLE_LABELS, useHasRole } from '@/auth/roles';
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { loadLogsPage } from '@/features/logs/loadLogsPage';
 import { loadSystemStatusPage } from '@/features/system-status/loadSystemStatusPage';
 import { useFileUploadsContext } from '@/features/upload/FileUploadsProvider';
@@ -28,7 +38,6 @@ import { HOME_PATH, LOGS_PATH, STATUS_PATH, UPLOAD_PATH_PATTERN } from '@/routes
  */
 export function AppSidebar() {
   const { pathname } = useLocation();
-  const member = useSignedInMember();
   const isAdmin = useHasRole('admin');
 
   // The list and an open upload are both part of Uploads.
@@ -78,14 +87,8 @@ export function AppSidebar() {
         )}
       </SidebarContent>
 
-      <SidebarFooter className="gap-2 px-4 pb-5">
-        <div className="min-w-0 text-xs">
-          <p className="truncate font-medium text-white" title={member.email}>
-            {member.email}
-          </p>
-          <p className="text-sidebar-foreground/60">{ROLE_LABELS[member.role]}</p>
-        </div>
-        <SignOut />
+      <SidebarFooter className="px-2 pb-4">
+        <ProfileMenu />
       </SidebarFooter>
     </Sidebar>
   );
@@ -122,51 +125,61 @@ function NavItem({
 }
 
 /**
- * Signs out, but asks first while files are still uploading: signing out leaves the app, which
- * stops them without a trace. Its own component, so upload progress re-renders only this.
+ * Who is signed in, as a button at the foot of the sidebar that opens a menu upwards with Sign out.
+ * Signing out while files are still uploading asks first, since leaving the app stops them without
+ * a trace. Its own component, so upload progress re-renders only this.
  */
-function SignOut() {
+function ProfileMenu() {
+  const member = useSignedInMember();
   const { signOut } = useAuth();
   const { busy } = useFileUploadsContext();
   const [confirming, setConfirming] = useState(false);
-  const questionId = useId();
-
-  // Uploads that finish meanwhile leave nothing to ask about.
-  if (confirming && !busy) setConfirming(false);
-
-  if (confirming && busy) {
-    return (
-      <div role="group" aria-labelledby={questionId} className="grid gap-2 text-xs">
-        <p id={questionId} className="text-white">
-          Files are still uploading. Signing out now stops them.
-        </p>
-        <div className="flex gap-1.5">
-          <Button size="xs" variant="secondary" onClick={() => void signOut()}>
-            Sign out anyway
-          </Button>
-          <Button
-            size="xs"
-            variant="ghost"
-            className="text-sidebar-foreground/80 hover:bg-white/10 hover:text-white"
-            onClick={() => setConfirming(false)}
-            autoFocus
-          >
-            Keep uploading
-          </Button>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <Button
-      variant="ghost"
-      size="sm"
-      className="justify-start px-0 text-sidebar-foreground/80 hover:bg-transparent hover:text-white"
-      onClick={() => (busy ? setConfirming(true) : void signOut())}
-    >
-      <LogOut data-icon="inline-start" aria-hidden />
-      Sign out
-    </Button>
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <SidebarMenuButton size="lg" className="data-[state=open]:bg-sidebar-accent">
+              <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-lg bg-white/10 text-sm font-semibold text-white uppercase">
+                {member.email.charAt(0)}
+              </span>
+              <span className="grid min-w-0 flex-1 text-left text-xs leading-tight">
+                <span className="truncate font-medium text-white" title={member.email}>
+                  {member.email}
+                </span>
+                <span className="truncate text-sidebar-foreground/60">{ROLE_LABELS[member.role]}</span>
+              </span>
+              <ChevronsUpDown className="ml-auto size-4 text-sidebar-foreground/60" aria-hidden />
+            </SidebarMenuButton>
+          </DropdownMenuTrigger>
+          {/* Opens upwards, as wide as the button: it sits at the bottom of the screen. */}
+          <DropdownMenuContent side="top" align="start" className="w-(--radix-dropdown-menu-trigger-width)">
+            <DropdownMenuItem onSelect={() => (busy ? setConfirming(true) : void signOut())}>
+              <LogOut aria-hidden />
+              Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+
+      {/* Uploads that finish meanwhile leave nothing to ask about, so the question goes too. */}
+      <AlertDialog open={confirming && busy} onOpenChange={setConfirming}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Files are still uploading</AlertDialogTitle>
+            <AlertDialogDescription>Signing out now stops them.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel asChild>
+              <Button variant="outline">Keep uploading</Button>
+            </AlertDialogCancel>
+            <Button variant="destructive" onClick={() => void signOut()}>
+              Sign out anyway
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </SidebarMenu>
   );
 }
