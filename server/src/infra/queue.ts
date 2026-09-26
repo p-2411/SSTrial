@@ -12,7 +12,7 @@ import type { Logger } from './logger.ts';
  * same transaction as the row update that justifies it — they commit or roll back together.
  *
  * This module only connects. The queues are defined where they're used: uploads/jobs.ts for the
- * upload queues, worker/worker.ts for the monitor's schedule.
+ * upload queues, worker/worker.ts for the once-a-minute housekeeping.
  */
 
 export interface StartQueueOptions {

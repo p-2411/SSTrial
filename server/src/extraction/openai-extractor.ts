@@ -4,12 +4,11 @@ import type {
   ResponseCreateParamsNonStreaming,
   ResponseInputContent,
 } from 'openai/resources/responses/responses';
-import { z } from 'zod';
 import { LABEL_FIELDS, labelExtractionSchema, type ExtractionConfidence } from '@label-extractor/shared';
 import { ExtractionError } from './errors.ts';
 import { classifyOpenAIError } from './openai-errors.ts';
 import type { ExtractedLabel, LabelExtractor, LabelFile } from './extractor.ts';
-import { EXTRACTION_INSTRUCTIONS, EXTRACTION_USER_PROMPT, LABEL_RESPONSE_FORMAT } from './prompt.ts';
+import { EXTRACTION_INSTRUCTIONS, EXTRACTION_USER_PROMPT, LABEL_RESPONSE_FORMAT, MODEL_CONFIDENCE_SCHEMA } from './prompt.ts';
 
 /**
  * LabelExtractor backed by the OpenAI Responses API.
@@ -139,25 +138,20 @@ function findRefusal(response: ModelResponse): string | null {
   return null;
 }
 
-const modelFieldConfidence = z.object({ score: z.number(), reason: z.string().nullable() });
-const modelConfidence = z.object(
-  Object.fromEntries(LABEL_FIELDS.map((field) => [field, modelFieldConfidence])) as Record<
-    (typeof LABEL_FIELDS)[number],
-    typeof modelFieldConfidence
-  >,
-);
+/** A model's reason is shown as it wrote it, up to this length: enough for a sentence or two. */
+const MAX_REASON_LENGTH = 300;
 
 /**
  * The model's per-field scores, held to 0–100. Unlike the data, they're read leniently: scores are
  * advisory, so missing or malformed ones mean "not scored" (null), never a failed extraction.
  */
 function parseConfidence(value: unknown): ExtractionConfidence | null {
-  const parsed = modelConfidence.safeParse(value);
+  const parsed = MODEL_CONFIDENCE_SCHEMA.safeParse(value);
   if (!parsed.success) return null;
   return Object.fromEntries(
     LABEL_FIELDS.map((field) => {
       const { score, reason } = parsed.data[field];
-      const reasonText = reason?.trim();
+      const reasonText = reason?.trim().slice(0, MAX_REASON_LENGTH);
       return [field, { score: Math.round(Math.min(100, Math.max(0, score))), reasons: reasonText ? [reasonText] : [] }];
     }),
   ) as ExtractionConfidence;

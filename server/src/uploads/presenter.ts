@@ -1,5 +1,7 @@
 import {
+  applyConfidenceChecks,
   overallConfidence,
+  type ExtractionConfidence,
   type LabelField,
   type FieldReviews,
   UPLOAD_FILTER_IDS,
@@ -32,7 +34,7 @@ export function toUploadSummary(record: UploadRecord): UploadSummary {
     productName: record.result?.productName ?? null,
     resultUnreadable: record.resultUnreadable,
     // Fields a person has already reviewed don't need checking any more.
-    confidence: record.status === 'completed' ? overallConfidence(record.confidence, reviewedFields(record.fieldReviews)) : null,
+    confidence: overallConfidence(checkedConfidence(record), reviewedFields(record.fieldReviews)),
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
     completedAt: record.completedAt?.toISOString() ?? null,
@@ -43,12 +45,12 @@ export function toUploadSummary(record: UploadRecord): UploadSummary {
  * @param emails The email of each person the record mentions (uploader, reviewers), by user ID;
  *   see `peopleIn`. Someone whose account is gone reads as null.
  */
-export function toUploadDetail(record: UploadRecord, fileUrl: string | null, emails: ReadonlyMap<string, string | null>): UploadDetail {
+export function toUploadDetail(record: UploadRecord, fileUrl: string | null, emails: ReadonlyMap<string, string>): UploadDetail {
   const emailOf = (userId: string | null) => (userId ? (emails.get(userId) ?? null) : null);
   return {
     ...toUploadSummary(record),
     result: record.status === 'completed' ? record.result : null,
-    fieldConfidence: record.status === 'completed' ? record.confidence : null,
+    fieldConfidence: checkedConfidence(record),
     fieldReviews: Object.fromEntries(
       Object.entries(record.fieldReviews).map(([field, review]) => [
         field,
@@ -61,10 +63,19 @@ export function toUploadDetail(record: UploadRecord, fileUrl: string | null, ema
   };
 }
 
-/** The user IDs a record mentions, to look up their emails for `toUploadDetail`. */
+/** The user IDs a record mentions, to look up their emails for `toUploadDetail` (see uploads/detail.ts). */
 export function peopleIn(record: UploadRecord): string[] {
   const ids = [record.uploadedBy, ...Object.values(record.fieldReviews).map((review) => review.by)];
   return [...new Set(ids.filter((id): id is string => id !== null))];
+}
+
+/**
+ * A completed upload's scores with the checks applied to its data as it is now, edits included, so
+ * a flag never outlives the contradiction it was about (or misses one an edit introduced).
+ */
+function checkedConfidence(record: UploadRecord): ExtractionConfidence | null {
+  if (record.status !== 'completed' || !record.result || !record.confidence) return null;
+  return applyConfidenceChecks(record.result, record.confidence);
 }
 
 function reviewedFields(reviews: StoredFieldReviews): LabelField[] {

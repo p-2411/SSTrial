@@ -89,38 +89,39 @@ export async function startFinaliseWorker(deps: FinaliseDeps & { boss: PgBoss; l
   });
 }
 
-/**
- * Once a minute: records that a worker is running (the System status page's worker card), and
- * keeps the activity log pruned.
- */
-const OPS_MONITOR_QUEUE = 'ops-monitor';
+/** Stored under its name from when it also ran alerts; a rename would leave the old schedule behind. */
+const HOUSEKEEPING_QUEUE = 'ops-monitor';
 
-export interface MonitorDeps {
+export interface HousekeepingDeps {
   boss: PgBoss;
   ops: Pick<OpsStore, 'recordWorkerHeartbeat'>;
   events: EventRetention;
   logger: Logger;
 }
 
-export async function startMonitor({ boss, ops, events, logger }: MonitorDeps): Promise<void> {
-  if (!(await boss.getQueue(OPS_MONITOR_QUEUE))) {
+/**
+ * Once a minute: records that a worker is running (the System status page's worker card), and
+ * keeps the activity log pruned.
+ */
+export async function startHousekeeping({ boss, ops, events, logger }: HousekeepingDeps): Promise<void> {
+  if (!(await boss.getQueue(HOUSEKEEPING_QUEUE))) {
     // A missed run is simply replaced by the next minute's, so never retry.
-    await boss.createQueue(OPS_MONITOR_QUEUE, { retryLimit: 0, expireInSeconds: 50 });
+    await boss.createQueue(HOUSEKEEPING_QUEUE, { retryLimit: 0, expireInSeconds: 50 });
   }
-  await boss.work(OPS_MONITOR_QUEUE, { batchSize: 1 }, async () => {
+  await boss.work(HOUSEKEEPING_QUEUE, { batchSize: 1 }, async () => {
     await ops.recordWorkerHeartbeat();
     await pruneActivityLog({ events, logger });
   });
   // Every minute, cluster-wide: pg-boss creates one job per tick however many workers there are.
-  await boss.schedule(OPS_MONITOR_QUEUE, '* * * * *');
+  await boss.schedule(HOUSEKEEPING_QUEUE, '* * * * *');
   await ops.recordWorkerHeartbeat(); // don't wait a minute for the first heartbeat
 }
 
 /**
  * Deletes activity-log events past their retention. Every minute, so each run only removes a
- * minute's worth. A failure is logged and left for the next run: it must not stop the monitor.
+ * minute's worth. A failure is logged and left for the next run: it must not stop the heartbeat.
  */
-export async function pruneActivityLog({ events, logger }: Pick<MonitorDeps, 'events' | 'logger'>): Promise<void> {
+export async function pruneActivityLog({ events, logger }: Pick<HousekeepingDeps, 'events' | 'logger'>): Promise<void> {
   try {
     const pruned = await events.pruneOlderThan(LOG_RETENTION_DAYS);
     if (pruned > 0) logger.info({ pruned }, 'Pruned old activity log events');

@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { applyConfidenceChecks, DOUBTFUL_SCORE } from '../src/confidence.ts';
 import { isVolumeUnit, textShowsAmount } from '../src/units.ts';
 import { isActiveStatus, isUploadStatus, storedErrorCode, uploadErrorMessage } from '../src/uploads.ts';
 
@@ -46,33 +45,5 @@ describe('textShowsAmount', () => {
     ['Net 500 ml', 50, false],
   ])('%s states %s: %s', (text, amount, expected) => {
     expect(textShowsAmount(text, amount)).toBe(expected);
-  });
-});
-
-describe('applyConfidenceChecks', () => {
-  const sure = { score: 95, reasons: [] };
-  const confidence = { productName: sure, brand: sure, netWeight: sure, allergens: sure, ingredients: sure };
-  const result = {
-    productName: 'Oat bar',
-    brand: null,
-    netWeight: { value: 500, unit: 'g' as const, text: 'Net Wt 250 g' },
-    allergens: ['oats'],
-    ingredients: [{ name: 'Oats', percent: 60, subIngredients: [], allergens: ['oats'] }],
-  };
-
-  it('caps a field the data contradicts, and says why', () => {
-    const checked = applyConfidenceChecks(result, confidence);
-    expect(checked.netWeight).toEqual({ score: DOUBTFUL_SCORE, reasons: ["The amount isn't in the printed net quantity."] });
-    expect(checked.productName).toEqual(sure);
-  });
-
-  it('gives the same answer when applied again (it runs on every read)', () => {
-    const once = applyConfidenceChecks(result, confidence);
-    expect(applyConfidenceChecks(result, once)).toEqual(once);
-  });
-
-  it('leaves the stored scores untouched', () => {
-    applyConfidenceChecks(result, confidence);
-    expect(confidence.netWeight).toEqual(sure);
   });
 });

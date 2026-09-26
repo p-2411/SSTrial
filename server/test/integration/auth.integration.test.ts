@@ -33,9 +33,10 @@ describe.skipIf(!DATABASE_URL)('members (real SQL)', () => {
     expect((await members.find(userId))?.role).toBe('admin');
   });
 
-  it("knows an account's email even without access", async () => {
+  it("knows accounts' emails even without access, in one query, leaving out accounts that are gone", async () => {
     const members = createMemberStore(sql);
-    expect(await members.emailOf(userId)).toBe(email);
-    expect(await members.emailOf(crypto.randomUUID())).toBeNull();
+    const gone = crypto.randomUUID();
+    expect(await members.emailsOf([userId, gone])).toEqual(new Map([[userId, email]]));
+    expect(await members.emailsOf([])).toEqual(new Map());
   });
 });

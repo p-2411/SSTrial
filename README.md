@@ -4,7 +4,7 @@ Upload photos or PDFs of product labels; a background worker reads each one with
 
 ![The app: upload list on the left, extracted label data on the right](docs/screenshot.png)
 
-- **Stack:** TypeScript end to end. React + Vite with Tailwind v4 and shadcn/ui (web), Fastify (API), pg-boss (Postgres-backed queue), Supabase (Postgres + Storage), OpenAI Responses API with structured outputs.
+- **Stack:** TypeScript end to end. React + Vite with Tailwind v4 and shadcn/ui (web), Fastify (API), pg-boss (Postgres-backed queue), Supabase (Postgres, Storage, Auth), OpenAI Responses API with structured outputs.
 - **Look and feel:** built on the same UI stack as the SupplyScope app (Tailwind v4, shadcn/ui on Radix, Lucide icons, Sonner toasts) and styled with SupplyScope's brand. See [DECISIONS.md](DECISIONS.md#frontend).
 - **Design decisions** (queue choice, failure handling, 50k uploads, trade-offs): [DECISIONS.md](DECISIONS.md)
 
@@ -18,11 +18,14 @@ flowchart LR
     W["Worker process(es)<br/>node server/src/worker/main.ts"]
   end
   subgraph Supabase
-    PG[("Postgres<br/>uploads + events tables<br/>+ pgboss schema = queue")]
+    PG[("Postgres<br/>uploads, events, members<br/>+ pgboss schema = queue")]
     ST[("Storage<br/>private 'labels' bucket")]
+    AU["Auth<br/>accounts, access tokens"]
   end
   LLM[OpenAI API]
 
+  B -- "sign in" --> AU
+  API -- "check token, then members" --> PG
   B -- "1. POST /api/uploads" --> API
   B -- "2. PUT file (signed URL)" --> ST
   B -- "3. POST …/complete" --> API
@@ -43,7 +46,8 @@ flowchart LR
 | **API** | Node process (`server/src/api/main.ts`). Stateless; scale by adding instances. Never calls the LLM. | Railway `api` service (Singapore), public domain above, `APP_PROCESS=api` |
 | **Worker** | A separate Node process (`server/src/worker/main.ts`), same image with `APP_PROCESS=worker`. Scale by adding replicas; each handles `WORKER_CONCURRENCY` jobs at once. | Railway `worker` service (Singapore), no public port |
 | **Queue** | [pg-boss](https://github.com/timgit/pg-boss) tables in the `pgboss` schema of the same Postgres database. | Supabase Postgres (ap-southeast-1) |
-| **Database** | Postgres, with the `uploads` table as the source of truth for status and results, and the `events` table as the activity log. | Supabase Postgres (ap-southeast-1), via the session pooler |
+| **Database** | Postgres, with the `uploads` table as the source of truth for status and results, the `events` table as the activity log, and `members` for who has access and as what (admin or member). | Supabase Postgres (ap-southeast-1), via the session pooler |
+| **Sign-in** | Supabase Auth: email and password, accounts created by a script (no public sign-up). The API checks each request's access token, then the `members` table. | Supabase Auth |
 | **File storage** | A private bucket. Browsers upload with short-lived signed URLs; size and type limits are enforced by the bucket. | Supabase Storage (ap-southeast-1) |
 
 **Deploying changes:** `railway up --service api` and `railway up --service worker` build the Dockerfile and roll out each service. Schema changes go through `supabase db push`. Variables are listed in `server/.env.example`. `DATABASE_URL` is the **session pooler** URL, because the direct connection is IPv6-only on Supabase's free tier, and `DATABASE_POOL_MAX=2` keeps both services inside the free tier's connection limit.
@@ -51,11 +55,16 @@ flowchart LR
 ### Upload lifecycle
 
 ```
-uploading ─(browser confirms)─► queued ─(worker claims)─► processing ─► completed
-  (hidden)                        ▲                            │
-                                  └──(transient error; retry)──┤
-                                                               └──► failed (reason shown; retry if it could help)
+uploading ─(browser confirms)─► queued ─(worker claims)─► processing ─► completed ─(people review)─┐
+  (hidden)                        ▲                            │            ▲                     │
+  │ rejected or                   └──(transient error; retry)──┤            └─────────────────────┘
+  ▼ never arrived                                              └──► failed (reason shown)
+(deleted)          Also: failed, or completed with an unreadable result ─(run again)─► queued;
+                   queued|processing ─(every attempt died: dead-letter safety net)─► failed
 ```
+
+Each of these moves is declared once, in `shared/src/lifecycle.ts`; the database only makes a move
+from a status that table allows.
 
 - **Every upload finishes.** Creating an upload schedules a *finalise* job for just after its signed URL expires. It confirms a file the browser never confirmed, or discards an upload whose file never arrived. When the browser does confirm, the job is cancelled in the same transaction.
 - **Rejected files aren't kept.** Content that isn't really a JPEG, PNG, WebP or PDF is deleted with its upload; the browser shows why, with "Try again".
@@ -63,19 +72,19 @@ uploading ─(browser confirms)─► queued ─(worker claims)─► processing
 
 ### Confidence scores
 
-Every field gets a score out of 100 for how sure the extraction is, with the reasons for any doubt. The model scores each field in the same call; plain checks cap a score at 60 when the data contradicts itself (the net amount missing from its printed text, a declared allergen no ingredient contains, percentages over 100%). The detail panel shows each field's score, fine (85+), check (60–84) or low; the list flags uploads whose least certain field is below 85. How it works and its limits: [DECISIONS.md](DECISIONS.md#confidence-scores).
+Every field gets a score out of 100 for how sure the extraction is, with the reasons for any doubt. The model scores each field in the same call, and those scores are stored as given. Plain checks cap a score at 60 when the data contradicts itself (the net amount missing from its printed text, a declared allergen no ingredient contains, percentages over 100%); they run whenever the upload is read, so they describe the data as it is now, edits included. The detail panel shows each field's score, fine (85+), check (60–84) or low; the list flags uploads whose least certain field is below 85. How it works and its limits: [DECISIONS.md](DECISIONS.md#confidence-scores).
 
 ### Reviewing and editing
 
-Any field can be corrected in place in the detail panel: the product name, brand, net weight (amount and unit), allergens, and ingredients (name and percentage, add or remove rows). A field that scored under 85 can also be marked as checked. A reviewed field shows who reviewed it instead of its score, and stops counting towards the upload's confidence. Edits are validated like model output, the model's original output is kept, and two people saving at once can't overwrite each other: the second is told and shown the first's version. Exports use the edited data.
+Any field can be corrected in place in the detail panel: the product name, brand, net weight (amount and unit), allergens, and ingredients (name and percentage, add or remove rows). A field that scored under 85 can also be marked as checked. A reviewed field shows who reviewed it instead of its score, and stops counting towards the upload's confidence. Edits are validated like model output, the model's original output is kept, and two people saving at once can't overwrite each other: the second is told, keeps their draft, and chooses whether it still applies. Exports use the edited data.
 
 ### Monitoring
 
 Both pages are for admins only.
 
 - **System status page** (`/status` in the app, from `GET /api/ops`): uploads waiting, retrying and processing; whether the worker is running; health checks; the last 24 hours; and failures by reason.
-- **Activity log** (`/logs` in the app, from `GET /api/logs`): every step of every upload (created, queued, each extraction attempt, retries, failures and why), plus rate-limit pauses and process starts. Narrow it to any mix of event types (with shortcuts for warnings and errors) or to one upload, and it updates live. Kept for 30 days.
-- **`GET /api/health`** on the API (database, queue) and on the worker (plus its job loop) answers 200 or 503. Railway uses it on deploy.
+- **Activity log** (`/logs` in the app, from `GET /api/logs`): every step of every upload (created, queued, each extraction attempt, retries, failures and why), plus rate-limit pauses and process starts. Narrow it to any mix of event types (with shortcuts for warnings and errors), or to one upload with `?upload=<id>` in the address, and it updates live. Kept for 30 days.
+- **`GET /api/health`** on the API (database, queue) and on the worker (plus its job loop) answers 200 or 503, naming which check failed but not the error's details (the status page shows those). Railway uses it on deploy.
 
 ## Running locally
 
@@ -89,7 +98,7 @@ cp server/.env.example server/.env # then fill in the three blanks:
                                    #   SUPABASE_PUBLISHABLE_KEY ← PUBLISHABLE_KEY, same place
                                    #   OPENAI_API_KEY           ← your key
 supabase migration up              # only if the database was already running: applies new migrations
-npm run create-user -w server -- --email you@example.com --password '…' --role admin
+npm run create-user -w server -- --email you@example.com --role admin
 npm run dev                        # API :3000, worker, and web on http://localhost:5173
 ```
 
@@ -122,22 +131,26 @@ The LLM is never called from tests. The worker depends on a `LabelExtractor` int
 ## Project structure
 
 ```
-shared/          Types, Zod schemas and rules used by all three: file rules, upload lifecycle, extraction
-                 schema, HTTP contract
+shared/          Types and rules used by all three: file rules, upload lifecycle, label fields, confidence
+                 bands and checks, units, roles, the event catalogue, the HTTP contract. Its Zod schemas
+                 (extraction.ts, requests.ts) are only loaded by the server; the web build fails if
+                 Zod gets bundled
 server/
   src/api/       HTTP API process (Fastify): routes that turn use-case outcomes into responses, errors,
                  the sign-in check and the admin-only guard
   src/auth/      Who a request is from: access-token check and the members table (roles)
-  src/worker/    Worker process: the extraction job and a handler per queue
+  src/worker/    Worker process: the extraction job, a handler per queue, and once-a-minute
+                 housekeeping (the worker heartbeat and pruning the activity log)
   src/extraction/ LLM integration: interface, errors, retry policy, OpenAI implementation and its
                  error mapping, prompt, shared rate limiter
   src/uploads/   The uploads domain: the table's guarded transitions, the use cases (intake, finalise,
-                 retry), its queues, exports and response mapping
+                 edit, retry, detail), its queues, exports and response mapping
   src/logs/      The activity log: the events table, the catalogue of events (wording in one place)
   src/ops/       Health checks, the worker heartbeat and the status page's data
   src/infra/     Config, database, queue connection, storage, stdout logging, file-type sniffing, and the
                  live change feed (Postgres NOTIFY → server-sent events)
-  scripts/       One-off data changes, committed so they're reviewable and re-runnable
+  scripts/       create-user.ts (accounts and roles), and one-off data changes, committed so they're
+                 reviewable and re-runnable
   test/          Unit tests (with in-memory fakes) and the integration test
 web/src/
   app/           Router, app shell (sidebar and top bar), 404 page
@@ -156,7 +169,8 @@ supabase/        Local config and the SQL migrations
 ## API
 
 Every route needs `Authorization: Bearer <access token>` from Supabase Auth, except `/api/health` and
-`/api/config`. Without it: 401. Signed in but not a member: 403.
+`/api/config`. Without it: 401. Signed in but not a member: 403. If Supabase Auth can't be reached to
+check the token: 503 `AUTH_UNAVAILABLE`, so an Auth outage doesn't sign everyone out.
 
 | Method | Path | |
 |---|---|---|
@@ -169,7 +183,7 @@ Every route needs `Authorization: Bearer <access token>` from Supabase Auth, exc
 | `GET` | `/api/uploads/:id` | One upload with its extracted data and a preview URL |
 | `POST` | `/api/uploads/:id/retry` | Run extraction again, for failures that could succeed and results that can't be read |
 | `PATCH` | `/api/uploads/:id/result` | Correct fields (`changes`) or confirm them (`checked`), made against `revision`. 422 for an invalid value, 409 if someone saved since |
-| `GET` | `/api/events` | Server-sent events announcing upload changes and new activity-log events |
+| `GET` | `/api/events` | Server-sent events announcing upload changes and new activity-log events. Ends when the access token runs out (or after 15 minutes), and the browser reconnects with its current token |
 | `GET` | `/api/logs?type=&type=&upload=&cursor=&limit=` | Admins only. One page of the activity log, newest first, with `nextCursor`. One `type` per type of event wanted; none means every type |
 | `GET` | `/api/health` | Public. Health checks: 200 or 503 |
 | `GET` | `/api/ops` | Admins only. Everything on the System status page |

@@ -43,6 +43,17 @@ export function healthStatusCode(report: HealthReport): 200 | 503 {
   return report.status === 'ok' ? 200 : 503;
 }
 
+/**
+ * The report for anyone who asks (the public GET /api/health): which checks failed, but not the
+ * error text, which can name hosts or internals. Admins see it in full on the status page.
+ */
+export function publicHealthReport(report: HealthReport): HealthReport {
+  return {
+    status: report.status,
+    checks: Object.fromEntries(Object.entries(report.checks).map(([name, { status, latencyMs }]) => [name, { status, latencyMs }])),
+  };
+}
+
 /** Postgres answers a query. */
 export function databaseCheck(sql: postgres.Sql): HealthCheck {
   return { name: 'database', run: async () => void (await sql`select 1`) };

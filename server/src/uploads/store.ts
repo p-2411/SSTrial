@@ -1,19 +1,18 @@
 import type postgres from 'postgres';
-import type {
-  LabelField,
-  ExtractionConfidence,
-  FieldReviewKind,
-  LabelExtraction,
-  SupportedMimeType,
-  UploadErrorCode,
-  UploadStatus,
-} from '@label-extractor/shared';
 import {
-  LABEL_FIELDS,
   extractionConfidenceSchema,
+  isFieldReviewKind,
+  LABEL_FIELDS,
   labelExtractionSchema,
   storedErrorCode,
   UPLOAD_TRANSITIONS,
+  type ExtractionConfidence,
+  type FieldReviewKind,
+  type LabelExtraction,
+  type LabelField,
+  type SupportedMimeType,
+  type UploadErrorCode,
+  type UploadStatus,
   type UploadTransition,
 } from '@label-extractor/shared';
 import type { UploadJobs } from './jobs.ts';
@@ -45,10 +44,16 @@ export interface UploadRecord {
   status: UploadStatus;
   attempts: number;
   error: UploadFailure | null;
+  /** The data people see: the model's output, with any corrections. */
   result: LabelExtraction | null;
   /** The row has a result, but it no longer matches the extraction schema. */
   resultUnreadable: boolean;
-  /** How sure the extraction is of each field; null if it wasn't scored. */
+  /** The model's own output, kept when someone first edits `result`; null until then. */
+  originalResult: LabelExtraction | null;
+  /**
+   * The model's own score for each field, as it gave them; null if it wasn't scored. Checks against
+   * the data (applyConfidenceChecks) are applied when read, so edits are taken into account.
+   */
   confidence: ExtractionConfidence | null;
   /** Who has edited or checked which fields (see uploads/edit.ts). */
   fieldReviews: StoredFieldReviews;
@@ -155,7 +160,6 @@ export interface UploadAttempts {
   failAbandoned(id: string, code: UploadErrorCode): Promise<UploadRecord | null>;
 }
 
-/** The uploads table. Each consumer depends on the role it needs. */
 /** People correcting and confirming a completed upload's data. */
 export interface UploadReviews {
   /**
@@ -166,6 +170,7 @@ export interface UploadReviews {
   saveReview(id: string, revision: number, result: LabelExtraction, fieldReviews: StoredFieldReviews): Promise<UploadRecord | null>;
 }
 
+/** The uploads table. Each consumer depends on the role it needs. */
 export type UploadStore = UploadQueries & UploadIntake & UploadAttempts & UploadReviews;
 
 export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadStore {
@@ -280,7 +285,9 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
         const record = await oneRecord(tx`
           update uploads
           set status = ${statusAfter('rerun')}, attempts = 0, error_code = null, result = null, confidence = null,
-              original_result = null, field_reviews = '{}'::jsonb, result_revision = 0,
+              original_result = null, field_reviews = '{}'::jsonb,
+              -- On, never back: an editor still open on the old result must not match the new one.
+              result_revision = result_revision + 1,
               completed_at = null, claim_token = null
           where id = ${id} and status = ${from} and ${allowedFrom('rerun')}
           returning *`);
@@ -300,11 +307,12 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
     saveReview(id, revision, result, fieldReviews) {
       return oneRecord(sql`
         update uploads
-        set original_result = coalesce(original_result, result),
+        set status = ${statusAfter('review')},
+            original_result = coalesce(original_result, result),
             result = ${sql.json(result as postgres.JSONValue)},
             field_reviews = ${sql.json(toStoredReviews(fieldReviews))},
             result_revision = result_revision + 1
-        where id = ${id} and status = ${'completed' satisfies UploadStatus} and result_revision = ${revision}
+        where id = ${id} and ${allowedFrom('review')} and result_revision = ${revision}
         returning *`);
     },
 
@@ -356,6 +364,7 @@ function toRecord(row: postgres.Row): UploadRecord {
     attempts: row.attempts,
     error: row.error_code ? { code: storedErrorCode(row.error_code) } : null,
     ...readStoredResult(row.result),
+    originalResult: readStoredResult(row.original_result).result,
     confidence: readStoredConfidence(row.confidence),
     fieldReviews: readStoredReviews(row.field_reviews),
     resultRevision: row.result_revision ?? 0,
@@ -397,7 +406,7 @@ function readStoredReviews(value: unknown): StoredFieldReviews {
   for (const field of LABEL_FIELDS) {
     const review = (value as Record<string, unknown>)[field] as { kind?: unknown; by?: unknown; at?: unknown } | undefined;
     const at = typeof review?.at === 'string' ? new Date(review.at) : null;
-    if ((review?.kind === 'edited' || review?.kind === 'checked') && typeof review.by === 'string' && at && !Number.isNaN(at.getTime())) {
+    if (isFieldReviewKind(review?.kind) && typeof review.by === 'string' && at && !Number.isNaN(at.getTime())) {
       reviews[field] = { kind: review.kind, by: review.by, at };
     }
   }

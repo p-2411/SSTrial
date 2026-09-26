@@ -1,13 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp, type App } from '../../src/api/app.ts';
-import { createAuthenticator } from '../../src/auth/authenticator.ts';
-import { AuthUnavailableError } from '../../src/auth/supabase-tokens.ts';
+import { AuthUnavailableError, createAuthenticator } from '../../src/auth/authenticator.ts';
 import { ADMIN, MEMBER, TEST_PUBLIC_CONFIG, testAppDeps } from '../fakes.ts';
 
 // The real header parsing and member check; tokens are plain strings mapped to users.
+const USERS_BY_TOKEN: Record<string, string> = { 'admin-token': ADMIN.id, 'member-token': MEMBER.id, 'stranger-token': 'user-stranger' };
 const authenticator = createAuthenticator({
-  verifyAccessToken: async (token) =>
-    ({ 'admin-token': ADMIN.id, 'member-token': MEMBER.id, 'stranger-token': 'user-stranger' })[token] ?? null,
+  verifyAccessToken: async (token) => (USERS_BY_TOKEN[token] ? { userId: USERS_BY_TOKEN[token], expiresAt: null } : null),
   members: { find: async (id) => [ADMIN, MEMBER].find((m) => m.id === id) ?? null },
 });
 

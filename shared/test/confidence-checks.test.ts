@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import type { ExtractionConfidence, LabelExtraction } from '@label-extractor/shared';
-import { applyConfidenceChecks } from '../../src/extraction/confidence-checks.ts';
-import { SAMPLE_EXTRACTION } from '../fakes.ts';
+import { applyConfidenceChecks, type ExtractionConfidence } from '../src/confidence.ts';
+import type { LabelExtraction } from '../src/extraction.ts';
+
+const SAMPLE_EXTRACTION: LabelExtraction = {
+  productName: 'Maple Pecan Crunch',
+  brand: 'Harvest & Hearth',
+  ingredients: [
+    { name: 'Rolled oats', percent: 48, subIngredients: [], allergens: ['oats'] },
+    { name: 'Pecans', percent: 10, subIngredients: [], allergens: ['pecans'] },
+    { name: 'Puffed rice', percent: null, subIngredients: ['rice', 'salt'], allergens: [] },
+  ],
+  allergens: ['oats', 'pecans'],
+  netWeight: { value: 500, unit: 'g', text: 'Net Wt 500 g' },
+};
 
 /** The model is sure of everything, so any lowered score comes from a check. */
 const SURE: ExtractionConfidence = {
@@ -49,6 +60,15 @@ describe('applyConfidenceChecks', () => {
       score: 60,
       reasons: ['The percentages add up to 115%.'],
     });
+  });
+
+  it('reads a thousands separator: 1,000 g is a thousand grams', () => {
+    expect(check({ netWeight: { value: 1000, unit: 'g', text: 'Net Wt 2.2 lb (1,000 g)' } }).netWeight).toEqual(SURE.netWeight);
+  });
+
+  it('gives the same answer when applied again (it runs on every read)', () => {
+    const once = check({ allergens: ['oats', 'pecans', 'milk'] });
+    expect(applyConfidenceChecks({ ...SAMPLE_EXTRACTION, allergens: ['oats', 'pecans', 'milk'] }, once)).toEqual(once);
   });
 
   it('keeps a lower score from the model, adding the check reason to the model reason', () => {

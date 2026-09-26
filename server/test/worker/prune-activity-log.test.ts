@@ -16,7 +16,7 @@ describe('pruneActivityLog', () => {
     expect(events.events.map((event) => event.message)).toEqual(['recent']);
   });
 
-  it('reports a failure instead of throwing, so the monitor keeps running', async () => {
+  it('reports a failure instead of throwing, so the housekeeping keeps running', async () => {
     const events = new InMemoryEventStore();
     events.pruneOlderThan = async () => {
       throw new Error('connection lost');

@@ -9,6 +9,8 @@ export interface EventRoutesDeps {
 
 /** A comment line every 25 seconds keeps idle connections open through proxies and load balancers. */
 const HEARTBEAT_MS = 25_000;
+/** A stream is ended, so the browser reconnects and its sign-in is checked again, at least this often. */
+const REAUTHORISE_MS = 15 * 60_000;
 
 /**
  * GET /api/events (LIVE_EVENTS_PATH) — server-sent events announcing changes, so the UI refreshes
@@ -17,6 +19,8 @@ const HEARTBEAT_MS = 25_000;
  *   event: upload   data: {"type":"upload","id":"…","status":"completed"}
  *   event: log      data: {"type":"log"}        (new activity-log events: refetch the log)
  *   event: resync   data: {"type":"resync"}     (the server may have missed changes: refetch all)
+ *
+ * Like every /api route it needs a signed-in member (the browser sends its token in a header).
  */
 export async function eventRoutes(app: FastifyInstance, { changes }: EventRoutesDeps) {
   const open = new Set<ServerResponse>();
@@ -44,9 +48,15 @@ export async function eventRoutes(app: FastifyInstance, { changes }: EventRoutes
       response.write(`event: ${change.type}\ndata: ${JSON.stringify(change)}\n\n`);
     });
     const heartbeat = setInterval(() => response.write(': keep-alive\n\n'), HEARTBEAT_MS);
+    // The sign-in was checked when the stream opened. End it before the token runs out (or after
+    // REAUTHORISE_MS, whichever is sooner): the browser reconnects with its current token, which is
+    // checked again, so an expired sign-in or removed access doesn't keep receiving changes.
+    const untilExpiry = request.signedInUntil ? request.signedInUntil.getTime() - Date.now() : Infinity;
+    const reauthorise = setTimeout(() => response.end(), Math.max(0, Math.min(REAUTHORISE_MS, untilExpiry)));
 
     request.raw.on('close', () => {
       clearInterval(heartbeat);
+      clearTimeout(reauthorise);
       unsubscribe();
       open.delete(response);
     });

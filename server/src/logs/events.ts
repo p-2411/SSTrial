@@ -1,5 +1,6 @@
 import {
   FIELD_LABELS,
+  formatList,
   formatBytes,
   SUPPORTED_FILE_TYPES,
   SUPPORTED_TYPES_LABEL,
@@ -29,10 +30,7 @@ const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
 const attemptOf = (attempt: number) => `attempt ${attempt} of ${RETRY_POLICY.maxAttempts}`;
 const fileTypeLabel = (mimeType: SupportedMimeType) => SUPPORTED_FILE_TYPES[mimeType].label;
 /** ['brand', 'netWeight'] → "brand and net weight". */
-const fieldList = (fields: LabelField[]) => {
-  const names = fields.map((field) => FIELD_LABELS[field].toLowerCase());
-  return names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
-};
+const fieldList = (fields: LabelField[]) => formatList(fields.map((field) => FIELD_LABELS[field].toLowerCase()), 'and');
 
 export const logEvents = {
   // ---- The API, as an upload arrives -------------------------------------------------------

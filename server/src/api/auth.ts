@@ -7,6 +7,8 @@ declare module 'fastify' {
   interface FastifyRequest {
     /** The signed-in member. Set on every /api route except the public ones. */
     member: CurrentMember | null;
+    /** When the request's access token runs out, if it says; for anything outliving the request. */
+    signedInUntil: Date | null;
   }
 }
 
@@ -33,6 +35,7 @@ export function requireSignIn(authenticator: Authenticator) {
       throw new ApiError(403, 'FORBIDDEN', "Your account doesn't have access to this workspace.");
     }
     request.member = result.member;
+    request.signedInUntil = result.expiresAt;
   };
 }
 

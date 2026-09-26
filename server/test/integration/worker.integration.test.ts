@@ -447,6 +447,17 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       expect(latest!.occurredAt).toBeInstanceOf(Date);
     });
 
+    it("leaves out rows of a type this version doesn't know, without shortening pages", async () => {
+      const uploadId = testUploadId();
+      await events.record({ type: 'extraction.started', uploadId, message: 'known' });
+      // e.g. an alert event, from before alerts were removed
+      await sql`insert into events (source, level, type, upload_id, message) values ('worker', 'warn', 'alert.opened', ${uploadId}, 'gone')`;
+      await events.record({ type: 'extraction.completed', uploadId, message: 'also known' });
+
+      const page = await events.list({ types: [], uploadId, limit: 2 });
+      expect(page.map((event) => event.message)).toEqual(['also known', 'known']);
+    });
+
     it('pages with a keyset cursor, without gaps or repeats', async () => {
       const uploadId = testUploadId();
       for (let i = 1; i <= 7; i++) await events.record({ type: 'extraction.started', uploadId, message: `${i}` });

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { zodTextFormat } from 'openai/helpers/zod';
-import { CONFIDENT_SCORE, DOUBTFUL_SCORE, NET_QUANTITY_UNITS } from '@label-extractor/shared';
+import { CONFIDENT_SCORE, DOUBTFUL_SCORE, NET_QUANTITY_UNITS, perLabelField } from '@label-extractor/shared';
 
 /**
  * What we send the model: instructions plus a JSON Schema it must follow ("structured outputs").
@@ -30,14 +30,19 @@ Give a short reason for any score below ${CONFIDENT_SCORE}, naming what made it 
 
 export const EXTRACTION_USER_PROMPT = 'Extract the product information from this label.';
 
-/** How sure the model is of one field. Range and rounding are enforced when parsing, not here. */
-const fieldConfidence = z.object({
+/**
+ * How sure the model is of each field. The extractor parses the answer with this same schema
+ * (leniently: see openai-extractor.ts); range and rounding are enforced there, not here.
+ */
+export const MODEL_CONFIDENCE_SCHEMA = perLabelField(
+  z.object({
   score: z.number().int().describe('0–100: how sure you are that this field matches the label.'),
   reason: z
     .string()
     .nullable()
     .describe(`For a score below ${CONFIDENT_SCORE}: what made it uncertain, e.g. "Partly hidden by a fold". Otherwise null.`),
-});
+  }),
+);
 
 const labelWireSchema = z.object({
   productName: z
@@ -92,15 +97,7 @@ const labelWireSchema = z.object({
     .describe(
       'Net weight or volume. When several units are printed, use the metric one for value/unit. null if not shown.',
     ),
-  confidence: z
-    .object({
-      productName: fieldConfidence,
-      brand: fieldConfidence,
-      netWeight: fieldConfidence,
-      allergens: fieldConfidence,
-      ingredients: fieldConfidence,
-    })
-    .describe('How sure you are of each field above (see the confidence rules).'),
+  confidence: MODEL_CONFIDENCE_SCHEMA.describe('How sure you are of each field above (see the confidence rules).'),
 });
 
 export const LABEL_RESPONSE_FORMAT = zodTextFormat(labelWireSchema, 'product_label');

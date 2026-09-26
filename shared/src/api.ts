@@ -29,7 +29,7 @@ export interface UploadCountsResponse {
   counts: Record<UploadFilter, number>;
 }
 
-/** GET /api/uploads/:id, POST /api/uploads/:id/complete, POST /api/uploads/:id/retry */
+/** GET /api/uploads/:id, POST …/complete, POST …/retry, PATCH …/result (RESULT_EDIT_PATH) */
 export interface UploadResponse {
   upload: UploadDetail;
 }

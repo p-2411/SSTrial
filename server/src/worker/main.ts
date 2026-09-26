@@ -15,11 +15,11 @@ import { startQueue } from '../infra/queue.ts';
 import { createSupabaseStorage } from '../infra/storage.ts';
 import { logEvents } from '../logs/events.ts';
 import { createEventStore } from '../logs/store.ts';
-import { databaseCheck, healthStatusCode, queueCheck, runHealthChecks, workerLoopCheck } from '../ops/health.ts';
+import { databaseCheck, healthStatusCode, publicHealthReport, queueCheck, runHealthChecks, workerLoopCheck } from '../ops/health.ts';
 import { createOpsStore } from '../ops/store.ts';
 import { createUploadJobs, createUploadQueues } from '../uploads/jobs.ts';
 import { createUploadStore } from '../uploads/store.ts';
-import { startExtractionWorker, startFinaliseWorker, startMonitor } from './worker.ts';
+import { startExtractionWorker, startFinaliseWorker, startHousekeeping } from './worker.ts';
 
 const config = loadWorkerConfig();
 const logger = createLogger({ name: 'worker', level: config.LOG_LEVEL, pretty: config.NODE_ENV === 'development' });
@@ -50,7 +50,7 @@ await startExtractionWorker({
   }),
 });
 await startFinaliseWorker({ boss, logger, uploads, storage, events });
-await startMonitor({ boss, logger, events, ops: createOpsStore(sql) });
+await startHousekeeping({ boss, logger, events, ops: createOpsStore(sql) });
 await events.record(logEvents.processStarted('Worker', { concurrency: config.WORKER_CONCURRENCY }));
 
 // The worker's only HTTP endpoint: GET /api/health, so the host can tell whether it's working.
@@ -61,7 +61,7 @@ const health = createServer(async (request, response) => {
   }
   const report = await runHealthChecks([databaseCheck(sql), queueCheck(boss), workerLoopCheck(boss)]);
   response.writeHead(healthStatusCode(report), { 'content-type': 'application/json' });
-  response.end(JSON.stringify(report));
+  response.end(JSON.stringify(publicHealthReport(report)));
 });
 health.listen(config.PORT, config.HOST, () => logger.info({ port: config.PORT }, 'Worker health check listening'));
 

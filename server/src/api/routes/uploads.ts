@@ -1,4 +1,4 @@
-import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import {
   createUploadRequestSchema,
@@ -18,7 +18,8 @@ import type { EventLog } from '../../logs/store.ts';
 import { editResult } from '../../uploads/edit.ts';
 import { finaliseUpload } from '../../uploads/finalise.ts';
 import { requestUpload } from '../../uploads/intake.ts';
-import { peopleIn, toUploadCounts, toUploadDetail, toUploadSummary } from '../../uploads/presenter.ts';
+import { loadUploadDetail } from '../../uploads/detail.ts';
+import { toUploadCounts, toUploadSummary } from '../../uploads/presenter.ts';
 import { retryUpload } from '../../uploads/retry.ts';
 import type { UploadIntake, UploadQueries, UploadRecord, UploadReviews } from '../../uploads/store.ts';
 import { ApiError, notFound } from '../errors.ts';
@@ -29,17 +30,14 @@ export interface UploadRoutesDeps {
   /** The use cases record what they did to the activity log. */
   events: EventLog;
   /** To name who uploaded each file, and who reviewed its fields. */
-  members: Pick<MemberStore, 'emailOf'>;
+  members: Pick<MemberStore, 'emailsOf'>;
 }
-
-/** How long preview links in the detail view stay valid. */
-const PREVIEW_URL_TTL_SECONDS = 10 * 60;
 
 const idParams = z.object({ id: z.uuid() });
 
 /**
  * Upload endpoints: HTTP in, HTTP out. What each step does lives in uploads/ (intake, finalise,
- * retry); these handlers parse the request and turn the outcome into a response. The upload flow is
+ * edit, retry, detail); these handlers parse the request and turn the outcome into a response. The upload flow is
  * three requests from the browser:
  *
  *   1. POST /api/uploads              → validate metadata, create row, return a signed upload URL
@@ -54,21 +52,8 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
     return parsed.data.id;
   }
 
-  /** Detail response, with a short-lived preview link. A storage hiccup shouldn't hide the data. */
-  async function detailResponse(upload: UploadRecord, log: FastifyBaseLogger): Promise<UploadResponse> {
-    if (upload.resultUnreadable) {
-      log.warn({ uploadId: upload.id }, 'Stored result no longer matches the extraction schema');
-    }
-    let fileUrl: string | null = null;
-    if (upload.status !== 'uploading') {
-      fileUrl = await storage.createDownloadUrl(upload.storagePath, PREVIEW_URL_TTL_SECONDS).catch((err: unknown) => {
-        log.warn({ err, uploadId: upload.id }, 'Could not create preview URL');
-        return null;
-      });
-    }
-    const people = peopleIn(upload);
-    const emails = new Map(await Promise.all(people.map(async (id) => [id, await members.emailOf(id)] as const)));
-    return { upload: toUploadDetail(upload, fileUrl, emails) };
+  async function detailResponse(upload: UploadRecord, request: FastifyRequest): Promise<UploadResponse> {
+    return { upload: await loadUploadDetail({ storage, members, log: request.log }, upload) };
   }
 
   // 1. Ask to upload a file ------------------------------------------------------------------
@@ -97,7 +82,7 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
     switch (result.outcome) {
       case 'queued':
       case 'already-finalised': // idempotent: a repeated confirmation just returns the state
-        return detailResponse(result.upload, request.log);
+        return detailResponse(result.upload, request);
       case 'not-uploaded':
         // Left as it is: the browser may retry the upload, and the finalise job settles it if not.
         throw new ApiError(409, 'FILE_NOT_UPLOADED', "We didn't receive the file. Please try uploading it again.");
@@ -133,7 +118,7 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
   app.get('/api/uploads/:id', async (request): Promise<UploadResponse> => {
     const upload = await uploads.findById(uploadId(request.params));
     if (!upload) throw notFound();
-    return detailResponse(upload, request.log);
+    return detailResponse(upload, request);
   });
 
   // People correcting or confirming the extracted data ----------------------------------------
@@ -146,11 +131,11 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
 
     switch (result.outcome) {
       case 'saved':
-        return detailResponse(result.upload, request.log);
+        return detailResponse(result.upload, request);
       case 'invalid':
         throw new ApiError(422, 'INVALID_EDIT', result.message);
       case 'conflict':
-        throw new ApiError(409, 'EDIT_CONFLICT', 'Someone else just changed this upload. Showing their version; make your change again if it still applies.');
+        throw new ApiError(409, 'EDIT_CONFLICT', 'Someone else changed this upload since you opened it.');
       case 'not-editable':
         throw new ApiError(409, 'NOT_EDITABLE', 'Only completed uploads with readable data can be edited.');
       case 'not-found':
@@ -164,7 +149,7 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
 
     switch (result.outcome) {
       case 'requeued':
-        return detailResponse(result.upload, request.log);
+        return detailResponse(result.upload, request);
       case 'not-retryable':
         throw new ApiError(
           409,

@@ -53,11 +53,11 @@ describe('editResult', () => {
     expect(uploads.get(ID).resultRevision).toBe(0);
   });
 
-  it('refuses an edit made against an older revision, and returns the latest', async () => {
+  it('refuses an edit made against an older revision, and keeps the first', async () => {
     await edit({ revision: 0, changes: { brand: 'First' } });
 
-    const outcome = await edit({ revision: 0, changes: { brand: 'Second' } });
-    expect(outcome).toMatchObject({ outcome: 'conflict', upload: { result: { brand: 'First' }, resultRevision: 1 } });
+    await expect(edit({ revision: 0, changes: { brand: 'Second' } })).resolves.toEqual({ outcome: 'conflict' });
+    expect(uploads.get(ID)).toMatchObject({ result: { brand: 'First' }, resultRevision: 1 });
   });
 
   it('only edits completed uploads whose result can be read', async () => {

@@ -1,14 +1,7 @@
 import { createClient, isAuthApiError } from '@supabase/supabase-js';
-import type { VerifyAccessToken } from './authenticator.ts';
+import { AuthUnavailableError, type VerifiedToken, type VerifyAccessToken } from './authenticator.ts';
 
-/**
- * A token couldn't be checked right now: Supabase Auth is unreachable, failing or rate-limiting.
- * Not the same as an invalid token: answering "signed out" here would sign every user out during
- * an Auth outage, so the API answers 503 instead and people stay signed in.
- */
-export class AuthUnavailableError extends Error {
-  override name = 'AuthUnavailableError';
-}
+type ClaimsResult = { data: { claims: { sub?: unknown; exp?: unknown } } | null; error: unknown };
 
 /**
  * Verifies Supabase Auth access tokens. `getClaims` checks the signature against the project's
@@ -20,23 +13,27 @@ export function createSupabaseTokenVerifier(options: { url: string; publishableK
     auth: { persistSession: false, autoRefreshToken: false },
   });
   return async (token) => {
-    let result: { data: { claims: { sub?: unknown } } | null; error: unknown };
+    let result: ClaimsResult;
     try {
       result = await client.auth.getClaims(token);
-    } catch (error) {
-      throw new AuthUnavailableError("Couldn't check the access token.", { cause: error });
+    } catch {
+      // Auth problems (outages included) come back as `error`; what's thrown is a token that
+      // couldn't even be decoded. That's an invalid token, not an outage: signed out.
+      return null;
     }
-    return userIdFromClaims(result);
+    return verifiedFromClaims(result);
   };
 }
 
-/** A `getClaims` result as the user ID, null for a token that isn't valid, or AuthUnavailableError. */
-export function userIdFromClaims({ data, error }: { data: { claims: { sub?: unknown } } | null; error: unknown }): string | null {
+/** A `getClaims` result: who the token is for, null if it isn't valid, or AuthUnavailableError. */
+export function verifiedFromClaims({ data, error }: ClaimsResult): VerifiedToken | null {
   if (error) {
     if (isInvalidToken(error)) return null;
     throw new AuthUnavailableError("Couldn't check the access token.", { cause: error });
   }
-  return typeof data?.claims.sub === 'string' ? data.claims.sub : null;
+  const { sub, exp } = data?.claims ?? {};
+  if (typeof sub !== 'string') return null;
+  return { userId: sub, expiresAt: typeof exp === 'number' ? new Date(exp * 1000) : null };
 }
 
 function isInvalidToken(error: unknown): boolean {

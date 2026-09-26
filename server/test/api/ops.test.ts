@@ -13,14 +13,14 @@ describe('GET /api/health', () => {
     expect(response.json()).toEqual(HEALTHY);
   });
 
-  it('answers 503 and names the failing dependency when not', async () => {
+  it("answers 503 and names the failing dependency when not, without the error's details", async () => {
     const unhealthy = { status: 'unhealthy' as const, checks: { database: { status: 'error' as const, latencyMs: 3000, error: 'Timed out after 3000ms' } } };
     app = await buildApp(testAppDeps({ health: async () => unhealthy }));
 
     const response = await app.inject({ method: 'GET', url: '/api/health' });
 
     expect(response.statusCode).toBe(503);
-    expect(response.json().checks.database.error).toBe('Timed out after 3000ms');
+    expect(response.json().checks.database).toEqual({ status: 'error', latencyMs: 3000 });
   });
 });
 

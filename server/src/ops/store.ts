@@ -11,7 +11,7 @@ export interface OpsSnapshot {
 }
 
 export interface OpsStore {
-  /** Records that a worker is running. The monitor calls it every minute. */
+  /** Records that a worker is running. The worker's housekeeping calls it every minute. */
   recordWorkerHeartbeat(): Promise<void>;
   snapshot(): Promise<OpsSnapshot>;
 }

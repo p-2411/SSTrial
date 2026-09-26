@@ -5,8 +5,11 @@ import { isRole, type CurrentMember, type Role } from '@label-extractor/shared';
 export interface MemberStore {
   /** The member with this user ID, or null if they have no access. */
   find(userId: string): Promise<CurrentMember | null>;
-  /** The account's email, whether or not it has access (e.g. to name who uploaded something). */
-  emailOf(userId: string): Promise<string | null>;
+  /**
+   * The emails of these accounts, whether or not they have access (e.g. to name who uploaded
+   * something). An account that no longer exists is left out.
+   */
+  emailsOf(userIds: readonly string[]): Promise<ReadonlyMap<string, string>>;
   /** Gives access with this role, or changes the role of someone who already has access. */
   setRole(userId: string, role: Role): Promise<void>;
 }
@@ -22,9 +25,10 @@ export function createMemberStore(sql: postgres.Sql): MemberStore {
       return { id: row.user_id, email: row.email, role: row.role };
     },
 
-    async emailOf(userId) {
-      const [row] = await sql`select email from auth.users where id = ${userId}`;
-      return row?.email ?? null;
+    async emailsOf(userIds) {
+      if (userIds.length === 0) return new Map();
+      const rows = await sql`select id, email from auth.users where id = any(${[...userIds]}::uuid[])`;
+      return new Map(rows.map((row) => [row.id as string, row.email as string]));
     },
 
     async setRole(userId, role) {

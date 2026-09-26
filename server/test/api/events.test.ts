@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp, type App } from '../../src/api/app.ts';
-import { FakeChangeFeed, testAppDeps } from '../fakes.ts';
+import type { Authenticator } from '../../src/auth/authenticator.ts';
+import { ADMIN, FakeChangeFeed, testAppDeps } from '../fakes.ts';
 
 // Server-sent events need a real socket (inject() waits for a response that never ends), so these
 // tests listen on a random port and read the stream with fetch.
@@ -8,10 +9,14 @@ import { FakeChangeFeed, testAppDeps } from '../fakes.ts';
 let app: App;
 let changes: FakeChangeFeed;
 let baseUrl: string;
+/** When the fake sign-in's token runs out; null means it doesn't say. */
+let expiresAt: Date | null;
 
 beforeEach(async () => {
   changes = new FakeChangeFeed();
-  app = await buildApp(testAppDeps({ changes }));
+  expiresAt = null;
+  const authenticator: Authenticator = { authenticate: async () => ({ outcome: 'signed-in', member: ADMIN, expiresAt }) };
+  app = await buildApp(testAppDeps({ changes, authenticator }));
   baseUrl = await app.listen({ host: '127.0.0.1', port: 0 });
 });
 
@@ -47,6 +52,14 @@ describe('GET /api/events', () => {
 
     expect(await stream.readUntil('completed')).toContain('event: upload\ndata: {"type":"upload","id":"abc","status":"completed"}\n\n');
     stream.close();
+  });
+
+  it('ends the stream when the sign-in runs out, so the browser reconnects with a fresh token', async () => {
+    expiresAt = new Date(Date.now() + 200);
+    const stream = await openStream();
+
+    const received = await stream.readUntil('never sent'); // returns when the server ends the stream
+    expect(received).toContain('retry: 3000');
   });
 
   it('announces new activity-log events', async () => {

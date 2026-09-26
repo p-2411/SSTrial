@@ -1,13 +1,15 @@
 import {
+  canTransition,
   FIELD_LABELS,
+  LABEL_FIELDS,
   labelExtractionSchema,
-  type LabelField,
+  textShowsAmount,
   type CurrentMember,
   type EditResultRequest,
   type LabelExtraction,
+  type LabelField,
   type ResultChanges,
 } from '@label-extractor/shared';
-import { textShowsAmount } from '../extraction/confidence-checks.ts';
 import { logEvents } from '../logs/events.ts';
 import type { EventLog } from '../logs/store.ts';
 import type { StoredFieldReviews, UploadQueries, UploadRecord, UploadReviews } from './store.ts';
@@ -17,7 +19,7 @@ import type { StoredFieldReviews, UploadQueries, UploadRecord, UploadReviews } f
  *
  * Corrections go through the same schema as model output, so edited data is held to the same
  * rules. Each save names the revision it was made against: if someone else saved first, nothing is
- * written and the caller gets the latest version instead (no silently lost edits). Every edited or
+ * written and the caller is told so, to reload and decide (no silently lost edits). Every edited or
  * confirmed field records who reviewed it, which also takes it out of the upload's confidence
  * score: a person has looked at it.
  */
@@ -26,8 +28,8 @@ export type EditOutcome =
   | { outcome: 'saved'; upload: UploadRecord }
   /** A value the extraction schema rejects; `message` says which field and why. */
   | { outcome: 'invalid'; message: string }
-  /** Someone else saved first: here's the upload as it is now. */
-  | { outcome: 'conflict'; upload: UploadRecord }
+  /** Someone else saved first. */
+  | { outcome: 'conflict' }
   /** Not completed, or its saved result can't be read: there's nothing to edit. */
   | { outcome: 'not-editable' }
   | { outcome: 'not-found' };
@@ -46,8 +48,8 @@ export async function editResult(
 ): Promise<EditOutcome> {
   const upload = await deps.uploads.findById(id);
   if (!upload) return { outcome: 'not-found' };
-  if (upload.status !== 'completed' || !upload.result) return { outcome: 'not-editable' };
-  if (upload.resultRevision !== request.revision) return { outcome: 'conflict', upload };
+  if (!canTransition('review', upload.status) || !upload.result) return { outcome: 'not-editable' };
+  if (upload.resultRevision !== request.revision) return { outcome: 'conflict' };
   const current = upload.result;
 
   const changes = request.changes ?? {};
@@ -67,11 +69,8 @@ export async function editResult(
   for (const field of checked) fieldReviews[field] = { kind: 'checked', by: editor.id, at };
 
   const saved = await deps.uploads.saveReview(id, request.revision, edited.length > 0 ? result : current, fieldReviews);
-  if (!saved) {
-    // Someone saved between our read and our write.
-    const latest = await deps.uploads.findById(id);
-    return latest ? { outcome: 'conflict', upload: latest } : { outcome: 'not-found' };
-  }
+  // Someone saved between our read and our write. (Completed uploads are never deleted.)
+  if (!saved) return { outcome: 'conflict' };
   await deps.events.record(
     logEvents.resultEdited(saved, {
       by: editor.email,
@@ -85,8 +84,8 @@ export async function editResult(
 /** The current result with the changes applied, ready to validate. */
 function applyChanges(current: LabelExtraction, changes: ResultChanges): unknown {
   const next: Record<string, unknown> = { ...current };
-  for (const field of ['productName', 'brand', 'allergens', 'ingredients'] as const) {
-    if (field in changes) next[field] = changes[field];
+  for (const field of LABEL_FIELDS) {
+    if (field !== 'netWeight' && field in changes) next[field] = changes[field];
   }
   if ('netWeight' in changes) {
     const amount = changes.netWeight;

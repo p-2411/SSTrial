@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
 import { isEmptyExtraction, type ExtractionConfidence, type LabelExtraction, type UploadErrorCode } from '@label-extractor/shared';
-import { applyConfidenceChecks } from '../extraction/confidence-checks.ts';
 import { ExtractionError } from '../extraction/errors.ts';
 import { decideAfterFailure } from '../extraction/retry-policy.ts';
 import type { LabelExtractor } from '../extraction/extractor.ts';
@@ -89,7 +88,7 @@ interface Attempt {
 /**
  * The label data for this upload, and how sure we are of it: an identical file's if we already
  * have one — no need to ask the LLM the same question twice — otherwise a fresh, non-empty
- * extraction, its scores capped by the confidence checks.
+ * extraction. Scores are stored as the model gave them; the checks are applied when they're read.
  */
 async function extractOrReuse(
   deps: ProcessUploadDeps,
@@ -103,7 +102,9 @@ async function extractOrReuse(
   const contentSha256 = sha256Hex(bytes);
   if (contentSha256 !== upload.contentSha256) await deps.uploads.recordContentHash(upload.id, contentSha256);
   const twin = await deps.uploads.findCompletedTwin(contentSha256, upload.id);
-  if (twin?.result) return { result: twin.result, confidence: twin.confidence, reusedFrom: twin.id };
+  // Reuse what the model said about the twin, not a person's corrections to it: this stands in for
+  // asking the model again, and the corrections (with who made them) belong to the other upload.
+  if (twin?.result) return { result: twin.originalResult ?? twin.result, confidence: twin.confidence, reusedFrom: twin.id };
 
   await deps.rateLimiter.acquire(signal);
   const started = performance.now();
@@ -115,11 +116,7 @@ async function extractOrReuse(
   // A well-formed answer that contains nothing means this isn't a readable label (a photo of a
   // cat, a blank page). Asking again won't change that, so it's a permanent failure.
   if (isEmptyExtraction(result)) throw new ExtractionError('NO_LABEL_DATA', 'Every extracted field was empty');
-  return {
-    result,
-    confidence: confidence && applyConfidenceChecks(result, confidence),
-    durationMs: Math.round(performance.now() - started),
-  };
+  return { result, confidence, durationMs: Math.round(performance.now() - started) };
 }
 
 /** Carries out what the retry policy decides for a failed attempt (see decideAfterFailure). */

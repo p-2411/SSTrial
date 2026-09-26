@@ -298,6 +298,18 @@ describe('GET /api/uploads/:id — detail', () => {
     expect(summary.confidence).toBe(58);
   });
 
+  it('checks the scores against the data as it is now, so an edit that contradicts it is flagged', async () => {
+    const sure = { score: 95, reasons: [] };
+    const confidence = { productName: sure, brand: sure, netWeight: sure, allergens: sure, ingredients: sure };
+    // Someone removed the only ingredient containing pecans, but pecans is still declared.
+    const result = { ...SAMPLE_EXTRACTION, ingredients: SAMPLE_EXTRACTION.ingredients.filter((i) => i.name !== 'Pecans') };
+    uploads.seed({ id: ID, status: 'completed', result, confidence, fieldReviews: {} });
+
+    const detail = (await app.inject({ method: 'GET', url: `/api/uploads/${ID}` })).json().upload;
+    expect(detail.fieldConfidence.allergens).toEqual({ score: 60, reasons: ['No ingredient contains pecans.'] });
+    expect(detail.confidence).toBe(60);
+  });
+
   it('has no scores for uploads extracted before scoring existed', async () => {
     uploads.seed({ id: ID, status: 'completed', result: SAMPLE_EXTRACTION });
     const detail = (await app.inject({ method: 'GET', url: `/api/uploads/${ID}` })).json().upload;

@@ -62,6 +62,7 @@ export class InMemoryUploadStore implements UploadStore {
       storagePath: `uploads/${overrides.id}.png`,
       contentSha256: null,
       uploadedBy: null,
+      originalResult: null,
       confidence: null,
       fieldReviews: {},
       resultRevision: 0,
@@ -138,15 +139,17 @@ export class InMemoryUploadStore implements UploadStore {
     return row;
   }
   async requeue(id: string, from: 'failed' | 'completed') {
-    if (this.rows.get(id)?.status !== from) return null;
+    const current = this.rows.get(id);
+    if (current?.status !== from) return null;
     const row = this.transition(id, 'rerun', {
       attempts: 0,
       error: null,
       result: null,
       resultUnreadable: false,
+      originalResult: null,
       confidence: null,
       fieldReviews: {},
-      resultRevision: 0,
+      resultRevision: current.resultRevision + 1,
       completedAt: null,
       claimToken: null,
     });
@@ -163,8 +166,15 @@ export class InMemoryUploadStore implements UploadStore {
   }
   async saveReview(id: string, revision: number, result: LabelExtraction, fieldReviews: StoredFieldReviews) {
     const row = this.rows.get(id);
-    if (!row || row.status !== 'completed' || row.resultRevision !== revision) return null;
-    const saved = { ...row, result, fieldReviews, resultRevision: revision + 1, updatedAt: new Date() };
+    if (!row || !canTransition('review', row.status) || row.resultRevision !== revision) return null;
+    const saved = {
+      ...row,
+      originalResult: row.originalResult ?? row.result,
+      result,
+      fieldReviews,
+      resultRevision: revision + 1,
+      updatedAt: new Date(),
+    };
     this.rows.set(id, saved);
     return saved;
   }
@@ -324,7 +334,7 @@ export const MEMBER: CurrentMember = { id: '00000000-0000-4000-8000-00000000be01
 export const TEST_PUBLIC_CONFIG: PublicConfig = { supabaseUrl: 'http://supabase.test', supabasePublishableKey: 'sb_publishable_test' };
 
 /** Every request is the admin, so tests about other things don't have to sign in. */
-const signedInAsAdmin: Authenticator = { authenticate: async () => ({ outcome: 'signed-in', member: ADMIN }) };
+const signedInAsAdmin: Authenticator = { authenticate: async () => ({ outcome: 'signed-in', member: ADMIN, expiresAt: null }) };
 
 export const HEALTHY: HealthReport = { status: 'ok', checks: { database: { status: 'ok', latencyMs: 1 } } };
 
@@ -347,7 +357,10 @@ export function testAppDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     events: new InMemoryEventStore(),
     logger: silentLogger,
     authenticator: signedInAsAdmin,
-    members: { emailOf: async (id: string) => [ADMIN, MEMBER].find((m) => m.id === id)?.email ?? null },
+    members: {
+      emailsOf: async (ids: readonly string[]) =>
+        new Map([ADMIN, MEMBER].filter((member) => ids.includes(member.id)).map((member) => [member.id, member.email])),
+    },
     publicConfig: TEST_PUBLIC_CONFIG,
     ...overrides,
   };

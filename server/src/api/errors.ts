@@ -1,6 +1,6 @@
 import type { FastifyError, FastifyReply, FastifyRequest } from 'fastify';
 import type { ApiErrorBody, ApiErrorCode } from '@label-extractor/shared';
-import { AuthUnavailableError } from '../auth/supabase-tokens.ts';
+import { AuthUnavailableError } from '../auth/authenticator.ts';
 import { StorageUnavailableError } from '../infra/storage.ts';
 
 /**

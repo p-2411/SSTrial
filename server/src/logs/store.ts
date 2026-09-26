@@ -1,5 +1,5 @@
 import type postgres from 'postgres';
-import { LOG_EVENT_TYPES, type LogEventType, type LogLevel, type LogSource } from '@label-extractor/shared';
+import { LOG_EVENT_TYPE_IDS, LOG_EVENT_TYPES, type LogEventType, type LogLevel, type LogSource } from '@label-extractor/shared';
 import type { Logger } from '../infra/logger.ts';
 
 /**
@@ -34,7 +34,7 @@ export interface LogEventRecord {
   data: Record<string, unknown>;
 }
 
-/** Writing to the activity log, for the use cases, the worker and the monitor. */
+/** Writing to the activity log, for the use cases and the worker. */
 export interface EventLog {
   /** Records an event. Never rejects: a failed write is logged to stdout instead (see above). */
   record(event: NewLogEvent): Promise<void>;
@@ -43,14 +43,15 @@ export interface EventLog {
 /** Reading the activity log, for the API. */
 export interface EventQueries {
   /**
-   * One page of events, newest first, of the given types (every type when `types` is empty).
+   * One page of events, newest first, of the given types (every known type when `types` is empty:
+   * rows of a type this version no longer has, say one since removed, are never returned).
    * `after` is the ID of the last event on the previous page (keyset pagination: stable while new
    * events arrive, and fast at any depth).
    */
   list(options: { types: LogEventType[]; uploadId?: string; limit: number; after?: string }): Promise<LogEventRecord[]>;
 }
 
-/** Keeping the table to a bounded size, for the worker's monitor. */
+/** Keeping the table to a bounded size, for the worker's once-a-minute housekeeping. */
 export interface EventRetention {
   /** Deletes events older than `days`. Returns how many went. */
   pruneOlderThan(days: number): Promise<number>;
@@ -77,7 +78,7 @@ export function createEventStore(sql: postgres.Sql, options: { source: LogSource
       const rows = await sql`
         select * from events
         where true
-          ${types.length > 0 ? sql`and type = any(${types}::text[])` : sql``}
+          and type = any(${types.length > 0 ? types : LOG_EVENT_TYPE_IDS}::text[])
           ${uploadId ? sql`and upload_id = ${uploadId}` : sql``}
           ${after ? sql`and id < ${after}::bigint` : sql``}
         order by id desc
@@ -97,9 +98,9 @@ function toRecord(row: postgres.Row): LogEventRecord {
     id: String(row.id),
     occurredAt: row.occurred_at,
     source: row.source,
-    level: row.level,
-    // Only this module writes the table, always with a LogEventType.
+    // `list` only returns known types, and a type's level is fixed (see LOG_EVENT_TYPES).
     type: row.type,
+    level: LOG_EVENT_TYPES[row.type as LogEventType].level,
     uploadId: row.upload_id ?? null,
     message: row.message,
     data: row.data ?? {},

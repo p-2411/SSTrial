@@ -248,15 +248,21 @@ describe('processUpload — duplicate and stale jobs', () => {
 });
 
 describe('processUpload — identical files', () => {
-  it('stores how sure the extraction is, capped where the data contradicts itself', async () => {
-    // "milk" is declared, but no ingredient contains it.
+  it("stores the model's scores as it gave them (the checks are applied whenever they're read)", async () => {
+    // "milk" is declared, but no ingredient contains it: a check will flag that on read.
     const result = { ...SAMPLE_EXTRACTION, allergens: [...SAMPLE_EXTRACTION.allergens, 'milk'] };
     await run(scriptedExtractor({ result, confidence: SURE }));
 
-    expect(uploads.get(UPLOAD_ID).confidence).toEqual({
-      ...SURE,
-      allergens: { score: 60, reasons: ['No ingredient contains milk.'] },
-    });
+    expect(uploads.get(UPLOAD_ID).confidence).toEqual(SURE);
+  });
+
+  it("reuses what the model said about an identical file, not a person's corrections to it", async () => {
+    const hash = createHash('sha256').update(FILE_BYTES.png).digest('hex');
+    const corrected = { ...SAMPLE_EXTRACTION, brand: 'Corrected by a person' };
+    uploads.seed({ id: 'twin', status: 'completed', contentSha256: hash, result: corrected, originalResult: SAMPLE_EXTRACTION, confidence: SURE });
+
+    await run(scriptedExtractor(timeout()));
+    expect(uploads.get(UPLOAD_ID)).toMatchObject({ status: 'completed', result: SAMPLE_EXTRACTION, confidence: SURE });
   });
 
   it('reuses the scores along with the result of an identical file', async () => {
