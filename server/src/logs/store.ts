@@ -48,7 +48,7 @@ export interface EventQueries {
    * `after` is the ID of the last event on the previous page (keyset pagination: stable while new
    * events arrive, and fast at any depth).
    */
-  list(options: { types: LogEventType[]; uploadId?: string; limit: number; after?: string }): Promise<LogEventRecord[]>;
+  list(options: { types: LogEventType[]; search?: string; uploadId?: string; limit: number; after?: string }): Promise<LogEventRecord[]>;
 }
 
 /** Keeping the table to a bounded size, for the worker's once-a-minute housekeeping. */
@@ -74,11 +74,13 @@ export function createEventStore(sql: postgres.Sql, options: { source: LogSource
       }
     },
 
-    async list({ types, uploadId, limit, after }) {
+    async list({ types, search, uploadId, limit, after }) {
       const rows = await sql`
         select * from events
         where true
           and type = any(${types.length > 0 ? types : LOG_EVENT_TYPE_IDS}::text[])
+          -- A scan, but the table only holds LOG_RETENTION_DAYS of events.
+          ${search ? sql`and message ilike ${`%${escapeLike(search)}%`}` : sql``}
           ${uploadId ? sql`and upload_id = ${uploadId}` : sql``}
           ${after ? sql`and id < ${after}::bigint` : sql``}
         order by id desc
@@ -91,6 +93,11 @@ export function createEventStore(sql: postgres.Sql, options: { source: LogSource
       return result.count;
     },
   };
+}
+
+/** The search as literal text: to `ilike`, `%` and `_` are wildcards, and a backslash escapes them. */
+function escapeLike(text: string): string {
+  return text.replace(/[\\%_]/g, (character) => `\\${character}`);
 }
 
 function toRecord(row: postgres.Row): LogEventRecord {

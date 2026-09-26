@@ -471,6 +471,22 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       expect(latest!.occurredAt).toBeInstanceOf(Date);
     });
 
+    it('finds words anywhere in the message, ignoring case, with % and _ taken literally', async () => {
+      const uploadId = testUploadId();
+      await events.record({ type: 'extraction.started', uploadId, message: 'Reading Oat_Milk.png.' });
+      await events.record({ type: 'extraction.started', uploadId, message: 'Reading oatmilk.png at 100% size.' });
+      await events.record({ type: 'extraction.started', uploadId, message: 'Reading C:\\labels\\rice.pdf.' });
+      const found = async (search: string) =>
+        (await events.list({ types: [], search, uploadId, limit: 10 })).map((event) => event.message);
+
+      expect(await found('OAT')).toEqual(['Reading oatmilk.png at 100% size.', 'Reading Oat_Milk.png.']);
+      expect(await found('oat_milk')).toEqual(['Reading Oat_Milk.png.']);
+      expect(await found('100%')).toEqual(['Reading oatmilk.png at 100% size.']);
+      expect(await found('%')).toEqual(['Reading oatmilk.png at 100% size.']);
+      expect(await found('\\rice')).toEqual(['Reading C:\\labels\\rice.pdf.']);
+      expect(await found('barley')).toEqual([]);
+    });
+
     it("leaves out rows of a type this version doesn't know, without shortening pages", async () => {
       const uploadId = testUploadId();
       await events.record({ type: 'extraction.started', uploadId, message: 'known' });

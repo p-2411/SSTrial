@@ -6,7 +6,7 @@
  * worker starting — written by the API or the worker to the `events` table.
  */
 
-/** GET /api/logs?type=…&type=…&upload=…&cursor=…&limit=… — newest first, one page at a time. */
+/** GET /api/logs?q=…&type=…&type=…&upload=…&cursor=…&limit=… — newest first, one page at a time. */
 export const LOG_EVENTS_PATH = '/api/logs';
 
 export type LogLevel = 'info' | 'warn' | 'error';

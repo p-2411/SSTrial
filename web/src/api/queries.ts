@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { isActiveStatus, type EditResultRequest, type RevertRequest, type UploadDetail, type UploadView } from '@label-extractor/shared';
 import { ApiRequestError } from './client.ts';
 import { isLiveConnected } from './liveConnection.ts';
@@ -178,6 +178,8 @@ export function useLogs(filters: LogFilters) {
     queryFn: ({ pageParam }) => listLogs(filters, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    // A new search or filter keeps the last results up until its own arrive.
+    placeholderData: keepPreviousData,
     refetchInterval: () => (isLiveConnected() ? false : LOG_POLL_INTERVAL_MS),
   });
 }

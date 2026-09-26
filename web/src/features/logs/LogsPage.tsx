@@ -18,8 +18,8 @@ import { NO_LOG_FILTERS, useLogFilters } from './logFilters';
 
 /**
  * Route: /logs — the activity log: what happened to each upload and to the system, newest first,
- * grouped by day. Filtered by type of event and by upload, both in the URL. Live: new events
- * appear as they're written (see useLiveUpdates).
+ * grouped by day. Searchable, and filtered by type of event and by upload, all in the URL. Live:
+ * new events appear as they're written (see useLiveUpdates).
  */
 export function LogsPage() {
   const [filters, setFilters] = useLogFilters();
@@ -29,7 +29,7 @@ export function LogsPage() {
 
   const events = useMemo(() => log.data?.pages.flatMap((page) => page.events), [log.data]);
   const days = useMemo(() => (events ? groupByDay(events, now) : []), [events, now]);
-  const { isPending, isError, error, refetch, isRefetching } = log;
+  const { isPending, isError, error, refetch, isRefetching, isPlaceholderData } = log;
 
   return (
     // A <div>, not <main>: the app shell's SidebarInset is already the page's <main>.
@@ -53,8 +53,14 @@ export function LogsPage() {
 
         {/* Every row has a line beneath it, so each day's heading is ruled above and below. Only the
             very last row goes without: the card's edge, or "Load older events", follows it. */}
+        {/* While a new search or filter loads, the last results stay, faded, rather than blinking out. */}
         {days.map((day) => (
-          <section key={day.key} aria-label={day.label} className="last-of-type:[&_li:last-child]:border-b-0">
+          <section
+            key={day.key}
+            aria-label={day.label}
+            aria-busy={isPlaceholderData || undefined}
+            className={cn('transition-opacity last-of-type:[&_li:last-child]:border-b-0', isPlaceholderData && 'opacity-60')}
+          >
             <h3 className="border-b border-border/70 bg-muted/40 px-5 py-1.5 text-xs font-semibold text-muted-foreground">
               {day.label}
             </h3>
@@ -95,16 +101,28 @@ function fileNameIn(events: LogEvent[] | undefined): string | null {
 }
 
 function EmptyState({ filters, onClearFilters }: { filters: LogFilters; onClearFilters: () => void }) {
-  const isFiltered = filters.types.length > 0 || filters.upload !== null;
-  const justOneUpload = filters.upload !== null && filters.types.length === 0;
+  const isFiltered = filters.search !== '' || filters.types.length > 0 || filters.upload !== null;
+  const justOneUpload = filters.upload !== null && filters.types.length === 0 && filters.search === '';
   return (
     <div className="flex flex-col items-center gap-2 px-6 py-10 text-center">
       <span className="grid size-10 place-items-center rounded-full bg-muted text-muted-foreground">
         <ScrollText className="size-5" aria-hidden />
       </span>
       <p className="font-semibold">
-        {justOneUpload ? 'Nothing recorded for this upload' : isFiltered ? 'No events match these filters' : 'Nothing has happened yet'}
+        {justOneUpload
+          ? 'Nothing recorded for this upload'
+          : filters.search
+            ? `No events mention “${filters.search}”`
+            : isFiltered
+              ? 'No events match these filters'
+              : 'Nothing has happened yet'}
       </p>
+      {filters.search && (
+        <p className="max-w-sm text-sm text-muted-foreground">
+          {filters.types.length > 0 || filters.upload ? 'With these filters, in' : 'In'} the last {LOG_RETENTION_DAYS} days. Try
+          fewer words, or part of a file name.
+        </p>
+      )}
       {justOneUpload && (
         <p className="max-w-sm text-sm text-muted-foreground">
           Events are kept for {LOG_RETENTION_DAYS} days, and uploads from before the activity log existed have none.

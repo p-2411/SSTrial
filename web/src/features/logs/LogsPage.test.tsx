@@ -59,9 +59,14 @@ describe('LogsPage', () => {
     expect(within(rows[0]!).getByText('Error')).toBeInTheDocument();
     expect(within(rows[1]!).getByText('Warning')).toBeInTheDocument();
     expect(within(rows[2]!).queryByText(/Warning|Error/)).not.toBeInTheDocument();
-    expect(within(rows[2]!).getByText('Upload started')).toBeInTheDocument();
-    expect(within(rows[2]!).getByText('API')).toBeInTheDocument();
+    // Written for the business: no event-type label (the message says it) and no process names.
+    expect(within(rows[2]!).queryByText('Upload started')).not.toBeInTheDocument();
+    expect(within(rows[2]!).queryByText('API')).not.toBeInTheDocument();
     expect(within(rows[0]!).getByRole('link', { name: 'View upload' })).toHaveAttribute('href', `/uploads/${UPLOAD}`);
+    // Details first, then View upload to its right.
+    const details = within(rows[0]!).getByRole('button', { name: 'Details' });
+    const viewUpload = within(rows[0]!).getByRole('link', { name: 'View upload' });
+    expect(details.compareDocumentPosition(viewUpload) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("doesn't link to an upload that was deleted", async () => {
@@ -106,6 +111,39 @@ describe('LogsPage', () => {
     );
     await user.keyboard('{Escape}');
     expect(screen.getByRole('button', { name: 'Show 2 types of event' })).toBeInTheDocument();
+  });
+
+  it('searches once typing pauses, keeping the other filters', async () => {
+    const user = userEvent.setup();
+    const requested = stubLogs(
+      { events: [event({ id: '2', message: 'Reading rice.pdf.' }), event({ id: '1', message: 'Reading oat-milk.png.' })], nextCursor: null },
+      { events: [event({ id: '1', message: 'Reading oat-milk.png.' })], nextCursor: null },
+    );
+    renderPage('/logs?type=extraction.started');
+    await screen.findByText('Reading rice.pdf.');
+
+    await user.type(screen.getByRole('searchbox', { name: 'Search the activity log' }), ' oat milk ');
+
+    // One search for the whole phrase, trimmed, not one per letter.
+    await vi.waitFor(() => expect(requested.at(-1)).toBe('/api/logs?q=oat+milk&type=extraction.started'));
+    expect(requested).toHaveLength(2);
+    await vi.waitFor(() => expect(screen.queryByText('Reading rice.pdf.')).not.toBeInTheDocument());
+    expect(screen.getByText('Reading oat-milk.png.')).toBeInTheDocument();
+  });
+
+  it('says when nothing mentions the search, and clears it along with the filters', async () => {
+    const user = userEvent.setup();
+    const requested = stubLogs({ events: [], nextCursor: null });
+    renderPage('/logs?q=barley');
+
+    expect(await screen.findByText('No events mention “barley”')).toBeInTheDocument();
+    expect(screen.getByRole('searchbox', { name: 'Search the activity log' })).toHaveValue('barley');
+    expect(requested[0]).toBe('/api/logs?q=barley');
+
+    await user.click(screen.getByRole('button', { name: 'Show every event' }));
+
+    await vi.waitFor(() => expect(requested.at(-1)).toBe('/api/logs'));
+    expect(screen.getByRole('searchbox', { name: 'Search the activity log' })).toHaveValue('');
   });
 
   it('applies the filters in the URL, naming the upload, and can drop the upload filter', async () => {

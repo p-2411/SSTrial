@@ -58,6 +58,19 @@ describe('GET /api/logs', () => {
     expect(messages(await getLogs(`?upload=${UPLOAD}`))).toEqual(['failed', 'retrying', 'started']);
   });
 
+  it('finds events by words in their message, with the other filters', async () => {
+    events.seed({ type: 'upload.created', uploadId: UPLOAD, message: 'ana@example.com started uploading Oat Milk.png.' });
+    events.seed({ type: 'extraction.failed', uploadId: UPLOAD, message: "Couldn't read Oat Milk.png." });
+    events.seed({ type: 'upload.created', uploadId: OTHER_UPLOAD, message: 'ana@example.com started uploading rice.pdf.' });
+
+    expect(messages(await getLogs('?q=oat%20milk'))).toEqual(["Couldn't read Oat Milk.png.", 'ana@example.com started uploading Oat Milk.png.']);
+    expect(messages(await getLogs('?q=ana@example.com&type=upload.created&upload=' + OTHER_UPLOAD))).toEqual([
+      'ana@example.com started uploading rice.pdf.',
+    ]);
+    // Blank words find everything, rather than nothing.
+    expect(messages(await getLogs('?q=%20%20'))).toHaveLength(3);
+  });
+
   it("records each event at its type's level", async () => {
     events.seed({ type: 'extraction.failed', message: 'failed' });
     events.seed({ type: 'extraction.retry_scheduled', message: 'retrying' });
@@ -85,6 +98,7 @@ describe('GET /api/logs', () => {
     ['a malformed upload ID', '?upload=not-a-uuid'],
     ['a malformed cursor', '?cursor=abc'],
     ['a limit over 200', '?limit=201'],
+    ['a search over 200 characters', `?q=${'a'.repeat(201)}`],
   ])('rejects %s', async (_label, query) => {
     const response = await app.inject({ method: 'GET', url: `${LOG_EVENTS_PATH}${query}` });
     expect(response.statusCode).toBe(400);

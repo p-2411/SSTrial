@@ -7,15 +7,20 @@ import {
 } from '@label-extractor/shared';
 import { apiRequest } from './client.ts';
 
-/** What the activity log is narrowed to: some types of event (none means every type), one upload. */
+/**
+ * What the activity log is narrowed to: words in the events' messages ('' means any), some types
+ * of event (none means every type), one upload.
+ */
 export interface LogFilters {
+  search: string;
   types: LogEventType[];
   upload: string | null;
 }
 
 /** The filters as query parameters, one `type` per type. The Logs page's URL uses the same ones. */
-export function logFilterParams({ types, upload }: LogFilters): URLSearchParams {
+export function logFilterParams({ search, types, upload }: LogFilters): URLSearchParams {
   const params = new URLSearchParams();
+  if (search) params.set('q', search);
   for (const type of types) params.append('type', type);
   if (upload) params.set('upload', upload);
   return params;

@@ -32,8 +32,10 @@ export const listUploadsQuerySchema = z.object({
 
 const logEventType = z.enum(LOG_EVENT_TYPE_IDS as [LogEventType, ...LogEventType[]]);
 
-/** GET /api/logs?type=…&type=…&upload=…&cursor=…&limit=… — newest first, one page at a time. */
+/** GET /api/logs?q=…&type=…&type=…&upload=…&cursor=…&limit=… — newest first, one page at a time. */
 export const listLogsQuerySchema = z.object({
+  /** Words to find in the events' messages, ignoring case. */
+  q: z.string().trim().max(200).optional(),
   /** One `type` parameter per type of event wanted; none means every type. */
   type: z
     .union([logEventType, z.array(logEventType)])

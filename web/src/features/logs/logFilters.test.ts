@@ -20,8 +20,9 @@ describe('the type menu', () => {
 const UPLOAD = '9e1b7c2a-0000-4000-8000-000000000001';
 
 describe('readLogFilters', () => {
-  it('reads the types and the upload from the URL, in the catalogue order', () => {
-    expect(readLogFilters(new URLSearchParams(`type=extraction.failed&type=upload.rejected&upload=${UPLOAD}`))).toEqual({
+  it('reads the search, the types and the upload from the URL, the types in the catalogue order', () => {
+    expect(readLogFilters(new URLSearchParams(`q=+oat+milk+&type=extraction.failed&type=upload.rejected&upload=${UPLOAD}`))).toEqual({
+      search: 'oat milk',
       types: ['upload.rejected', 'extraction.failed'],
       upload: UPLOAD,
     });
@@ -29,8 +30,10 @@ describe('readLogFilters', () => {
 
   it('drops values the server would refuse, and repeats, rather than failing the whole page', () => {
     expect(readLogFilters(new URLSearchParams('type=upload.exploded&type=extraction.failed&type=extraction.failed&upload=not-an-id'))).toEqual({
+      search: '',
       types: ['extraction.failed'],
       upload: null,
     });
+    expect(readLogFilters(new URLSearchParams(`q=${'a'.repeat(201)}`)).search).toHaveLength(200);
   });
 });

@@ -361,9 +361,22 @@ export class InMemoryEventStore implements EventStore {
     this.seed(event);
   }
 
-  async list({ types, uploadId, limit, after }: { types: LogEventType[]; uploadId?: string; limit: number; after?: string }) {
+  async list({
+    types,
+    search,
+    uploadId,
+    limit,
+    after,
+  }: {
+    types: LogEventType[];
+    search?: string;
+    uploadId?: string;
+    limit: number;
+    after?: string;
+  }) {
     return this.events
       .filter((event) => types.length === 0 || types.includes(event.type))
+      .filter((event) => !search || event.message.toLowerCase().includes(search.toLowerCase()))
       .filter((event) => !uploadId || event.uploadId === uploadId)
       .filter((event) => !after || Number(event.id) < Number(after))
       .toSorted((a, b) => Number(b.id) - Number(a.id))

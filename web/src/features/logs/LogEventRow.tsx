@@ -1,6 +1,6 @@
 import { Link } from 'react-router';
 import { ChevronRight } from 'lucide-react';
-import { LOG_EVENT_TYPES, UPLOAD_GONE_EVENT_TYPES, type LogEvent, type LogLevel, type LogSource } from '@label-extractor/shared';
+import { UPLOAD_GONE_EVENT_TYPES, type LogEvent, type LogLevel } from '@label-extractor/shared';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { formatDateTimeWithSeconds, formatTimeOfDay } from '@/lib/format';
@@ -15,12 +15,10 @@ const LEVEL_BADGE: Record<LogLevel, { label: string; tone: Tone } | null> = {
   error: { label: 'Error', tone: 'danger' },
 };
 
-const SOURCE_LABEL: Record<LogSource, string> = { api: 'API', worker: 'Worker' };
-
 /**
- * One event: its time, level, message, then what kind of event it was, which process wrote it and
- * a link to its upload. The structured details are one click away, for the codes and numbers the
- * sentence leaves out.
+ * One event, written for the business rather than engineers: its time, level and message (which
+ * already says what happened), then the structured details one click away, for the codes and
+ * numbers the sentence leaves out, and a link to its upload.
  */
 export function LogEventRow({ event }: { event: LogEvent }) {
   const badge = LEVEL_BADGE[event.level];
@@ -47,29 +45,23 @@ export function LogEventRow({ event }: { event: LogEvent }) {
         </span>
         <div className="grid min-w-0 gap-0.5">
           <p className="text-sm break-words text-foreground">{event.message}</p>
-          <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-            <span>{LOG_EVENT_TYPES[event.type].label}</span>
-            <Dot />
-            <span>{SOURCE_LABEL[event.source]}</span>
-            {uploadId && (
-              <>
-                <Dot />
-                <Link to={uploadPath(uploadId)} className="font-medium text-brand hover:underline">
-                  View upload
-                </Link>
-              </>
-            )}
-            {hasDetails && (
-              <>
-                <Dot />
+          {(hasDetails || uploadId) && (
+            <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+              {hasDetails && (
                 <CollapsibleTrigger className="inline-flex items-center gap-0.5 rounded-sm hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none">
                   {/* Points right when collapsed, down when open. */}
                   <ChevronRight className="size-3 transition-transform group-data-[state=open]/event:rotate-90" aria-hidden />
                   Details
                 </CollapsibleTrigger>
-              </>
-            )}
-          </p>
+              )}
+              {hasDetails && uploadId && <Dot />}
+              {uploadId && (
+                <Link to={uploadPath(uploadId)} className="font-medium text-brand hover:underline">
+                  View upload
+                </Link>
+              )}
+            </p>
+          )}
           <CollapsibleContent>
             <pre className="mt-1.5 rounded-md border bg-muted/40 px-3 py-2 text-xs leading-relaxed break-words whitespace-pre-wrap">
               {JSON.stringify(event.data, null, 2)}

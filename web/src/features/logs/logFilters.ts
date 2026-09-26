@@ -1,20 +1,25 @@
 import { useSearchParams } from 'react-router';
+import type { NavigateOptions } from 'react-router';
 import { LOG_EVENT_TYPE_IDS, LOG_EVENT_TYPES, type LogEventType } from '@label-extractor/shared';
 import { logFilterParams, type LogFilters } from '@/api/logs';
 
 /**
- * The activity log's filters live in the URL (?type=extraction.failed&type=…&upload=…), so they
- * survive refreshes and can be shared. Values that aren't valid are dropped rather than sent to
- * the server.
+ * The activity log's filters live in the URL (?q=oat+milk&type=extraction.failed&type=…&upload=…),
+ * so they survive refreshes and can be shared. Values that aren't valid are dropped rather than
+ * sent to the server.
  */
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export const NO_LOG_FILTERS: LogFilters = { types: [], upload: null };
+/** The longest search the server takes. */
+export const MAX_SEARCH_LENGTH = 200;
+
+export const NO_LOG_FILTERS: LogFilters = { search: '', types: [], upload: null };
 
 export function readLogFilters(params: URLSearchParams): LogFilters {
   const upload = params.get('upload');
   return {
+    search: (params.get('q') ?? '').trim().slice(0, MAX_SEARCH_LENGTH),
     types: inCatalogueOrder(params.getAll('type')),
     upload: upload !== null && UUID.test(upload) ? upload : null,
   };
@@ -28,11 +33,17 @@ export function inCatalogueOrder(types: readonly string[]): LogEventType[] {
   return LOG_EVENT_TYPE_IDS.filter((type) => types.includes(type));
 }
 
-/** The filters in the URL, and a function that changes some of them (a navigation, so Back undoes it). */
-export function useLogFilters(): [LogFilters, (changes: Partial<LogFilters>) => void] {
+/**
+ * The filters in the URL, and a function that changes some of them: a navigation, so Back undoes
+ * it (unless `replace`, as for a search being typed). Changes apply to the URL as it is then, so a
+ * change made after a pause can't undo one made meanwhile.
+ */
+export function useLogFilters(): [LogFilters, (changes: Partial<LogFilters>, options?: NavigateOptions) => void] {
   const [params, setParams] = useSearchParams();
-  const filters = readLogFilters(params);
-  return [filters, (changes) => setParams(logFilterParams({ ...filters, ...changes }))];
+  return [
+    readLogFilters(params),
+    (changes, options) => setParams((current) => logFilterParams({ ...readLogFilters(current), ...changes }), options),
+  ];
 }
 
 /*
