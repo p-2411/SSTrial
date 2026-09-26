@@ -1,8 +1,9 @@
 import { Link } from 'react-router';
+import { ArrowUpRight } from 'lucide-react';
 import { UPLOAD_GONE_EVENT_TYPES, type LogEvent, type LogLevel } from '@label-extractor/shared';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
-import { EventDetails, EventDetailsTrigger } from '@/features/activity/EventDetails';
+import { EVENT_ACTION_CLASS, EventDetails, EventDetailsTrigger } from '@/features/activity/EventDetails';
 import { formatDateTimeWithSeconds, formatTimeOfDay } from '@/lib/format';
 import { TONE_CLASSES, type Tone } from '@/lib/tone';
 import { cn } from '@/lib/utils';
@@ -20,8 +21,10 @@ const FROM_THE_LOG = {};
 
 /**
  * One event, written for the business rather than engineers: its time, level and message (which
- * already says what happened), then its details one click away (what a change did to the data, or
- * the codes and numbers the sentence leaves out), fetched only then, and a link to its upload.
+ * already says what happened), then, always in view on its right however long the message runs,
+ * a link to its upload and its details (what a change did to the data, or the codes and numbers
+ * the sentence leaves out), fetched only when opened. The two actions have fixed columns, so they
+ * line up down the log.
  */
 export function LogEventRow({ event }: { event: LogEvent }) {
   const badge = LEVEL_BADGE[event.level];
@@ -30,7 +33,7 @@ export function LogEventRow({ event }: { event: LogEvent }) {
 
   return (
     <li className="border-b border-border/70">
-      <Collapsible className="group/event grid grid-cols-[4.5rem_4.75rem_minmax(0,1fr)] items-baseline gap-x-3 px-5 py-2.5">
+      <Collapsible className="group/event grid grid-cols-[4.5rem_4.75rem_minmax(0,1fr)_5.5rem_3.75rem] items-baseline gap-x-3 px-5 py-2.5">
         <time
           dateTime={event.occurredAt}
           title={formatDateTimeWithSeconds(event.occurredAt)}
@@ -45,28 +48,20 @@ export function LogEventRow({ event }: { event: LogEvent }) {
             </Badge>
           )}
         </span>
-        <div className="grid min-w-0 gap-0.5">
-          <p className="text-sm break-words text-foreground">{event.message}</p>
-          {(event.hasDetails || uploadId) && (
-            <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-              {event.hasDetails && <EventDetailsTrigger />}
-              {event.hasDetails && uploadId && <Dot />}
-              {uploadId && (
-                <Link to={uploadPath(uploadId)} className="font-medium text-brand hover:underline">
-                  View upload
-                </Link>
-              )}
-            </p>
+        <p className="min-w-0 text-sm break-words text-foreground">{event.message}</p>
+        <span className="justify-self-end">
+          {uploadId && (
+            <Link to={uploadPath(uploadId)} className={EVENT_ACTION_CLASS}>
+              <ArrowUpRight aria-hidden />
+              View upload
+            </Link>
           )}
-          <CollapsibleContent>
-            <EventDetails source={FROM_THE_LOG} eventId={event.id} />
-          </CollapsibleContent>
-        </div>
+        </span>
+        <span className="justify-self-end">{event.hasDetails && <EventDetailsTrigger />}</span>
+        <CollapsibleContent className="col-span-3 col-start-3 min-w-0">
+          <EventDetails source={FROM_THE_LOG} eventId={event.id} />
+        </CollapsibleContent>
       </Collapsible>
     </li>
   );
-}
-
-function Dot() {
-  return <span aria-hidden>·</span>;
 }

@@ -77,10 +77,12 @@ describe('LogsPage', () => {
     expect(within(rows[2]!).queryByText('Upload started')).not.toBeInTheDocument();
     expect(within(rows[2]!).queryByText('API')).not.toBeInTheDocument();
     expect(within(rows[0]!).getByRole('link', { name: 'View upload' })).toHaveAttribute('href', `/uploads/${UPLOAD}`);
-    // Details first, then View upload to its right.
-    const details = within(rows[0]!).getByRole('button', { name: 'Details' });
+    // After the message, on its right: View upload, then Details at the edge.
+    const message = within(rows[0]!).getByText(/The AI service took too long/);
     const viewUpload = within(rows[0]!).getByRole('link', { name: 'View upload' });
-    expect(details.compareDocumentPosition(viewUpload) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const details = within(rows[0]!).getByRole('button', { name: 'Details' });
+    expect(message.compareDocumentPosition(viewUpload) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(viewUpload.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("doesn't link to an upload that was deleted", async () => {
