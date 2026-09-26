@@ -46,8 +46,8 @@ export interface LogEventRecord {
 
 /** Writing to the activity log, for the use cases and the worker. */
 export interface EventLog {
-  /** Records an event. Never rejects: a failed write is logged to stdout instead (see above). */
-  record(event: NewLogEvent): Promise<void>;
+  /** Records events, in one write. Never rejects: a failed write is logged to stdout instead (see above). */
+  record(...events: NewLogEvent[]): Promise<void>;
 }
 
 /**
@@ -125,11 +125,13 @@ export function createEventStore(sql: postgres.Sql, options: { source: LogSource
   }
 
   return {
-    async record(event) {
+    async record(...events) {
+      if (events.length === 0) return;
       try {
-        await insert(sql, [event]);
+        await insert(sql, events);
       } catch (err) {
-        logger.warn({ err, event: event.type, uploadId: event.uploadId }, 'Could not write to the activity log');
+        const [first] = events;
+        logger.warn({ err, event: first!.type, uploadId: first!.uploadId, count: events.length }, 'Could not write to the activity log');
       }
     },
 

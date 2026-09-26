@@ -312,7 +312,8 @@ describe('GET /api/uploads — the three lists', () => {
 
   it('rejects an invalid limit, view or cursor', async () => {
     const cursors = ['not-an-id', ID, `2026-01-01T00:00:00.000Z|${ID}`, `2026-01-01T00:00:00.000000Z|nope`, `2026-01-01T00:00:00.000000Z|${ID}|x`];
-    for (const query of ['limit=0', 'limit=500', 'view=everything', 'from=last-week', `q=${'a'.repeat(201)}`, ...cursors.map((c) => `cursor=${encodeURIComponent(c)}`)]) {
+    const outsideProducts = ['view=review&from=2026-01-01T00:00:00Z', 'view=upload&to=2026-01-01T00:00:00Z']; // nothing there was added to Products
+    for (const query of ['limit=0', 'limit=500', 'view=everything', 'from=last-week', `q=${'a'.repeat(201)}`, ...outsideProducts, ...cursors.map((c) => `cursor=${encodeURIComponent(c)}`)]) {
       expect((await app.inject({ method: 'GET', url: `/api/uploads?${query}` })).statusCode).toBe(400);
     }
   });

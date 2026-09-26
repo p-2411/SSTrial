@@ -131,7 +131,7 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
       throw new ApiError(
         400,
         'BAD_REQUEST',
-        `Use view=${UPLOAD_VIEW_IDS.join('|')}, q=words (up to ${MAX_SEARCH_LENGTH} characters), from= and to= as ISO date-times, a cursor from a previous page, and limit=1–${PAGE_SIZES.uploads.max}.`,
+        `Use view=${UPLOAD_VIEW_IDS.join('|')}, q=words (up to ${MAX_SEARCH_LENGTH} characters), from= and to= as ISO date-times (products only), a cursor from a previous page, and limit=1–${PAGE_SIZES.uploads.max}.`,
       );
     }
     const { view, cursor, limit } = query.data;

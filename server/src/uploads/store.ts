@@ -255,10 +255,11 @@ export interface UploadReviews {
    */
   revert(id: string, revision: number, versionId: string): Promise<Versioned | null>;
   /**
-   * Puts a read upload into Products, as `by`. Only one not already there and still at `revision`,
-   * so it's the data that was judged ready that goes in; null otherwise.
+   * Puts read uploads into Products, as `by`, in one write, and returns those that went in: only
+   * ones not already there and still at the revision each was judged ready at, so it's that data
+   * that goes in.
    */
-  submit(id: string, revision: number, by: string): Promise<UploadRecord | null>;
+  submit(uploads: readonly { id: string; revision: number }[], by: string): Promise<UploadRecord[]>;
 }
 
 /** Removing uploads someone asked to delete. */
@@ -307,9 +308,13 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
     sql`status = any(${[...UPLOAD_TRANSITIONS[transition].from]}::upload_status[])`;
   /** The status a lifecycle transition leads to. */
   const statusAfter = (transition: UploadTransitionKeepingRow) => UPLOAD_TRANSITIONS[transition].to;
-  /** SQL conditions for a filter (each `and …`), nothing for what it leaves out. A scan: uploads are few enough. */
+  /**
+   * SQL conditions for a filter (each `and …`), nothing for what it leaves out. The words are
+   * searched for in the file name, product name and brand as one text, exactly as indexed for
+   * products (uploads_products_search), so a search reads only the products that match.
+   */
   const matching = ({ search, from, to }: ProductFilter) => sql`
-    ${search ? sql`and (file_name ilike ${containsPattern(search)} or result->>'productName' ilike ${containsPattern(search)} or result->>'brand' ilike ${containsPattern(search)})` : sql``}
+    ${search ? sql`and (file_name || E'\n' || coalesce(result->>'productName', '') || E'\n' || coalesce(result->>'brand', '')) ilike ${containsPattern(search)}` : sql``}
     ${from ? sql`and submitted_at >= ${from}` : sql``}
     ${to ? sql`and submitted_at < ${to}` : sql``}`;
 
@@ -389,7 +394,7 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
         select * from uploads
         where status = 'completed' and submitted_at is not null
           ${ids ? sql`and id = any(${ids as string[]}::uuid[])` : matching(filter)}
-        order by created_at desc`.cursor(500);
+        order by created_at desc, id desc`.cursor(500);
       for await (const rows of batches) {
         for (const row of rows) yield toRecord(row);
       }
@@ -489,11 +494,14 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
       );
     },
 
-    submit(id, revision, by) {
-      return oneRecord(sql`
+    async submit(ready, by) {
+      if (ready.length === 0) return [];
+      const rows = await sql`
         update uploads set status = ${statusAfter('submit')}, submitted_at = now(), submitted_by = ${by}
-        where id = ${id} and ${allowedFrom('submit')} and submitted_at is null and result_revision = ${revision}
-        returning *`);
+        from unnest(${ready.map((upload) => upload.id)}::uuid[], ${ready.map((upload) => upload.revision)}::int[]) as judged (id, revision)
+        where uploads.id = judged.id and ${allowedFrom('submit')} and submitted_at is null and result_revision = judged.revision
+        returning uploads.*`;
+      return rows.map(toRecord);
     },
 
     complete(id, claimToken, result, confidence) {

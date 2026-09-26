@@ -275,13 +275,15 @@ export class InMemoryUploadStore implements UploadStore {
   }
   /** Who submitted each upload, by ID, since the record doesn't carry it. */
   readonly submittedBy = new Map<string, string>();
-  async submit(id: string, revision: number, by: string) {
-    const row = this.rows.get(id);
-    if (!row || !canTransition('submit', row.status) || row.submittedAt !== null || row.resultRevision !== revision) return null;
-    const submitted = { ...row, submittedAt: new Date(), updatedAt: new Date() };
-    this.rows.set(id, submitted);
-    this.submittedBy.set(id, by);
-    return submitted;
+  async submit(ready: readonly { id: string; revision: number }[], by: string) {
+    return ready.flatMap(({ id, revision }) => {
+      const row = this.rows.get(id);
+      if (!row || !canTransition('submit', row.status) || row.submittedAt !== null || row.resultRevision !== revision) return [];
+      const submitted = { ...row, submittedAt: new Date(), updatedAt: new Date() };
+      this.rows.set(id, submitted);
+      this.submittedBy.set(id, by);
+      return [submitted];
+    });
   }
   async findVersion(id: string, versionId: string) {
     const version = this.versions.find((v) => v.id === versionId && v.uploadId === id);
@@ -426,8 +428,8 @@ export class InMemoryEventStore implements EventStore {
     return record;
   }
 
-  async record(event: NewLogEvent) {
-    this.seed(event);
+  async record(...events: NewLogEvent[]) {
+    for (const event of events) this.seed(event);
   }
 
   async recordIn(_tx: Db, events: readonly NewLogEvent[]) {

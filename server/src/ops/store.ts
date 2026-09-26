@@ -32,19 +32,24 @@ export function createOpsStore(sql: postgres.Sql): OpsStore {
 
     async snapshot() {
       const window = sql`now() - make_interval(hours => ${STATUS_WINDOW_HOURS})`;
+      // Each reads only the uploads it counts, through an index, however many have piled up.
       const [queue] = await sql`
         select
           count(*) filter (where status = 'queued' and error_code is null)::int as waiting,
           count(*) filter (where status = 'queued' and error_code is not null)::int as retrying,
           count(*) filter (where status = 'processing')::int as processing
-        from uploads`;
+        from uploads
+        where status in ('queued', 'processing')`;
+      // Uploads finished in the window: read (completed_at), or failed for good (updated_at, as
+      // nothing changes a failed upload but running it again).
       const [recent] = await sql`
         select
           count(*) filter (where status = 'completed' and completed_at > ${window})::int as completed,
           count(*) filter (where status = 'failed' and updated_at > ${window})::int as failed,
           percentile_cont(0.5) within group (order by extract(epoch from completed_at - created_at))
             filter (where status = 'completed' and completed_at > ${window}) as median_seconds
-        from uploads`;
+        from uploads
+        where status in ('completed', 'failed') and coalesce(completed_at, updated_at) > ${window}`;
       const [heartbeat] = await sql`
         select last_seen_at, last_seen_at > now() - make_interval(secs => ${WORKER_SILENT_AFTER_SECONDS}) as healthy
         from ops_heartbeats where process = ${WORKER}`;

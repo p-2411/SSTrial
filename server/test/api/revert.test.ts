@@ -12,7 +12,7 @@ const ID = '5d9e2f3a-0000-4000-8000-000000000001';
 async function readByTheAi() {
   uploads.seed({ id: ID, status: 'processing', claimToken: 'claim' });
   await uploads.complete(ID, 'claim', SAMPLE_EXTRACTION, null);
-  await uploads.submit(ID, 0, ADMIN.id);
+  await uploads.submit([{ id: ID, revision: 0 }], ADMIN.id);
 }
 
 beforeEach(async () => {

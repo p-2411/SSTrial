@@ -743,7 +743,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
           returning id`;
         return (await uploads.revert(id, 0, String(version!.id)))?.upload ?? null;
       },
-      submit: (id) => uploads.submit(id, 0, person),
+      submit: async (id) => (await uploads.submit([{ id, revision: 0 }], person))[0] ?? null,
       delete: async (id) => (await uploads.remove([id]))[0] ?? null,
       // requeue takes the status the caller saw; pass the real one, so only the guard decides.
       rerun: (id, _claim, status) => uploads.requeue(id, status as 'failed' | 'completed', person),
@@ -886,10 +886,10 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
         expect(await listed(false)).toEqual([id]);
         expect(await listed(true)).toEqual([]);
 
-        expect(await uploads.submit(id, 1, person)).toBeNull(); // not the revision it's at
-        const submitted = await uploads.submit(id, 0, person);
+        expect(await uploads.submit([{ id, revision: 1 }], person)).toEqual([]); // not the revision it's at
+        const [submitted] = await uploads.submit([{ id, revision: 0 }], person);
         expect(submitted?.submittedAt).toBeInstanceOf(Date);
-        expect(await uploads.submit(id, 0, person)).toBeNull(); // already in
+        expect(await uploads.submit([{ id, revision: 0 }], person)).toEqual([]); // already in
         expect(await listed(true)).toEqual([id]);
         expect(await listed(false)).toEqual([]);
         const [row] = await sql`select submitted_by from uploads where id = ${id}`;
@@ -936,6 +936,23 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       for await (const upload of uploads.streamProducts({ ids: [older, crypto.randomUUID()] })) exported.push(upload.id);
       expect(exported).toEqual([older]);
       expect(fresh).not.toEqual(older);
+    });
+
+    it('submits several in one write, each only at the revision it was judged ready at', async () => {
+      const read = async () => {
+        const id = crypto.randomUUID();
+        createdIds.push(id);
+        await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png`, contentSha256: null, uploadedBy: person });
+        await sql`update uploads set status = 'completed', result = ${sql.json(SAMPLE_EXTRACTION)} where id = ${id}`;
+        return id;
+      };
+      const [ready, changed] = [await read(), await read()];
+      await uploads.saveReview(changed, 0, { ...SAMPLE_EXTRACTION, brand: 'Changed since' }, {});
+
+      const submitted = await uploads.submit([{ id: ready, revision: 0 }, { id: changed, revision: 0 }], person);
+
+      expect(submitted.map((upload) => upload.id)).toEqual([ready]);
+      expect((await uploads.findById(changed))?.submittedAt).toBeNull();
     });
 
     it('only lets a read upload be in Products', async () => {

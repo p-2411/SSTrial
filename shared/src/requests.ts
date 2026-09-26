@@ -65,14 +65,19 @@ export function uploadCursor(position: UploadCursor): string {
   return `${position.createdAt}|${position.id}`;
 }
 
-/** GET /api/uploads?view=…&q=…&from=…&to=…&cursor=…&limit=… — newest first, one page at a time. */
-export const listUploadsQuerySchema = z.object({
-  view: z.enum(UPLOAD_VIEW_IDS as [UploadView, ...UploadView[]]).default('products'),
-  ...wordsAndTime,
-  /** The `nextCursor` of the previous page. */
-  cursor: uploadCursorSchema.optional(),
-  limit: pageSize(PAGE_SIZES.uploads),
-});
+/**
+ * GET /api/uploads?view=…&q=…&from=…&to=…&cursor=…&limit=… — newest first, one page at a time.
+ * `from` and `to` are when products were added to Products, so only the products view takes them.
+ */
+export const listUploadsQuerySchema = z
+  .object({
+    view: z.enum(UPLOAD_VIEW_IDS as [UploadView, ...UploadView[]]).default('products'),
+    ...wordsAndTime,
+    /** The `nextCursor` of the previous page. */
+    cursor: uploadCursorSchema.optional(),
+    limit: pageSize(PAGE_SIZES.uploads),
+  })
+  .refine((query) => query.view === 'products' || (query.from === undefined && query.to === undefined));
 
 /**
  * GET /api/exports/uploads.csv|json?id=…&id=… or ?q=…&from=…&to=… — the products picked (one `id`
