@@ -18,6 +18,7 @@ import { DeleteProductsDialog } from './DeleteProductsDialog';
 import { ExportMenu } from './ExportMenu';
 import { ListSkeleton } from './ListSkeleton';
 import { ProductFilterBar } from './ProductFilterBar';
+import { ScrollingList } from './ScrollingList';
 import { UploadRow } from './UploadRow';
 
 /**
@@ -78,17 +79,18 @@ export function ProductList() {
 
       {isRefetchError && <StaleDataNotice what="the products" error={error} onRetry={() => void refetch()} retrying={isRefetching} />}
 
-      {rows && rows.length > 0 && (
-        <FadeWhileLoading loading={isPlaceholderData}>
-          <ul>
-            {rows.map((upload) => (
-              <UploadRow key={upload.id} upload={upload} now={now} selected={selection.isSelected(upload.id)} onSelect={selection.toggle} />
-            ))}
-          </ul>
-        </FadeWhileLoading>
-      )}
-
-      <LoadMoreButton query={list} className="border-t border-border/70 p-3" />
+      <ScrollingList>
+        {rows && rows.length > 0 && (
+          <FadeWhileLoading loading={isPlaceholderData}>
+            <ul>
+              {rows.map((upload) => (
+                <UploadRow key={upload.id} upload={upload} now={now} selected={selection.isSelected(upload.id)} onSelect={selection.toggle} />
+              ))}
+            </ul>
+          </FadeWhileLoading>
+        )}
+        <LoadMoreButton query={list} className="border-t border-border/70 p-3" />
+      </ScrollingList>
 
       {isPending && <ListSkeleton label="Loading products" />}
 
