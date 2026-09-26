@@ -13,10 +13,10 @@ import { StaleDataNotice } from '@/components/StaleDataNotice';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useNow } from '@/lib/useNow';
-import { groupByDay } from './groupByDay';
 import { NO_ACTIVITY_LOG_FILTERS, useActivityLogFilters } from './activityLogFilters';
 import { ActivityLogFilterBar } from './ActivityLogFilterBar';
 import { ActivityLogRow } from './ActivityLogRow';
+import { groupByDay } from './groupByDay';
 
 /**
  * The activity log, on the System page: what happened to each upload and to the system, newest

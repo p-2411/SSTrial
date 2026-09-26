@@ -21,16 +21,19 @@ export function usePanelFocus(openId: string | undefined, panel: RefObject<HTMLE
     if (openId === previous) return;
 
     const active = document.activeElement;
-    const focusInPanel = !(active instanceof HTMLElement) || active === document.body || panel.current?.contains(active) === true;
+    // Nowhere in particular, or in the panel (and so about to be lost with it, if it's closing).
+    const focusIsOurs = !(active instanceof HTMLElement) || active === document.body || panel.current?.contains(active) === true;
     if (openId) {
-      if (!focusInPanel) opener.current = active;
+      // Opened, or switched to another upload: remember what did it (a row, a link).
+      if (!focusIsOurs) opener.current = active;
       if (title.current?.isConnected) title.current.focus({ preventScroll: true });
       else titlePending.current = true;
       return;
     }
 
+    // Closed.
     titlePending.current = false;
-    if (focusInPanel && previous) {
+    if (focusIsOurs && previous) {
       const back = opener.current?.isConnected ? opener.current : document.querySelector<HTMLElement>(`a[href="${uploadPath(previous)}"]`);
       back?.focus();
     }

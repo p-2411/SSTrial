@@ -65,7 +65,7 @@ function WhyDisabled({ reason, children }: { reason: string | null; children: (d
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span tabIndex={0} className="rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+        <span tabIndex={0} className="inline-flex rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
           {children(id)}
           <span id={id} className="sr-only">
             {reason}
