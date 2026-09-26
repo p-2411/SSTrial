@@ -3,9 +3,9 @@ import type { UploadSummary } from '@label-extractor/shared';
 import { errorMessage } from '@/api/client';
 import { useUploadList } from '@/api/queries';
 import { InlineError } from '@/components/InlineError';
+import { LoadMoreButton } from '@/components/LoadMoreButton';
 import { SegmentedTabsList, SegmentedTabsTrigger } from '@/components/SegmentedTabs';
 import { StaleDataNotice } from '@/components/StaleDataNotice';
-import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { PendingUploadRow } from '@/features/upload/PendingUploadRow';
@@ -36,8 +36,8 @@ export function YourUploads({ pending, onRetry, onDismiss }: YourUploadsProps) {
   const uploadingList = useUploadList('upload');
   const reviewList = useUploadList('review');
   const now = useNow();
-  const uploading = useMemo(() => uploadingList.data?.pages.flatMap((page) => page.uploads), [uploadingList.data]);
-  const review = useMemo(() => reviewList.data?.pages.flatMap((page) => page.uploads), [reviewList.data]);
+  const uploading = uploadingList.data;
+  const review = reviewList.data;
   const reviewIds = useMemo(() => review?.map((upload) => upload.id) ?? [], [review]);
   const selection = useSelection(reviewIds);
   const announcement = useUploadAnnouncements(uploading);
@@ -133,7 +133,7 @@ function Count({ n }: { n: number }) {
 
 /**
  * A tab's list with what goes around it: a warning when a refresh failed but rows are still shown,
- * the error when it couldn't load at all, and "Load more".
+ * the error when it couldn't load at all, and "Load more" (which says if the next page failed).
  */
 function ListState({ list, rows, children }: { list: ReturnType<typeof useUploadList>; rows: UploadSummary[] | undefined; children: ReactNode }) {
   if (list.isError && !rows) {
@@ -145,15 +145,9 @@ function ListState({ list, rows, children }: { list: ReturnType<typeof useUpload
   }
   return (
     <>
-      {list.isError && <StaleDataNotice what="your uploads" error={list.error} onRetry={() => void list.refetch()} retrying={list.isRefetching} />}
+      {list.isRefetchError && <StaleDataNotice what="your uploads" error={list.error} onRetry={() => void list.refetch()} retrying={list.isRefetching} />}
       {children}
-      {list.hasNextPage && (
-        <div className="border-t border-border/70 p-3 text-center">
-          <Button variant="ghost" size="sm" onClick={() => void list.fetchNextPage()} loading={list.isFetchingNextPage}>
-            Load more
-          </Button>
-        </div>
-      )}
+      <LoadMoreButton query={list} className="border-t border-border/70 p-3" />
     </>
   );
 }

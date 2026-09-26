@@ -58,6 +58,27 @@ describe('ProductList', () => {
     expect(requested).toEqual(['/api/uploads?view=products', '/api/uploads?view=products&cursor=a']);
   });
 
+  it("says so beside Load more when the next page can't be loaded, keeping what's shown", async () => {
+    let requests = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        ++requests === 1
+          ? jsonResponse({ uploads: [summary({ id: 'a', productName: 'First' })], nextCursor: 'a' })
+          : jsonResponse({ error: { code: 'INTERNAL', message: "The server isn't responding right now." } }, 500),
+      ),
+    );
+    renderWithProviders(<ProductList />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Load more' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load more. The server isn't responding right now.");
+    expect(screen.getByText('First')).toBeVisible();
+    // Not mistaken for a failed refresh of what's shown.
+    expect(screen.queryByText(/Couldn't refresh/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Load more' })).toBeEnabled();
+  });
+
   it('says why when it can’t load', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('Bad gateway', { status: 502 })));
     renderWithProviders(<ProductList />);

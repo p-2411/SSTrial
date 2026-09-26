@@ -95,12 +95,12 @@ describe('UploadHistory', () => {
     ]);
     await open();
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Load older' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Load more' }));
 
     expect(await screen.findByText('Older.')).toBeInTheDocument();
     expect(screen.getByText('Newest.')).toBeInTheDocument();
     expect(requests.map((request) => request.url)).toEqual(['/api/uploads/u1/history', '/api/uploads/u1/history?cursor=9']);
-    expect(screen.queryByRole('button', { name: 'Load older' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
   });
 
   it('is filtered by type of event, like the activity log, and offers to clear a filter nothing matches', async () => {

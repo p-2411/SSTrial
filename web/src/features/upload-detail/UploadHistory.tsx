@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { ChevronRight, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { UPLOAD_EVENT_TYPE_IDS, type LogLevel, type UploadDetail, type UploadHistoryEntry } from '@label-extractor/shared';
@@ -7,12 +7,15 @@ import { isFiltered, NO_ACTIVITY_FILTERS, type ActivityFilters } from '@/api/log
 import { isEditConflict, useRevertUpload, useUploadHistory } from '@/api/queries';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { EmptyState } from '@/components/EmptyState';
-import { ActivityFilterBar } from '@/features/activity/ActivityFilterBar';
-import { EVENT_ACTION_CLASS, EventDetails, EventDetailsTrigger } from '@/features/activity/EventDetails';
-import { Button } from '@/components/ui/button';
+import { FadeWhileLoading } from '@/components/FadeWhileLoading';
+import { InlineError } from '@/components/InlineError';
+import { LoadMoreButton } from '@/components/LoadMoreButton';
+import { StaleDataNotice } from '@/components/StaleDataNotice';
 import { Card } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ActivityFilterBar } from '@/features/activity/ActivityFilterBar';
+import { EVENT_ACTION_CLASS, EventDetails, EventDetailsTrigger } from '@/features/activity/EventDetails';
 import { formatDateAndTime, formatDateTimeWithSeconds } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
@@ -56,13 +59,13 @@ export function UploadHistory({ upload }: { upload: Upload }) {
   );
 }
 
-/** The open history: its filters, its entries so far, and "Load older". Only mounted once opened. */
+/** The open history: its filters, its entries so far, and "Load more". Only mounted once opened. */
 function HistoryBody({ upload }: { upload: Upload }) {
   const [filters, setFilters] = useState<ActivityFilters>(NO_ACTIVITY_FILTERS);
   const history = useUploadHistory(upload.id, filters);
-  const entries = useMemo(() => history.data?.pages.flatMap((page) => page.entries), [history.data]);
+  const entries = history.data; // every page loaded so far
   const [reverting, setReverting] = useState<UploadHistoryEntry | null>(null);
-  const { isPending, isError, error, isPlaceholderData } = history;
+  const { isPending, isError, isRefetchError, error, refetch, isRefetching, isPlaceholderData } = history;
   const filtered = isFiltered(filters);
 
   return (
@@ -83,7 +86,12 @@ function HistoryBody({ upload }: { upload: Upload }) {
           <Skeleton className="h-4 w-2/3" />
         </div>
       )}
-      {isError && <p className="text-sm text-muted-foreground">Couldn't load the history. {errorMessage(error)}</p>}
+      {isError && !entries && (
+        <InlineError title="Couldn't load the history" message={errorMessage(error)} onRetry={() => void refetch()} retrying={isRefetching} />
+      )}
+      {isRefetchError && (
+        <StaleDataNotice what="the history" error={error} onRetry={() => void refetch()} retrying={isRefetching} className="rounded-md border px-3" />
+      )}
       {entries?.length === 0 &&
         (filtered ? (
           <EmptyState compact title="Nothing in the history matches these filters." action={{ label: 'Clear filters', onClick: () => setFilters(NO_ACTIVITY_FILTERS) }} />
@@ -91,32 +99,20 @@ function HistoryBody({ upload }: { upload: Upload }) {
           <EmptyState compact title="Nothing recorded." hint="Uploads from before the history existed have none." />
         ))}
       {entries && entries.length > 0 && (
-        // While a new search or filter loads, the last results stay, faded, rather than blinking out.
-        <ol
-          aria-busy={isPlaceholderData || undefined}
-          className={cn('grid grid-cols-[7rem_minmax(0,1fr)_auto_auto] gap-x-3 gap-y-2.5 transition-opacity', isPlaceholderData && 'opacity-60')}
-        >
-          {entries.map((entry) => (
-            <HistoryEntry
-              key={entry.id}
-              uploadId={upload.id}
-              entry={entry}
-              onRevert={upload.canRevert && entry.revertTo !== null ? () => setReverting(entry) : undefined}
-            />
-          ))}
-        </ol>
+        <FadeWhileLoading loading={isPlaceholderData}>
+          <ol className="grid grid-cols-[7rem_minmax(0,1fr)_auto_auto] gap-x-3 gap-y-2.5">
+            {entries.map((entry) => (
+              <HistoryEntry
+                key={entry.id}
+                uploadId={upload.id}
+                entry={entry}
+                onRevert={upload.canRevert && entry.revertTo !== null ? () => setReverting(entry) : undefined}
+              />
+            ))}
+          </ol>
+        </FadeWhileLoading>
       )}
-      {history.hasNextPage && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="justify-self-center"
-          onClick={() => void history.fetchNextPage()}
-          loading={history.isFetchingNextPage}
-        >
-          Load older
-        </Button>
-      )}
+      <LoadMoreButton query={history} />
       <RevertDialog upload={upload} entry={reverting} onClose={() => setReverting(null)} />
     </div>
   );

@@ -1,5 +1,22 @@
-import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { isActiveStatus, type EditResultRequest, type RevertRequest, type UploadDetail, type UploadView } from '@label-extractor/shared';
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type InfiniteData,
+  type QueryClient,
+} from '@tanstack/react-query';
+import {
+  isActiveStatus,
+  type EditResultRequest,
+  type ListLogsResponse,
+  type ListUploadsResponse,
+  type RevertRequest,
+  type UploadDetail,
+  type UploadHistoryResponse,
+  type UploadView,
+} from '@label-extractor/shared';
 import { ApiRequestError } from './client.ts';
 import { isLiveConnected } from './liveConnection.ts';
 import { getEventDetails, getUploadHistory, listLogs, type ActivityFilters, type EventDetailsSource, type LogFilters } from './logs.ts';
@@ -92,17 +109,34 @@ export function storeUpload(queryClient: QueryClient, upload: UploadDetail): voi
 }
 
 /**
- * One of the upload lists (a stage: upload, review, products), filtered and paginated by the server ("Load more" fetches the next
- * page). Polls only while something on screen is still in progress.
+ * What every paged list shares ("Load more" fetches the next page, from the cursor the last one
+ * gave). A new search or filter keeps the last results up until its own arrive, and the component
+ * gets every page loaded so far as one list: `data` is that list, while `hasNextPage` and
+ * `fetchNextPage` still work page by page. Made once per kind of list, so `select` is always the
+ * same function and the list is only a new array when its pages change (rows are memoised).
+ */
+function cursorPaged<Page extends { nextCursor: string | null }, Item>(items: (page: Page) => Item[]) {
+  return {
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage: Page) => lastPage.nextCursor ?? undefined,
+    placeholderData: keepPreviousData,
+    select: (data: InfiniteData<Page, string | undefined>) => data.pages.flatMap(items),
+  };
+}
+
+const UPLOAD_PAGES = cursorPaged((page: ListUploadsResponse) => page.uploads);
+const LOG_PAGES = cursorPaged((page: ListLogsResponse) => page.events);
+const HISTORY_PAGES = cursorPaged((page: UploadHistoryResponse) => page.entries);
+
+/**
+ * One of the upload lists (a stage: upload, review, products), filtered and paged by the server.
+ * Polls only while something on screen is still in progress.
  */
 export function useUploadList(view: UploadView, filter: ProductFilter = NO_PRODUCT_FILTER) {
   return useInfiniteQuery({
     queryKey: uploadKeys.list(view, filter),
     queryFn: ({ pageParam }) => listUploads(view, pageParam, filter),
-    // A new search or filter keeps the last results up until its own arrive.
-    placeholderData: keepPreviousData,
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    ...UPLOAD_PAGES,
     refetchInterval: (query) =>
       pollWhile(query.state.data?.pages.some((page) => page.uploads.some((upload) => isActiveStatus(upload.status))) ?? false),
   });
@@ -223,32 +257,27 @@ export function useDeleteUpload() {
 }
 
 /**
- * The activity log, newest first, filtered and paginated by the server ("Load more" fetches older
+ * The activity log, newest first, filtered and paged by the server ("Load more" fetches older
  * events). Live: new events arrive through the update stream, which refetches it (useLiveUpdates).
  */
 export function useLogs(filters: LogFilters) {
   return useInfiniteQuery({
     queryKey: logKeys.list(filters),
     queryFn: ({ pageParam }) => listLogs(filters, pageParam),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-    // A new search or filter keeps the last results up until its own arrive.
-    placeholderData: keepPreviousData,
+    ...LOG_PAGES,
     refetchInterval: () => (isLiveConnected() ? false : LOG_POLL_INTERVAL_MS),
   });
 }
 
 /**
- * One upload's history, newest first, filtered and paginated by the server like the activity log.
+ * One upload's history, newest first, filtered and paged by the server like the activity log.
  * Live like it too; polls only without the stream.
  */
 export function useUploadHistory(id: string, filters: ActivityFilters) {
   return useInfiniteQuery({
     queryKey: logKeys.uploadHistory(id, filters),
     queryFn: ({ pageParam }) => getUploadHistory(id, filters, pageParam),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-    placeholderData: keepPreviousData,
+    ...HISTORY_PAGES,
     refetchInterval: () => (isLiveConnected() ? false : LOG_POLL_INTERVAL_MS),
   });
 }

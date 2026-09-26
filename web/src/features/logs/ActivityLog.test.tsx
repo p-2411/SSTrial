@@ -220,12 +220,12 @@ describe('ActivityLog', () => {
     );
     renderPage();
 
-    await user.click(await screen.findByRole('button', { name: 'Load older events' }));
+    await user.click(await screen.findByRole('button', { name: 'Load more' }));
 
     expect(await screen.findByText('Older.')).toBeInTheDocument();
     expect(screen.getByText('Newest.')).toBeInTheDocument();
     expect(requested).toEqual(['/api/logs', '/api/logs?cursor=5']);
-    expect(screen.queryByRole('button', { name: 'Load older events' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
   });
 
   it('offers to clear the filters when nothing matches them', async () => {

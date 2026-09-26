@@ -5,13 +5,13 @@ import { errorMessage } from '@/api/client';
 import { isFiltered, type LogFilters } from '@/api/logs';
 import { useLogs } from '@/api/queries';
 import { EmptyState } from '@/components/EmptyState';
+import { FadeWhileLoading } from '@/components/FadeWhileLoading';
 import { InlineError } from '@/components/InlineError';
+import { LoadMoreButton } from '@/components/LoadMoreButton';
 import { StaleDataNotice } from '@/components/StaleDataNotice';
-import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useNow } from '@/lib/useNow';
-import { cn } from '@/lib/utils';
 import { groupByDay } from './groupByDay';
 import { LogEventRow } from './LogEventRow';
 import { LogFilterBar } from './LogFilterBar';
@@ -28,9 +28,9 @@ export function ActivityLog() {
   // Only for the "Today" and "Yesterday" headings, so once a minute is plenty.
   const now = useNow(60_000);
 
-  const events = useMemo(() => log.data?.pages.flatMap((page) => page.events), [log.data]);
+  const events = log.data; // every page loaded so far
   const days = useMemo(() => (events ? groupByDay(events, now) : []), [events, now]);
-  const { isPending, isError, error, refetch, isRefetching, isPlaceholderData } = log;
+  const { isPending, isError, isRefetchError, error, refetch, isRefetching, isPlaceholderData } = log;
 
   return (
     <Card aria-labelledby="logs-heading" role="region" className="gap-0 py-0">
@@ -43,38 +43,30 @@ export function ActivityLog() {
         </div>
       </CardHeader>
 
-      {isError && events && (
+      {isRefetchError && (
         <StaleDataNotice what="the activity log" error={error} onRetry={() => void refetch()} retrying={isRefetching} className="px-5" />
       )}
 
       {/* Every row has a line beneath it, so each day's heading is ruled above and below. Only the
-          very last row goes without: the card's edge, or "Load older events", follows it. */}
-      {/* While a new search or filter loads, the last results stay, faded, rather than blinking out. */}
-      {days.map((day) => (
-        <section
-          key={day.key}
-          aria-label={day.label}
-          aria-busy={isPlaceholderData || undefined}
-          className={cn('transition-opacity last-of-type:[&_li:last-child]:border-b-0', isPlaceholderData && 'opacity-60')}
-        >
-          <h3 className="border-b border-border/70 bg-muted/40 px-5 py-1.5 text-xs font-semibold text-muted-foreground">
-            {day.label}
-          </h3>
-          <ul>
-            {day.events.map((event) => (
-              <LogEventRow key={event.id} event={event} />
-            ))}
-          </ul>
-        </section>
-      ))}
-
-      {log.hasNextPage && (
-        <div className="border-t border-border/70 p-3 text-center">
-          <Button variant="ghost" size="sm" onClick={() => void log.fetchNextPage()} loading={log.isFetchingNextPage}>
-            Load older events
-          </Button>
-        </div>
+          very last row goes without: the card's edge, or "Load more", follows it. */}
+      {days.length > 0 && (
+        <FadeWhileLoading loading={isPlaceholderData}>
+          {days.map((day) => (
+            <section key={day.key} aria-label={day.label} className="last-of-type:[&_li:last-child]:border-b-0">
+              <h3 className="border-b border-border/70 bg-muted/40 px-5 py-1.5 text-xs font-semibold text-muted-foreground">
+                {day.label}
+              </h3>
+              <ul>
+                {day.events.map((event) => (
+                  <LogEventRow key={event.id} event={event} />
+                ))}
+              </ul>
+            </section>
+          ))}
+        </FadeWhileLoading>
       )}
+
+      <LoadMoreButton query={log} className="border-t border-border/70 p-3" />
 
       {isPending && <LogSkeleton />}
 

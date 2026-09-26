@@ -5,7 +5,9 @@ import { useUploadList } from '@/api/queries';
 import { NO_PRODUCT_FILTER, type ProductFilter } from '@/api/uploads';
 import { DayRangeMenu } from '@/components/DayRangeMenu';
 import { EmptyState } from '@/components/EmptyState';
+import { FadeWhileLoading } from '@/components/FadeWhileLoading';
 import { InlineError } from '@/components/InlineError';
+import { LoadMoreButton } from '@/components/LoadMoreButton';
 import { SearchInput } from '@/components/SearchInput';
 import { StaleDataNotice } from '@/components/StaleDataNotice';
 import { Button } from '@/components/ui/button';
@@ -30,13 +32,11 @@ export function ProductList() {
   const [filter, setFilter] = useState<ProductFilter>(NO_PRODUCT_FILTER);
   const list = useUploadList('products', filter);
   const now = useNow();
-  // Every page loaded so far, in order. Memoised so it's only a new array when the data changes:
-  // the page also re-renders for upload progress and the clock.
-  const rows = useMemo(() => list.data?.pages.flatMap((page) => page.uploads), [list.data]);
+  const rows = list.data; // every page loaded so far
   const ids = useMemo(() => rows?.map((upload) => upload.id) ?? [], [rows]);
   const selection = useSelection(ids);
   const [confirmingDelete, setConfirmingDelete] = useState<string[] | null>(null);
-  const { isPending, isError, error, refetch, isRefetching, isPlaceholderData } = list;
+  const { isPending, isError, isRefetchError, error, refetch, isRefetching, isPlaceholderData } = list;
   const isFiltered = filter.search !== '' || filter.from !== null || filter.to !== null;
   const picked = selection.selected;
 
@@ -86,24 +86,19 @@ export function ProductList() {
         </div>
       )}
 
-      {isError && rows && <StaleDataNotice what="the products" error={error} onRetry={() => void refetch()} retrying={isRefetching} />}
+      {isRefetchError && <StaleDataNotice what="the products" error={error} onRetry={() => void refetch()} retrying={isRefetching} />}
 
       {rows && rows.length > 0 && (
-        // While a new search or filter loads, the last results stay, faded, rather than blinking out.
-        <ul aria-busy={isPlaceholderData || undefined} className={isPlaceholderData ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
-          {rows.map((upload) => (
-            <UploadRow key={upload.id} upload={upload} now={now} selected={selection.isSelected(upload.id)} onSelect={selection.toggle} />
-          ))}
-        </ul>
+        <FadeWhileLoading loading={isPlaceholderData}>
+          <ul>
+            {rows.map((upload) => (
+              <UploadRow key={upload.id} upload={upload} now={now} selected={selection.isSelected(upload.id)} onSelect={selection.toggle} />
+            ))}
+          </ul>
+        </FadeWhileLoading>
       )}
 
-      {list.hasNextPage && (
-        <div className="border-t border-border/70 p-3 text-center">
-          <Button variant="ghost" size="sm" onClick={() => void list.fetchNextPage()} loading={list.isFetchingNextPage}>
-            Load more
-          </Button>
-        </div>
-      )}
+      <LoadMoreButton query={list} className="border-t border-border/70 p-3" />
 
       {isPending && <ListSkeleton label="Loading products" />}
 
