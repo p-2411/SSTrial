@@ -4,7 +4,7 @@
 
 - **Ingest never touches our servers.** Files go straight to Supabase Storage with signed URLs; the API handles two small, stateless requests per file, so it scales horizontally. One person can have at most 200 under way.
 - **The queue absorbs the burst.** 50,000 jobs is a small Postgres table. They wait durably, and nothing is lost if workers are busy or restarting.
-- **Throughput is set by the LLM's rate limit, not by us.** At 500 requests a minute (`OPENAI_REQUESTS_PER_MINUTE`), 50,000 labels take about 100 minutes. A read takes about 13 s, so that needs about 110 in flight: each worker process runs 24 at once (`WORKER_CONCURRENCY`), so five of them. A token bucket shared by all workers paces them to that limit, and identical files (same SHA-256) are read once.
+- **Throughput is set by our own cap, not OpenAI's.** Our key allows 30,000 requests a minute; we cap ourselves at 500 (`OPENAI_REQUESTS_PER_MINUTE`) so a flood of uploads can't run up a large bill, and 50,000 labels take about 100 minutes. A read takes about 9–12 s, so one worker process reads 100 at once (`WORKER_CONCURRENCY`) to keep up. One process rather than several because each holds its own database connections, and the pooler has few to spare. A token bucket shared by all workers holds them to the cap, and identical files (same SHA-256) are read once.
 - **For bulk imports** I'd use OpenAI's Batch API (about half the cost, a separate quota), with queue priorities so people's own uploads skip the backlog.
 
 ## Why a Postgres queue (pg-boss)

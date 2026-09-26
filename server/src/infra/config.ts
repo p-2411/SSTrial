@@ -44,14 +44,18 @@ const workerSchema = z.object({
   OPENAI_MODEL: z.string().min(1).default('gpt-6-luna'),
   /** Per-request timeout for the LLM call. Must stay well under the job's expiry (see queue.ts). */
   OPENAI_TIMEOUT_MS: z.coerce.number().int().positive().default(90_000),
-  /** Requests per minute allowed to the LLM across *all* workers together (shared rate limiter). */
-  OPENAI_REQUESTS_PER_MINUTE: z.coerce.number().positive().default(120),
+  /**
+   * Requests per minute to the LLM across *all* workers together (shared rate limiter). Our own cap,
+   * to keep spending in check: it must be at or under the key's limit, and ours is far higher.
+   */
+  OPENAI_REQUESTS_PER_MINUTE: z.coerce.number().positive().default(500),
   /**
    * How many labels this worker process reads at once. A read is mostly waiting on the LLM (about
-   * 13 s), so keeping up with 120 requests a minute (the default rate) takes about 24 in flight.
-   * Scale out with more processes; the shared rate limiter keeps them all within the limit.
+   * 9–12 s), so keeping up with 500 requests a minute takes about 75–105 in flight. More processes
+   * add throughput too (the shared rate limiter keeps them all within the cap), but each holds its
+   * own database connections.
    */
-  WORKER_CONCURRENCY: z.coerce.number().int().positive().default(24),
+  WORKER_CONCURRENCY: z.coerce.number().int().positive().default(100),
 });
 
 export type ApiConfig = z.infer<typeof apiSchema>;
