@@ -7,6 +7,7 @@ const absolute = new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short',
 const full = new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' });
 const fullWithSeconds = new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'medium' });
 const timeOfDay = new Intl.DateTimeFormat('en', { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
+const dateAndTime = new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 
 /** "just now", "3 minutes ago", "2 hours ago", then an absolute date for anything older than a day. */
 export function formatRelativeTime(iso: string, now: number = Date.now()): string {
@@ -26,6 +27,11 @@ export function formatDateTime(iso: string): string {
 /** "14:05:09". For logs, where events seconds apart need telling apart. */
 export function formatTimeOfDay(iso: string): string {
   return timeOfDay.format(new Date(iso));
+}
+
+/** "Sep 25, 14:05". When something happened, for a history that spans days. */
+export function formatDateAndTime(iso: string): string {
+  return dateAndTime.format(new Date(iso));
 }
 
 /** Full date and time to the second, for tooltips on log times. */

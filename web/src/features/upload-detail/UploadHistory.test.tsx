@@ -43,6 +43,10 @@ describe('UploadHistory', () => {
       expect.stringContaining('bob@example.com changed the brand'),
     ]);
     expect(fetch).toHaveBeenCalledWith('/api/uploads/u1/history', expect.anything());
+    // Each entry leads with when it happened, as a date and time rather than "3 hours ago".
+    const [first] = await within(history).findAllByRole('listitem');
+    expect(first!.querySelector('time')!.textContent).toMatch(/^[A-Z][a-z]{2} \d{1,2}, \d{2}:\d{2}$/);
+    expect(first).not.toHaveTextContent(/ago/);
   });
 
   it('says so when nothing was recorded', async () => {

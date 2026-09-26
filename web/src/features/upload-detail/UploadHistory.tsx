@@ -1,18 +1,16 @@
 import type { LogEvent, LogLevel } from '@label-extractor/shared';
 import { errorMessage } from '@/api/client';
 import { useUploadHistory } from '@/api/queries';
-import { RelativeTime } from '@/components/RelativeTime';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { TONE_DOT_CLASSES } from '@/lib/tone';
-import { useNow } from '@/lib/useNow';
+import { formatDateAndTime, formatDateTimeWithSeconds } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
-/** Everyday events get a quiet grey dot; warnings and errors their tone's. */
-const LEVEL_DOT: Record<LogLevel, string> = {
-  info: 'bg-border',
-  warn: TONE_DOT_CLASSES.warning,
-  error: TONE_DOT_CLASSES.danger,
+/** Everyday events read plainly; warnings and errors take their tone's colour. */
+const LEVEL_TEXT: Record<LogLevel, string> = {
+  info: '',
+  warn: 'text-warning',
+  error: 'text-danger',
 };
 
 /**
@@ -21,7 +19,6 @@ const LEVEL_DOT: Record<LogLevel, string> = {
  */
 export function UploadHistory({ uploadId }: { uploadId: string }) {
   const { data: events, isPending, isError, error } = useUploadHistory(uploadId);
-  const now = useNow();
 
   return (
     <Card role="region" aria-label="History" className="gap-3">
@@ -42,7 +39,7 @@ export function UploadHistory({ uploadId }: { uploadId: string }) {
         {events && events.length > 0 && (
           <ol className="grid gap-2.5">
             {events.map((event) => (
-              <HistoryEntry key={event.id} event={event} now={now} />
+              <HistoryEntry key={event.id} event={event} />
             ))}
           </ol>
         )}
@@ -51,12 +48,18 @@ export function UploadHistory({ uploadId }: { uploadId: string }) {
   );
 }
 
-function HistoryEntry({ event, now }: { event: LogEvent; now: number }) {
+/** When it happened (to the second, on hover), then what happened. */
+function HistoryEntry({ event }: { event: LogEvent }) {
   return (
-    <li className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-x-2.5 text-sm">
-      <span aria-hidden className={cn('size-2 translate-y-[-1px] rounded-full', LEVEL_DOT[event.level])} />
-      <span className="wrap-anywhere">{event.message}</span>
-      <RelativeTime iso={event.occurredAt} now={now} className="text-xs whitespace-nowrap text-muted-foreground tabular-nums" />
+    <li className="grid grid-cols-[7rem_minmax(0,1fr)] items-baseline gap-x-3 text-sm">
+      <time
+        dateTime={event.occurredAt}
+        title={formatDateTimeWithSeconds(event.occurredAt)}
+        className="text-xs whitespace-nowrap text-muted-foreground tabular-nums"
+      >
+        {formatDateAndTime(event.occurredAt)}
+      </time>
+      <span className={cn('wrap-anywhere', LEVEL_TEXT[event.level])}>{event.message}</span>
     </li>
   );
 }
