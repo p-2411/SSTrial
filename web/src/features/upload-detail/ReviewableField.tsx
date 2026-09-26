@@ -71,8 +71,9 @@ export function ReviewableField({
           </h3>
           {actions && <div className="ml-auto flex items-center gap-1">{actions}</div>}
         </div>
-        {/* Indented to line up with the label, past the marker. */}
-        <div className="pl-[18px]">
+        {/* Indented to line up with the label, past the marker. wrap-anywhere: a long unbroken word
+            wraps rather than spilling past the card. */}
+        <div className="pl-[18px] wrap-anywhere">
           {editing ? (
             <div className="mt-2">{editor}</div>
           ) : (
@@ -90,7 +91,9 @@ export function ReviewableField({
     <div className="group grid grid-cols-[auto_8rem_1fr_auto] items-baseline gap-x-2.5">
       {marker}
       <dt className="text-sm font-medium">{label}</dt>
-      <dd className="min-w-0 text-sm">
+      {/* wrap-anywhere: a long unbroken value wraps within its column rather than running under
+          the score beside it. */}
+      <dd className="min-w-0 text-sm wrap-anywhere">
         {editing ? (
           editor
         ) : (

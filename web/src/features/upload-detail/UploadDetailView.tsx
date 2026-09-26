@@ -83,9 +83,9 @@ function Detail({ upload }: { upload: UploadDetail }) {
             <UploadConfidence score={upload.confidence} className="text-sm" />
           </div>
         </div>
-        {/* The facts on one row: a long file name truncates (full name in its tooltip) rather than
-            wrapping. */}
-        <dl className="flex min-w-0 gap-x-5 text-sm">
+        {/* The facts, wrapping onto another line rather than overlapping: no fact shrinks below
+            what it must show. Only a long file name gives way, truncated (full name in its tooltip). */}
+        <dl className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
           <Fact label="File">
             {/* The file name only when the heading isn't already showing it. */}
             {productName ? (
@@ -99,7 +99,7 @@ function Detail({ upload }: { upload: UploadDetail }) {
               fileFacts
             )}
           </Fact>
-          <Fact label="Uploaded" className="shrink-0">
+          <Fact label="Uploaded">
             <RelativeTime iso={upload.createdAt} now={now} />
             {upload.uploadedBy && <span className="text-muted-foreground"> by {upload.uploadedBy}</span>}
           </Fact>
@@ -122,11 +122,16 @@ function Detail({ upload }: { upload: UploadDetail }) {
   );
 }
 
+/**
+ * A label and its value. Deliberately no `min-w-0`: a fact can't shrink narrower than its content,
+ * so it can never spill into the next one. The one exception is a `truncate` child (the file name):
+ * it hides its overflow, so it can give way on its own.
+ */
 function Fact({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
   return (
-    <div className={cn('flex min-w-0 gap-1.5', className)}>
+    <div className={cn('flex gap-1.5', className)}>
       <dt className="shrink-0 text-muted-foreground">{label}</dt>
-      <dd className="flex min-w-0 gap-1.5 tabular-nums">{children}</dd>
+      <dd className="flex gap-1.5 tabular-nums">{children}</dd>
     </div>
   );
 }
