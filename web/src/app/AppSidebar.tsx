@@ -145,7 +145,7 @@ function ProfileMenu() {
               <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-lg bg-white/10 text-sm font-semibold text-white uppercase">
                 {member.email.charAt(0)}
               </span>
-              <span className="grid min-w-0 flex-1 text-left text-xs leading-tight">
+              <span className="grid min-w-0 flex-1 grid-cols-1 text-left text-xs leading-tight">
                 <span className="truncate font-medium text-white" title={member.email}>
                   {member.email}
                 </span>

@@ -44,7 +44,7 @@ export function EventDetails({ source, eventId }: { source: EventDetailsSource; 
 
   if (isPending) {
     return (
-      <div role="status" aria-label="Loading details" className="mt-1.5 grid gap-1.5 rounded-md border bg-muted/30 p-3">
+      <div role="status" aria-label="Loading details" className="mt-1.5 grid grid-cols-1 gap-1.5 rounded-md border bg-muted/30 p-3">
         <Skeleton className="h-3 w-2/3" />
         <Skeleton className="h-3 w-1/2" />
       </div>
@@ -88,7 +88,7 @@ function Json({ value, label }: { value: unknown; label: string }) {
 function Changes({ changes, checked, unchecked }: { changes: FieldChange[]; checked: LabelField[]; unchecked: LabelField[] }) {
   const fieldNames = (fields: LabelField[]) => formatList(fields.map((field) => FIELD_LABELS[field].toLowerCase()), 'and');
   return (
-    <div aria-label="What changed" role="group" className="mt-1.5 grid gap-2.5 rounded-md border bg-card p-3 text-xs">
+    <div aria-label="What changed" role="group" className="mt-1.5 grid grid-cols-1 gap-2.5 rounded-md border bg-card p-3 text-xs">
       {changes.map((change) => (
         <FieldDiff key={change.field} change={change} />
       ))}
@@ -116,7 +116,7 @@ const LINE_SAID: Record<DiffLine['kind'], string> = { removed: 'Removed: ', adde
 function FieldDiff({ change }: { change: FieldChange }) {
   const lines = foldUnchanged(diffLines(fieldLines(change.field, change.from), fieldLines(change.field, change.to)));
   return (
-    <div className="grid gap-1">
+    <div className="grid grid-cols-1 gap-1">
       <p className="font-medium text-foreground">{FIELD_LABELS[change.field]}</p>
       <ul className="overflow-hidden rounded border border-border/70">
         {lines.map((line, index) => (

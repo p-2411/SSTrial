@@ -51,7 +51,7 @@ export function ProductInformationCard({ upload, readOnly = false }: { upload: U
       </CardHeader>
 
       <CardContent className="pb-5">
-        <dl className="grid gap-3.5">
+        <dl className="grid grid-cols-1 gap-3.5">
           <ReviewableField
             {...fieldProps('productName')}
             editor={fields.editing === 'productName' && <TextEditor field="productName" value={productName} {...fields.editorProps} />}
@@ -134,7 +134,7 @@ function IngredientList({ ingredients }: { ingredients: Ingredient[] }) {
         <span>Title</span>
         <span className="text-right">%</span>
       </div>
-      <ol className="mt-1 grid gap-1">
+      <ol className="mt-1 grid grid-cols-1 gap-1">
         {ingredients.map((ingredient, index) => (
           <li key={ingredient.name} className={cn(INGREDIENT_COLUMNS, 'items-baseline text-sm')}>
             <span aria-hidden className="text-muted-foreground tabular-nums">

@@ -38,12 +38,12 @@ export function SignInPage() {
           <h1 className="text-xl font-semibold">Sign in</h1>
         </CardHeader>
         <CardContent>
-          <form className="grid gap-4" onSubmit={onSubmit}>
-            <label className="grid gap-1.5 text-sm font-medium">
+          <form className="grid grid-cols-1 gap-4" onSubmit={onSubmit}>
+            <label className="grid grid-cols-1 gap-1.5 text-sm font-medium">
               Email
               <Input name="email" type="email" autoComplete="email" required />
             </label>
-            <label className="grid gap-1.5 text-sm font-medium">
+            <label className="grid grid-cols-1 gap-1.5 text-sm font-medium">
               Password
               <Input name="password" type="password" autoComplete="current-password" required />
             </label>

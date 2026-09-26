@@ -67,7 +67,7 @@ export function YourUploads({ pending, onRetry, onDismiss }: YourUploadsProps) {
       {(shown.uploading || shown.review) && (
         <Card aria-label="Your uploads" className="gap-0 py-0" role="region">
           <Tabs value={tab} onValueChange={(value) => setTab(value as Tab)} className="gap-0">
-            <div className="flex min-h-15 items-center justify-between gap-3 border-b border-border/70 px-4 py-3">
+            <div className="flex min-h-15 flex-wrap items-center justify-between gap-3 border-b border-border/70 px-4 py-3">
               <SegmentedTabsList>
                 {shown.uploading && (
                   <SegmentedTabsTrigger value="uploading">

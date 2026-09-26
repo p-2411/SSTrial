@@ -88,7 +88,7 @@ function Checks({ checks }: { checks: Check[] }) {
 
 function Stat({ label, value, note, tone, title }: { label: string; value: ReactNode; note?: string; tone?: Tone; title?: string }) {
   return (
-    <div className="grid content-start gap-0.5 px-4 py-3" title={title}>
+    <div className="grid grid-cols-1 content-start gap-0.5 px-4 py-3" title={title}>
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className={cn('text-xl font-semibold tabular-nums', tone && TONE_TEXT_CLASSES[tone])}>{value}</p>
       {note && <p className="text-xs text-muted-foreground">{note}</p>}

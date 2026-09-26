@@ -20,7 +20,7 @@ export function SystemPage() {
     // A <div>, not <main>: the app shell's SidebarInset is already the page's <main>. The
     // scrollbar's space is reserved so the page doesn't shift as its height changes.
     <div className="min-h-0 flex-1 overflow-y-auto p-6 [scrollbar-gutter:stable_both-edges]">
-      <div className="mx-auto grid max-w-5xl gap-4">
+      <div className="mx-auto grid max-w-5xl grid-cols-1 gap-4">
         {isPending && <Skeleton role="status" aria-label="Loading the system status" className="h-[5.25rem] w-full rounded-xl" />}
         {isError && !data && (
           <InlineError title="Couldn't load the system status" message={errorMessage(error)} onRetry={() => void refetch()} retrying={isRefetching} />

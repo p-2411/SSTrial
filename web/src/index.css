@@ -126,8 +126,12 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* A word too long for its line (a file name, a product name with no spaces) breaks rather than
+     spilling out of its box: in a dialog, a toast, a log message. What's meant to stay on one line
+     says so with `truncate`. Boxes themselves never outgrow their container either: see the
+     `grid-cols-1` on every stack, and `min-w-0` on text in flex rows. */
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply bg-background text-foreground antialiased wrap-break-word;
   }
   html {
     @apply font-sans;

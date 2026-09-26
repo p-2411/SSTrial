@@ -184,6 +184,8 @@ supabase/        Local config and the SQL migrations
 
 **Loading, empty and error states** work the same way on every list. A first load shows skeleton rows, and a new search keeps the last results up, faded, until its own arrive. An empty list says so and offers the way out ("No products match", with "Clear filters"); an empty Uploading or Review tab isn't shown. A first load that fails says why, with "Try again"; a failed refresh keeps what's shown and says it may be out of date; a failed "Load more" says so beside the button. A page that fails to render shows "Reload" and a way home, with the sidebar still there, and the detail panel fails on its own. Confirmations stay open, and say why, if the request fails.
 
+**Sizing.** Nothing grows wider than its container, however long a file or product name: every stack is a single column that can shrink (`grid-cols-1`), text in a flex row has `min-w-0` and truncates or wraps, and a word too long for its line breaks (`index.css`). Where a window is too narrow for the list and the detail panel side by side, the panel covers the list.
+
 ## API
 
 Every route needs `Authorization: Bearer <access token>` from Supabase Auth, except `/api/health` and

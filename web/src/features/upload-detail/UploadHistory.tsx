@@ -64,7 +64,7 @@ function HistoryBody({ upload }: { upload: Upload }) {
   const filtered = isFiltered(filters);
 
   return (
-    <div className="grid gap-3 px-4 pb-4">
+    <div className="grid grid-cols-1 gap-3 px-4 pb-4">
       <ActivityFilterBar
         filters={filters}
         onChange={(changes) => setFilters((current) => ({ ...current, ...changes }))}
@@ -76,7 +76,7 @@ function HistoryBody({ upload }: { upload: Upload }) {
         searchClassName="w-auto min-w-36 flex-1"
       />
       {isPending && (
-        <div role="status" aria-label="Loading history" className="grid gap-2">
+        <div role="status" aria-label="Loading history" className="grid grid-cols-1 gap-2">
           <Skeleton className="h-4 w-3/4" />
           <Skeleton className="h-4 w-2/3" />
         </div>

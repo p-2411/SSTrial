@@ -42,7 +42,7 @@ export function UploadDetailView({ id, titleRef }: { id: string; titleRef?: Ref<
   const deleted = isError && isNotFound(error);
 
   return (
-    <div className="grid min-w-0 gap-5">
+    <div className="grid min-w-0 grid-cols-1 gap-5">
       {isPending && (
         <>
           <h2 id={DETAIL_TITLE_ID} className="sr-only">
@@ -54,7 +54,7 @@ export function UploadDetailView({ id, titleRef }: { id: string; titleRef?: Ref<
 
       {isError && !upload &&
         (deleted ? (
-          <div className="grid gap-1">
+          <div className="grid grid-cols-1 gap-1">
             <h2 {...titleProps} ref={titleRef} className="text-2xl font-semibold outline-none">
               Upload not found
             </h2>
@@ -95,7 +95,7 @@ export function UploadDetailView({ id, titleRef }: { id: string; titleRef?: Ref<
 /** In place of the detail when it failed to render: the panel stays open, and can try again. */
 export function DetailFailed({ onRetry, titleRef }: { onRetry: () => void; titleRef?: Ref<HTMLHeadingElement> }) {
   return (
-    <div className="grid min-w-0 gap-5">
+    <div className="grid min-w-0 grid-cols-1 gap-5">
       <h2 {...titleProps} ref={titleRef} className="sr-only">
         Upload
       </h2>
@@ -158,7 +158,7 @@ function DetailHeader({ upload, titleRef }: { upload: UploadDetail; titleRef?: R
   const lastReview = latestReview(upload.fieldReviews);
 
   return (
-    <header className="grid gap-2">
+    <header className="grid grid-cols-1 gap-2">
       {/* pr-10 keeps the status clear of the panel's close button. */}
       <div className="flex items-start gap-3 pr-10">
         <h2 {...titleProps} ref={titleRef} className="min-w-0 text-2xl font-semibold break-words outline-none">
@@ -169,7 +169,7 @@ function DetailHeader({ upload, titleRef }: { upload: UploadDetail; titleRef?: R
       {/* The facts, wrapping onto another line rather than overlapping: no fact shrinks below
           what it must show. Only a long file name gives way, truncated (full name in its tooltip). */}
       <dl className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
-        <Fact label="File">
+        <Fact label="File" truncates={productName !== null}>
           {/* The file name only when the heading isn't already showing it. */}
           {productName ? (
             <>
@@ -207,7 +207,7 @@ function StillWorking({ upload }: { upload: UploadDetail }) {
   return (
     <div role="status" className="flex items-start gap-2 text-sm">
       <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground motion-reduce:animate-none" aria-hidden />
-      <div className="grid gap-0.5">
+      <div className="grid grid-cols-1 gap-0.5">
         {line && <p className={cn('font-medium', TONE_TEXT_CLASSES[line.tone])}>{line.text}</p>}
         <p className="text-muted-foreground">Its details show here once the label is read.</p>
       </div>
@@ -232,22 +232,22 @@ function latestReview(reviews: UploadDetail['fieldReviews']): FieldReview | null
 }
 
 /**
- * A label and its value. Deliberately no `min-w-0`: a fact can't shrink narrower than its content,
- * so it can never spill into the next one. The one exception is a `truncate` child (the file name):
- * it hides its overflow, so it can give way on its own.
+ * A label and its value. A fact can't shrink narrower than its content, so it never spills into the
+ * next one; it wraps onto its own line instead. The exception is one that `truncates` (the file
+ * name): it can shrink to the header's width, where its `truncate` child ends in an ellipsis.
  */
-function Fact({ label, children }: { label: string; children: ReactNode }) {
+function Fact({ label, truncates = false, children }: { label: string; truncates?: boolean; children: ReactNode }) {
   return (
-    <div className="flex gap-1.5">
+    <div className={cn('flex gap-1.5', truncates && 'min-w-0')}>
       <dt className="shrink-0 text-muted-foreground">{label}</dt>
-      <dd className="flex gap-1.5 tabular-nums">{children}</dd>
+      <dd className={cn('flex gap-1.5 tabular-nums', truncates && 'min-w-0')}>{children}</dd>
     </div>
   );
 }
 
 function DetailSkeleton() {
   return (
-    <div role="status" aria-label="Loading upload" className="grid gap-3">
+    <div role="status" aria-label="Loading upload" className="grid grid-cols-1 gap-3">
       <Skeleton className="h-7 w-1/2" />
       <Skeleton className="h-4 w-1/3" />
       <Skeleton className="mt-3 h-56 w-full rounded-xl" />

@@ -76,10 +76,10 @@ function EditorForm({
     }
   };
   return (
-    <form className="grid gap-2" onSubmit={submit} onKeyDown={escape}>
+    <form className="grid grid-cols-1 gap-2" onSubmit={submit} onKeyDown={escape}>
       {children}
       {conflict && (
-        <div role="alert" className={cn('grid gap-1.5 rounded-md border px-2.5 py-2 text-xs', TONE_CLASSES.warning)}>
+        <div role="alert" className={cn('grid grid-cols-1 gap-1.5 rounded-md border px-2.5 py-2 text-xs', TONE_CLASSES.warning)}>
           <p>
             Someone else changed this: <span className="font-semibold">{conflict.theirs}</span>
           </p>
@@ -234,7 +234,7 @@ export function IngredientsEditor({ value, onSave, ...form }: EditorProps<Ingred
         <span>%</span>
         <span className="w-6" />
       </div>
-      <ol className="grid gap-1.5">
+      <ol className="grid grid-cols-1 gap-1.5">
         {rows.map((row, index) => (
           <li key={row.key} className={cn(INGREDIENT_COLUMNS, 'items-center text-sm')}>
             <span aria-hidden className="text-muted-foreground tabular-nums">

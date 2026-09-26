@@ -29,7 +29,7 @@ export function EmptyState({ icon: Icon, title, hint, action, compact = false }:
 
   if (compact) {
     return (
-      <div className="grid justify-items-start gap-2">
+      <div className="grid grid-cols-1 justify-items-start gap-2">
         <p className="text-sm text-muted-foreground">
           {title}
           {hint && <> {hint}</>}

@@ -6,16 +6,18 @@ export const rowClassName = 'flex items-start gap-3 border-b border-border/70 px
 
 /**
  * A row's first line: its name in bold, with smaller details (file type, size) right after it. The
- * name truncates first; if even the details don't fit, they're clipped at the line's edge rather
- * than spilling into the status beside it.
+ * name gives way first, down to nothing; only then do the details, so in a very narrow list they end
+ * in an ellipsis too rather than being cut off mid-word.
  */
 export function RowTitle({ name, meta }: { name: string; meta: string }) {
   return (
-    <p className="flex min-w-0 items-baseline gap-2 overflow-hidden">
-      <span className="truncate text-sm font-semibold" title={name}>
+    <p className="flex min-w-0 items-baseline gap-2">
+      {/* Shrinks 100 times faster, so it takes nearly all the squeeze. (Slowing the details down
+          instead fails: an item shrinking at under 1 never gives up all the space it must.) */}
+      <span className="min-w-0 shrink-100 truncate text-sm font-semibold" title={name}>
         {name}
       </span>
-      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{meta}</span>
+      <span className="min-w-0 truncate text-xs text-muted-foreground tabular-nums">{meta}</span>
     </p>
   );
 }

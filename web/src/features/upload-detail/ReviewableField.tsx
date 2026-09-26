@@ -88,7 +88,7 @@ export function ReviewableField({
   }
 
   return (
-    <div className="group grid grid-cols-[auto_8rem_1fr_auto] items-baseline gap-x-2.5">
+    <div className="group grid grid-cols-[auto_8rem_minmax(0,1fr)_auto] items-baseline gap-x-2.5">
       {marker}
       <dt className="text-sm font-medium">{label}</dt>
       {/* wrap-anywhere: a long unbroken value wraps within its column rather than running under
@@ -122,7 +122,7 @@ function ReviewedMark({ review }: { review: FieldReview }) {
 function ReviewNotes({ state: { confidence, review } }: { state: ReviewState }) {
   if (review || !confidence || confidence.reasons.length === 0) return null;
   return (
-    <ul className="mt-1 grid gap-0.5 text-xs text-muted-foreground">
+    <ul className="mt-1 grid grid-cols-1 gap-0.5 text-xs text-muted-foreground">
       {confidence.reasons.map((reason) => (
         <li key={reason}>{reason}</li>
       ))}

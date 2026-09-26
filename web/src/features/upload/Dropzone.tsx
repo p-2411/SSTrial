@@ -52,7 +52,7 @@ export const Dropzone = memo(function Dropzone({ onUpload }: { onUpload: (files:
           Upload
         </CardTitle>
       </CardHeader>
-      <div className="grid gap-2 px-4 pb-4">
+      <div className="grid grid-cols-1 gap-2 px-4 pb-4">
           <div
             className={cn(
               'rounded-lg border border-dashed border-border bg-muted/50 transition-colors',
@@ -97,7 +97,7 @@ export const Dropzone = memo(function Dropzone({ onUpload }: { onUpload: (files:
                 </Button>
               </>
             ) : (
-              <ul aria-label="Files to upload" className="grid gap-2">
+              <ul aria-label="Files to upload" className="grid grid-cols-1 gap-2">
                 {staged.map((s) => (
                   <StagedFileCard key={s.id} staged={s} onRemove={() => remove(s.id)} />
                 ))}

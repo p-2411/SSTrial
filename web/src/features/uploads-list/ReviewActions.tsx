@@ -33,7 +33,7 @@ export function ReviewActions({ uploads, selection }: { uploads: UploadSummary[]
     );
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       {/* A tertiary action: plain text, underlined on hover. */}
       <Button variant="link" size="sm" className="px-1 font-medium" onClick={() => selection.setAll(!selection.allSelected)}>
         {selection.allSelected ? 'Deselect all' : 'Select all'}
