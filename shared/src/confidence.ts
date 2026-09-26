@@ -40,10 +40,10 @@ export function needsChecking(score: number): boolean {
 }
 
 /**
- * The scores a reading that wasn't scored is checked against: one from before scoring existed, or
- * whose scores couldn't be read. With nothing to say which fields are sound, every one is doubtful,
- * so a person looks at each before it can go into Products, and the checks (applyConfidenceChecks)
- * still add their reasons, a missing required field among them.
+ * The scores a reading in Review that wasn't scored is checked against (its scores couldn't be
+ * read, say). With nothing to say which fields are sound, every one is doubtful, so a person looks
+ * at each before it can go into Products, and the checks (applyConfidenceChecks) still add their
+ * reasons, a missing required field among them.
  */
 export function unscoredConfidence(): ExtractionConfidence {
   return Object.fromEntries(

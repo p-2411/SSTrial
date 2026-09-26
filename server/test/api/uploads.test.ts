@@ -444,8 +444,8 @@ describe('GET /api/uploads/:id — detail', () => {
     expect(detail.confidence).toBe(60);
   });
 
-  it('asks for every field to be checked on uploads extracted before scoring existed', async () => {
-    uploads.seed({ id: ID, status: 'completed', result: SAMPLE_EXTRACTION });
+  it('asks for every field of an unscored reading in Review to be checked', async () => {
+    uploads.seed({ id: ID, status: 'completed', submittedAt: null, result: SAMPLE_EXTRACTION, uploadedBy: ADMIN.id });
     const detail = (await app.inject({ method: 'GET', url: `/api/uploads/${ID}` })).json().upload;
     expect(detail.confidence).toBe(60);
     expect(Object.values(detail.fieldConfidence)).toEqual(

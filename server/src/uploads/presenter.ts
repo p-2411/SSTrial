@@ -89,13 +89,17 @@ export function peopleIn(record: UploadRecord): string[] {
 
 /**
  * A completed upload's scores with the checks applied to its data as it is now, edits included, so
- * a flag never outlives the contradiction it was about (or misses one an edit introduced). A reading
- * that wasn't scored starts with every field doubtful (unscoredConfidence), so every gate that reads
- * these (the list's score, what's flagged, whether it can be submitted) asks for it to be checked.
+ * a flag never outlives the contradiction it was about (or misses one an edit introduced).
+ *
+ * A reading that wasn't scored, while it's in Review, starts with every field doubtful
+ * (unscoredConfidence), so every gate that reads these (the list's score, what's flagged, whether it
+ * can be submitted) asks for it to be checked. Once it's a product that's done, so a product that
+ * was never scored (one from before scoring existed, say) shows no score, as it always has.
  */
 function checkedConfidence(record: UploadRecord): ExtractionConfidence | null {
   if (record.status !== 'completed' || !record.result) return null;
-  return applyConfidenceChecks(record.result, record.confidence ?? unscoredConfidence());
+  const scores = record.confidence ?? (record.submittedAt === null ? unscoredConfidence() : null);
+  return scores && applyConfidenceChecks(record.result, scores);
 }
 
 function reviewedFields(reviews: StoredFieldReviews): LabelField[] {

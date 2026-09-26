@@ -84,6 +84,14 @@ describe('POST /api/uploads/submit', () => {
     expect((await post('submit', [READY])).json()).toEqual({ submitted: [READY] });
   });
 
+  it('shows no score for a product that was never scored, since it has been through Review', async () => {
+    uploads.seed({ id: READY, status: 'completed', result: SAMPLE_EXTRACTION, confidence: null, uploadedBy: ADMIN.id }); // already in Products
+
+    const [listed] = (await app.inject({ method: 'GET', url: '/api/uploads?view=products' })).json().uploads;
+    expect(listed.confidence).toBeNull();
+    expect((await app.inject({ method: 'GET', url: `/api/uploads/${READY}` })).json().upload.fieldConfidence).toBeNull();
+  });
+
   it("skips what isn't the asker's to submit, or isn't in Review", async () => {
     inReview(THEIRS, scores(), MEMBER.id);
     uploads.seed({ id: READY, status: 'completed', result: SAMPLE_EXTRACTION, uploadedBy: ADMIN.id }); // already in Products
