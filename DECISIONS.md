@@ -4,8 +4,10 @@
 
 - **Ingest never touches our servers.** Files go straight to Supabase Storage with signed URLs; the API handles two small, stateless requests per file, so it scales horizontally. One person can have at most 200 under way.
 - **The queue absorbs the burst.** 50,000 jobs is a small Postgres table. They wait durably, and nothing is lost if workers are busy or restarting.
-- **Throughput is set by our own cap, not OpenAI's.** Our key allows 30,000 requests a minute; we cap ourselves at 500 (`OPENAI_REQUESTS_PER_MINUTE`) so a flood of uploads can't run up a large bill, and 50,000 labels take about 100 minutes. A read takes about 9–12 s, so one worker process reads 100 at once (`WORKER_CONCURRENCY`) to keep up. One process rather than several because each holds its own database connections, and the pooler has few to spare. A token bucket shared by all workers holds them to the cap, and identical files (same SHA-256) are read once.
-- **For bulk imports** I'd use OpenAI's Batch API (about half the cost, a separate quota), with queue priorities so people's own uploads skip the backlog.
+- **Capped throughput's.** Our key allows 30,000 requests a minute; we cap ourselves at 500 (`OPENAI_REQUESTS_PER_MINUTE`) so 1. a flood of uploads can't run up a large bill and 2. we don't hog the quota from other API keys being used. At this speed, 50,000 labels take about 100 minutes. A read takes about 9–12 s, so one worker process reads 100 at once (`WORKER_CONCURRENCY`) to keep up. One process rather than several because each holds its own database connections, and the pooler has few to spare. A token bucket shared by all workers holds them to the cap, and identical files (same SHA-256) are read once.
+- **For bulk imports** Right now the product is built for immediate responses. In eventual production, we'd use OpenAI's Batch API (about half the cost, a separate quota) with a separate bulk queue and worker mechanism
+
+Note that currently the program cannot fit 50,000 uploads as this would exceed the Supabase free tier's File Storage limit. Thus I did not optimise for storage. However, it can be done by compressing images when they are stored, or completely discarding them once we are done with analysis.
 
 ## Why a Postgres queue (pg-boss)
 
