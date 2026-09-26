@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { ExtractionConfidence, LabelExtraction } from '@label-extractor/shared';
 import { detail } from '@/test/fixtures';
 import { renderWithProviders } from '@/test/render';
-import { CoreInformationCard } from './CoreInformationCard';
+import { ProductInformationCard } from './ProductInformationCard';
 
 const full: LabelExtraction = {
   productName: 'Maple Pecan Crunch',
@@ -20,11 +20,11 @@ const full: LabelExtraction = {
 const empty: LabelExtraction = { productName: null, brand: null, ingredients: [], allergens: [], netWeight: null };
 
 function renderCard(result: LabelExtraction, confidence: ExtractionConfidence | null = null) {
-  renderWithProviders(<CoreInformationCard upload={{ ...detail({ fieldConfidence: confidence }), result }} />);
-  return screen.getByRole('region', { name: 'Core information' });
+  renderWithProviders(<ProductInformationCard upload={{ ...detail({ fieldConfidence: confidence }), result }} />);
+  return screen.getByRole('region', { name: 'Product information' });
 }
 
-describe('CoreInformationCard', () => {
+describe('ProductInformationCard', () => {
   it('shows every extracted field in one card, and that the data was validated', () => {
     const card = renderCard(full);
 
@@ -88,7 +88,8 @@ describe('CoreInformationCard', () => {
     it('scores every field, and says why for any that need checking', () => {
       const card = renderCard(full, confidence);
 
-      // Just the percentage: the detail's header names it as confidence once, for all of them.
+      // Just the percentage, under one Confidence heading for all of them.
+      expect(within(card).getByText('Confidence', { ignore: '.sr-only' })).toBeInTheDocument();
       expect(within(card).getByText('97%')).toHaveClass('text-muted-foreground');
       expect(within(card).getByText('72%')).toHaveTextContent('Confidence 72%, worth checking'); // as read aloud
       expect(within(card).getByText('72%')).toHaveClass('text-warning');
@@ -99,7 +100,7 @@ describe('CoreInformationCard', () => {
 
     it('shows no scores for an extraction that was never scored', () => {
       const card = renderCard(full, null);
-      expect(within(card).queryByText(/Confidence/)).not.toBeInTheDocument();
+      expect(within(card).queryByText(/Confidence/)).not.toBeInTheDocument(); // no heading either
     });
   });
 });

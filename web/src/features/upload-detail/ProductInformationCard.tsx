@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ShieldCheck, Sparkles } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
 import { isVolumeUnit, type Ingredient, type LabelExtraction, type LabelField, type UploadDetail } from '@label-extractor/shared';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatQuantity } from '@/lib/quantity';
@@ -12,16 +12,15 @@ import { useFieldReview } from './useFieldReview';
 
 /**
  * Everything extracted from the label in one card, laid out after SupplyScope's compliance
- * screens: a green-edged "Core information" card with verified values in green and a validated
- * footer. Anything the label didn't show is said explicitly, so "not found" is never mistaken for
+ * screens: a green-edged card with verified values in green and a validated footer. Anything the label didn't show is said explicitly, so "not found" is never mistaken for
  * "not loaded".
  *
  * Every field can be corrected in place, one at a time (see useFieldReview). When the extraction
- * was scored, each field's marker takes its confidence colour and its score sits on the right; a
- * doubtful field can also be confirmed as right. Once a person has edited or confirmed a field,
+ * was scored, each field's marker takes its confidence colour and its score sits on the right, in a
+ * column headed "Confidence"; a doubtful field can also be confirmed as right. Once a person has edited or confirmed a field,
  * who did it shows in place of the score.
  */
-export function CoreInformationCard({ upload }: { upload: UploadDetail & { result: LabelExtraction } }) {
+export function ProductInformationCard({ upload }: { upload: UploadDetail & { result: LabelExtraction } }) {
   const { productName, brand, netWeight, allergens, ingredients } = upload.result;
   const now = useNow();
   const fields = useFieldReview(upload);
@@ -36,13 +35,12 @@ export function CoreInformationCard({ upload }: { upload: UploadDetail & { resul
   });
 
   return (
-    <Card role="region" aria-label="Core information" className="gap-0 overflow-hidden border-success/40 py-0 ring-0">
+    <Card role="region" aria-label="Product information" className="gap-0 overflow-hidden border-success/40 py-0 ring-0">
       <CardHeader className="flex flex-row items-center justify-between gap-3 py-4">
-        <CardTitle className="text-base font-semibold">Core information</CardTitle>
-        <span className="inline-flex items-center gap-1 text-xs font-medium text-brand">
-          <Sparkles className="size-3.5" aria-hidden />
-          Extracted by AI
-        </span>
+        <CardTitle className="text-base font-semibold">Product information</CardTitle>
+        {/* Heads the scores on the right. pr-7 lines it up with them: each row's edit button sits
+            past its score (a 24px button after a 4px gap). */}
+        {upload.fieldConfidence && <span className="pr-7 text-xs font-medium text-muted-foreground">Confidence</span>}
       </CardHeader>
 
       <CardContent className="pb-5">

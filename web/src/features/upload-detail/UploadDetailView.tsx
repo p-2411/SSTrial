@@ -10,7 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { formatFileFacts } from '@/lib/format';
 import { useNow } from '@/lib/useNow';
 import { cn } from '@/lib/utils';
-import { CoreInformationCard } from './CoreInformationCard';
+import { ProductInformationCard } from './ProductInformationCard';
 import { DeleteUpload } from './DeleteUpload';
 import { JsonDisclosure } from './JsonDisclosure';
 import { SourceDocumentCard } from './SourceDocumentCard';
@@ -99,7 +99,7 @@ function Detail({ upload }: { upload: UploadDetail }) {
             <RelativeTime iso={upload.createdAt} now={now} />
             {upload.uploadedBy && <span className="text-muted-foreground"> by {upload.uploadedBy}</span>}
           </Fact>
-          {/* Named once here, so each field's score in the card below can be just a percentage. */}
+          {/* The upload's overall score. The card below has each field's, under its Confidence heading. */}
           {upload.confidence !== null && (
             <Fact label="Confidence" className="shrink-0">
               <ConfidenceScore score={upload.confidence} title={OVERALL_MEANING} className="text-sm" />
@@ -111,7 +111,7 @@ function Detail({ upload }: { upload: UploadDetail }) {
       <StatusNotice upload={upload} />
 
       {/* Extracted data first, then the source document to check it against, then the raw JSON. */}
-      {upload.result && <CoreInformationCard upload={{ ...upload, result: upload.result }} />}
+      {upload.result && <ProductInformationCard upload={{ ...upload, result: upload.result }} />}
       <SourceDocumentCard upload={upload} />
       {upload.result && <JsonDisclosure data={upload.result} fileName={upload.fileName} />}
       {/* Last, on its own row: it can't be undone, so it's out of the way of everything else. */}

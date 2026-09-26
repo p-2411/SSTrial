@@ -5,7 +5,7 @@ import type { EditResultRequest, ExtractionConfidence, LabelExtraction, UploadDe
 import { uploadKeys, useUploadDetail } from '@/api/queries';
 import { detail } from '@/test/fixtures';
 import { createTestQueryClient, jsonResponse, Providers, renderWithProviders } from '@/test/render';
-import { CoreInformationCard } from './CoreInformationCard';
+import { ProductInformationCard } from './ProductInformationCard';
 
 const RESULT: LabelExtraction = {
   productName: 'Maple Pecan Crunch',
@@ -61,7 +61,7 @@ afterEach(() => vi.unstubAllGlobals());
 /** The card as the app shows it: fed from the cached upload, so a refetch reaches it. */
 function LiveCard() {
   const { data } = useUploadDetail('u1');
-  return data?.result ? <CoreInformationCard upload={{ ...data, result: data.result }} /> : null;
+  return data?.result ? <ProductInformationCard upload={{ ...data, result: data.result }} /> : null;
 }
 
 function renderLiveCard() {
@@ -71,15 +71,15 @@ function renderLiveCard() {
 }
 
 function renderCard(value: Upload = upload()) {
-  const { client, rerender } = renderWithProviders(<CoreInformationCard upload={value} />);
+  const { client, rerender } = renderWithProviders(<ProductInformationCard upload={value} />);
   // A live update arriving: the same card, with the upload as it is now on the server.
   const update = (next: Upload) =>
     rerender(
       <Providers client={client}>
-        <CoreInformationCard upload={next} />
+        <ProductInformationCard upload={next} />
       </Providers>,
     );
-  return Object.assign(screen.getByRole('region', { name: 'Core information' }), { update });
+  return Object.assign(screen.getByRole('region', { name: 'Product information' }), { update });
 }
 
 describe('editing extracted data', () => {
