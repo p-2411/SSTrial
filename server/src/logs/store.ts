@@ -7,6 +7,7 @@ import {
   type LogLevel,
   type LogSource,
 } from '@label-extractor/shared';
+import type { Db } from '../infra/db.ts';
 import type { Logger } from '../infra/logger.ts';
 import { containsPattern } from '../infra/search.ts';
 
@@ -15,9 +16,10 @@ import { containsPattern } from '../infra/search.ts';
  * own stdout logs (infra/logger.ts): this is the history people browse on the Logs page — what
  * happened to each upload and to the system — not debugging output.
  *
- * Writing is best-effort by design. Events are recorded after the change they describe, never in
+ * Writing is best-effort by design. Events are recorded after the change they describe, not in
  * its transaction, and a failed write is reported to stdout and swallowed: losing a log line is
- * acceptable, failing an upload because the log couldn't be written is not.
+ * acceptable, failing an upload because the log couldn't be written is not. The one exception is a
+ * deletion (see TransactionalEventLog).
  */
 
 /**
@@ -46,6 +48,15 @@ export interface LogEventRecord {
 export interface EventLog {
   /** Records an event. Never rejects: a failed write is logged to stdout instead (see above). */
   record(event: NewLogEvent): Promise<void>;
+}
+
+/**
+ * Writing events in the transaction of the change they describe, for the one kind that must not be
+ * lost: a deletion's, the only record left of what was deleted. They're saved with the change or not
+ * at all, so a failed write fails the change.
+ */
+export interface TransactionalEventLog {
+  recordIn(tx: Db, events: readonly NewLogEvent[]): Promise<void>;
 }
 
 /**
@@ -94,21 +105,36 @@ export interface EventRetention {
   pruneOlderThan(days: number): Promise<number>;
 }
 
-export type EventStore = EventLog & EventQueries & EventRetention;
+export type EventStore = EventLog & TransactionalEventLog & EventQueries & EventRetention;
 
 export function createEventStore(sql: postgres.Sql, options: { source: LogSource; logger: Logger }): EventStore {
   const { source, logger } = options;
 
+  /** Writes events, however many, in one statement. */
+  async function insert(db: Db, events: readonly NewLogEvent[]) {
+    await db`
+      insert into events (source, level, type, upload_id, message, data)
+      select ${source}, level, type, upload_id, message, data::jsonb
+      from unnest(
+        ${events.map((event) => LOG_EVENT_TYPES[event.type].level)}::text[],
+        ${events.map((event) => event.type)}::text[],
+        ${events.map((event) => event.uploadId ?? null)}::uuid[],
+        ${events.map((event) => event.message)}::text[],
+        ${events.map((event) => JSON.stringify(event.data ?? {}))}::text[]
+      ) as event (level, type, upload_id, message, data)`;
+  }
+
   return {
     async record(event) {
       try {
-        await sql`
-          insert into events (source, level, type, upload_id, message, data)
-          values (${source}, ${LOG_EVENT_TYPES[event.type].level}, ${event.type}, ${event.uploadId ?? null}, ${event.message},
-                  ${sql.json((event.data ?? {}) as postgres.JSONValue)})`;
+        await insert(sql, [event]);
       } catch (err) {
         logger.warn({ err, event: event.type, uploadId: event.uploadId }, 'Could not write to the activity log');
       }
+    },
+
+    async recordIn(tx, events) {
+      if (events.length > 0) await insert(tx, events);
     },
 
     async list({ types, search, from, to, uploadId, limit, after }) {

@@ -357,7 +357,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       const first = await list();
       expect(first.map((u) => u.id)).toEqual([ids[4], ids[3]]);
       expect(first[1]!.cursor.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/); // to the microsecond
-      await uploads.remove(ids[3]!);
+      await uploads.remove([ids[3]!]);
 
       const second = await list(first[1]!.cursor);
       const third = await list(second.at(-1)!.cursor);
@@ -385,6 +385,41 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
         await sql`delete from uploads where uploaded_by = ${person}`;
         await sql`delete from auth.users where id = ${person}`;
       }
+    });
+  });
+
+  describe('deleting (real SQL)', () => {
+    async function readUpload() {
+      const id = crypto.randomUUID();
+      createdIds.push(id);
+      await uploads.create({ id, fileName: `${id}.png`, mimeType: 'image/png', sizeBytes: 12, storagePath: `integration/${id}.png`, contentSha256: null, uploadedBy: null });
+      await sql`update uploads set status = 'completed', result = ${sql.json(SAMPLE_EXTRACTION)} where id = ${id}`;
+      return id;
+    }
+    const recordDeleted = (gone: UploadRecord[], tx: Parameters<EventStore['recordIn']>[0]) =>
+      events.recordIn(tx, gone.map((upload) => ({ type: 'upload.deleted' as const, uploadId: upload.id, message: 'deleted' })));
+
+    it('deletes several at once, recording each in the same transaction', async () => {
+      const [first, second] = [await readUpload(), await readUpload()];
+
+      const removed = await uploads.remove([first, second, crypto.randomUUID()], recordDeleted);
+
+      expect(removed.map((upload) => upload.id).sort()).toEqual([first, second].sort());
+      expect(await uploads.findByIds([first, second])).toEqual([]);
+      expect(await eventTypes(first)).toEqual(['upload.deleted']);
+      expect(await eventTypes(second)).toEqual(['upload.deleted']);
+    });
+
+    it("deletes nothing if the deletion can't be recorded", async () => {
+      const id = await readUpload();
+      await expect(
+        uploads.remove([id], async (gone, tx) => {
+          await recordDeleted(gone, tx);
+          throw new Error('the log is down');
+        }),
+      ).rejects.toThrow('the log is down');
+      expect(await uploads.findById(id)).toMatchObject({ status: 'completed' });
+      expect(await eventTypes(id)).toEqual([]);
     });
   });
 
@@ -638,6 +673,30 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
       await sql`delete from events where message like ${`%${marker}`}`;
     });
 
+    it('writes several events at once in a transaction, data and all, and rolls back with it', async () => {
+      const uploadId = testUploadId();
+      const data = { fileName: 'crème "brûlée".png', product: { ...SAMPLE_EXTRACTION, brand: 'O\'Brien\\Co' } };
+      await sql.begin((tx) =>
+        events.recordIn(tx, [
+          { type: 'extraction.started', uploadId, message: 'one', data },
+          { type: 'upload.deleted', uploadId, message: 'two' },
+        ]),
+      );
+      await expect(
+        sql.begin(async (tx) => {
+          await events.recordIn(tx, [{ type: 'extraction.started', uploadId, message: 'rolled back' }]);
+          throw new Error('the change failed');
+        }),
+      ).rejects.toThrow('the change failed');
+
+      const listed = await events.list({ types: [], uploadId, limit: 10 });
+      expect(listed.map((event) => [event.message, event.level])).toEqual([
+        ['two', 'info'],
+        ['one', 'info'],
+      ]);
+      expect((await events.find(listed[1]!.id))?.data).toEqual(data);
+    });
+
     it("never rejects when a write fails: it's reported to stdout instead", async () => {
       const logger = { ...silentLogger, warn: vi.fn() } as unknown as typeof silentLogger;
       const store = createEventStore(sql, { source: 'api', logger });
@@ -685,7 +744,7 @@ describe.skipIf(!DATABASE_URL)('worker on a real Postgres queue', () => {
         return (await uploads.revert(id, 0, String(version!.id)))?.upload ?? null;
       },
       submit: (id) => uploads.submit(id, 0, person),
-      delete: (id) => uploads.remove(id),
+      delete: async (id) => (await uploads.remove([id]))[0] ?? null,
       // requeue takes the status the caller saw; pass the real one, so only the guard decides.
       rerun: (id, _claim, status) => uploads.requeue(id, status as 'failed' | 'completed', person),
     };

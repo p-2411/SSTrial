@@ -17,6 +17,7 @@ import {
   type UploadTransition,
   type UploadTransitionKeepingRow,
 } from '@label-extractor/shared';
+import type { Db } from '../infra/db.ts';
 import { containsPattern } from '../infra/search.ts';
 import type { UploadJobs } from './jobs.ts';
 
@@ -260,13 +261,15 @@ export interface UploadReviews {
   submit(id: string, revision: number, by: string): Promise<UploadRecord | null>;
 }
 
-/** Removing an upload someone asked to delete. */
+/** Removing uploads someone asked to delete. */
 export interface UploadRemoval {
   /**
-   * Deletes the upload and cancels its finalise job, if still pending, atomically. Only from the
-   * statuses the `delete` transition allows; null if it's gone already or not deletable.
+   * Deletes these uploads, and cancels any finalise job still pending, in one transaction; returns
+   * those deleted. Only from the statuses the `delete` transition allows: any gone already, or not
+   * deletable, are left out. `alongside` runs in the same transaction, given what was deleted (to
+   * record it): if it fails, nothing is deleted.
    */
-  remove(id: string): Promise<UploadRecord | null>;
+  remove(ids: readonly string[], alongside?: (removed: UploadRecord[], tx: Db) => Promise<void>): Promise<UploadRecord[]>;
 }
 
 /** The uploads table. Each consumer depends on the role it needs. */
@@ -402,25 +405,29 @@ export function createUploadStore(sql: postgres.Sql, jobs: UploadJobs): UploadSt
           returning *`);
         if (record) {
           await jobs.enqueueExtraction(id, tx);
-          if (options?.cancelFinalise) await jobs.cancelFinalise(id, tx);
+          if (options?.cancelFinalise) await jobs.cancelFinalise([id], tx);
         }
         return record;
       });
     },
 
-    remove(id) {
+    async remove(ids, alongside) {
+      if (ids.length === 0) return [];
       return sql.begin(async (tx) => {
-        const record = await oneRecord(tx`delete from uploads where id = ${id} and ${allowedFrom('delete')} returning *`);
+        const rows = await tx`delete from uploads where id = any(${ids as string[]}::uuid[]) and ${allowedFrom('delete')} returning *`;
+        const removed = rows.map(toRecord);
+        if (removed.length === 0) return removed;
         // Normally long settled; this covers an upload deleted before its finalise job ran.
-        if (record) await jobs.cancelFinalise(id, tx);
-        return record;
+        await jobs.cancelFinalise(removed.map((upload) => upload.id), tx);
+        await alongside?.(removed, tx);
+        return removed;
       });
     },
 
     discardUnfinished(id, options) {
       return sql.begin(async (tx) => {
         const record = await oneRecord(tx`delete from uploads where id = ${id} and ${allowedFrom('discard')} returning *`);
-        if (record && options?.cancelFinalise) await jobs.cancelFinalise(id, tx);
+        if (record && options?.cancelFinalise) await jobs.cancelFinalise([id], tx);
         return record;
       });
     },

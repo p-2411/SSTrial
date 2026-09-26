@@ -21,6 +21,7 @@ import type { Authenticator } from '../src/auth/authenticator.ts';
 import { ExtractionError } from '../src/extraction/errors.ts';
 import type { RateLimiter } from '../src/extraction/rate-limiter.ts';
 import type { ChangeFeed, FeedChange } from '../src/infra/change-feed.ts';
+import type { Db } from '../src/infra/db.ts';
 import { StorageUnavailableError, type FileStorage } from '../src/infra/storage.ts';
 import type { EventFilters, EventStore, LogEventRecord, LogEventSummary, NewLogEvent } from '../src/logs/store.ts';
 import type { OpsSnapshot } from '../src/ops/store.ts';
@@ -199,12 +200,15 @@ export class InMemoryUploadStore implements UploadStore {
     if (row && options?.cancelFinalise) this.finaliseCancelled.push(id);
     return row;
   }
-  async remove(id: string) {
-    const row = this.rows.get(id);
-    if (!row || !canTransition('delete', row.status)) return null;
-    this.rows.delete(id);
-    this.finaliseCancelled.push(id);
-    return row;
+  async remove(ids: readonly string[], alongside?: (removed: UploadRecord[], tx: Db) => Promise<void>) {
+    const removed = ids.flatMap((id) => this.rows.get(id) ?? []).filter((row) => canTransition('delete', row.status));
+    // As in one transaction: if what goes alongside fails, nothing is deleted.
+    if (removed.length > 0) await alongside?.(removed, {} as Db);
+    for (const row of removed) {
+      this.rows.delete(row.id);
+      this.finaliseCancelled.push(row.id);
+    }
+    return removed;
   }
   async discardUnfinished(id: string, options?: SettleOptions) {
     const row = this.rows.get(id);
@@ -357,6 +361,8 @@ export class FakeRateLimiter implements RateLimiter {
 /** Files keyed by path. Set `unavailable` to simulate a storage outage. */
 export class InMemoryStorage implements FileStorage {
   readonly files = new Map<string, Uint8Array>();
+  /** The paths each call to `remove` named, in order. */
+  readonly removals: string[][] = [];
   unavailable = false;
 
   put(path: string, bytes: Uint8Array | string) {
@@ -375,9 +381,10 @@ export class InMemoryStorage implements FileStorage {
     this.assertAvailable();
     return this.files.get(path)?.subarray(0, byteCount) ?? null;
   }
-  async remove(path: string) {
+  async remove(paths: readonly string[]) {
     this.assertAvailable();
-    this.files.delete(path);
+    this.removals.push([...paths]);
+    for (const path of paths) this.files.delete(path);
   }
   async download(path: string) {
     this.assertAvailable();
@@ -389,10 +396,14 @@ export class InMemoryStorage implements FileStorage {
   }
 }
 
-/** The activity log in memory. Mirrors the real store's filters, ordering and pagination. */
+/**
+ * The activity log in memory. Mirrors the real store's filters, ordering and pagination. Set
+ * `failWrites` to make the writes that must not fail (recordIn) fail, as a database error would.
+ */
 export class InMemoryEventStore implements EventStore {
   readonly events: LogEventRecord[] = [];
   private nextId = 1;
+  failWrites = false;
 
   /** Types recorded so far, oldest first: the usual thing a test asserts on. */
   get types(): LogEventType[] {
@@ -417,6 +428,11 @@ export class InMemoryEventStore implements EventStore {
 
   async record(event: NewLogEvent) {
     this.seed(event);
+  }
+
+  async recordIn(_tx: Db, events: readonly NewLogEvent[]) {
+    if (this.failWrites) throw new Error('Could not write to the activity log (simulated)');
+    for (const event of events) this.seed(event);
   }
 
   async list({ types, search, from, to, uploadId, limit, after }: EventFilters & { uploadId?: string; limit: number; after?: string }) {

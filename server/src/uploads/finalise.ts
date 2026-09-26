@@ -64,7 +64,7 @@ export async function finaliseUpload(deps: FinaliseDeps, id: string, options: Fi
   if (!detected) {
     // Not something we'd ever process (e.g. a renamed .exe), so don't keep it. File first: if the
     // delete fails, the row survives and the finalise job tries again later.
-    await deps.storage.remove(upload.storagePath);
+    await deps.storage.remove([upload.storagePath]);
     if (await deps.uploads.discardUnfinished(upload.id, settle)) await deps.events.record(logEvents.uploadRejected(upload));
     return { outcome: 'rejected' };
   }

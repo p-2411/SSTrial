@@ -17,8 +17,8 @@ export interface FileStorage {
   readHead(path: string, byteCount: number): Promise<Uint8Array | null>;
   /** The whole file, or `null` if it doesn't exist. */
   download(path: string): Promise<Uint8Array | null>;
-  /** Deletes the file. Succeeds if it's already gone. */
-  remove(path: string): Promise<void>;
+  /** Deletes these files, in one request. Succeeds for any already gone. */
+  remove(paths: readonly string[]): Promise<void>;
 }
 
 /** Thrown when storage itself is unreachable or errors — as opposed to a file simply not existing. */
@@ -79,10 +79,11 @@ export function createSupabaseStorage(options: SupabaseStorageOptions): FileStor
       return readAtMost(response, byteCount);
     },
 
-    async remove(path) {
-      const { error } = await bucket().remove([path]);
+    async remove(paths) {
+      if (paths.length === 0) return;
+      const { error } = await bucket().remove([...paths]);
       if (error && !isNotFound(error)) {
-        throw new StorageUnavailableError(`Could not delete ${path}: ${error.message}`, { cause: error });
+        throw new StorageUnavailableError(`Could not delete ${paths.join(', ')}: ${error.message}`, { cause: error });
       }
     },
 

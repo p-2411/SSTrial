@@ -87,6 +87,26 @@ describe('POST /api/uploads/delete', () => {
     expect(uploads.rows.size).toBe(0);
   });
 
+  it("deletes nothing and says so (503) when storage can't be reached; asking again deletes them all", async () => {
+    const { uploads, storage, events } = await appFor(ADMIN);
+    const mine = uploads.seed({ id: MINE, status: 'completed', result: SAMPLE_EXTRACTION, uploadedBy: ADMIN.id });
+    storage.put(mine.storagePath, FILE_BYTES.png);
+    storage.unavailable = true;
+
+    const response = await deleteMany([ID, MINE]);
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json().error.code).toBe('STORAGE_UNAVAILABLE');
+    expect([...uploads.rows.keys()].sort()).toEqual([ID, MINE].sort());
+    expect(events.events).toEqual([]);
+
+    storage.unavailable = false;
+    expect((await deleteMany([ID, MINE])).json()).toEqual({ deleted: [ID, MINE] });
+    expect(uploads.rows.size).toBe(0);
+    expect(storage.removals).toHaveLength(1); // both files in one request
+    expect(events.types).toEqual(['upload.deleted', 'upload.deleted']);
+  });
+
   it('rejects an empty or malformed list', async () => {
     await appFor(ADMIN);
     expect((await deleteMany([])).statusCode).toBe(400);

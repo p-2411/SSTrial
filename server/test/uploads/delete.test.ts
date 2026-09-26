@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { UploadStatus } from '@label-extractor/shared';
-import { deleteUpload } from '../../src/uploads/delete.ts';
+import { deleteUpload, deleteUploads } from '../../src/uploads/delete.ts';
 import type { UploadRecord } from '../../src/uploads/store.ts';
 import { ADMIN, FILE_BYTES, InMemoryEventStore, InMemoryStorage, InMemoryUploadStore, MEMBER, SAMPLE_EXTRACTION } from '../fakes.ts';
 
@@ -87,6 +87,56 @@ describe('deleteUpload', () => {
 
   it('reports an upload that no longer exists', async () => {
     await expect(remove()).resolves.toEqual({ outcome: 'not-found' });
+    expect(events.events).toEqual([]);
+  });
+
+  it("deletes nothing if the deletion can't be recorded: that record is all that's left of the product", async () => {
+    seed();
+    events.failWrites = true;
+    await expect(remove()).rejects.toThrow();
+    expect(uploads.rows.has(ID)).toBe(true);
+
+    events.failWrites = false;
+    await expect(remove()).resolves.toMatchObject({ outcome: 'deleted' });
+    expect(events.types).toEqual(['upload.deleted']);
+  });
+});
+
+describe('deleteUploads', () => {
+  const MINE = '4d1e7e7e-0000-4000-8000-000000000002';
+  const THEIRS_IN_REVIEW = '4d1e7e7e-0000-4000-8000-000000000003';
+  const UPLOADING = '4d1e7e7e-0000-4000-8000-000000000004';
+  const GONE = '4d1e7e7e-0000-4000-8000-000000000099';
+
+  beforeEach(() => {
+    for (const [id, overrides] of [
+      [ID, { uploadedBy: MEMBER.id }], // a product, but MEMBER's
+      [MINE, { uploadedBy: OTHER_MEMBER.id }],
+      [THEIRS_IN_REVIEW, { uploadedBy: MEMBER.id, submittedAt: null }],
+      [UPLOADING, { uploadedBy: OTHER_MEMBER.id, status: 'uploading', result: null }],
+    ] as const) {
+      const upload = uploads.seed({ id, status: 'completed', result: SAMPLE_EXTRACTION, ...overrides });
+      storage.put(upload.storagePath, FILE_BYTES.png);
+    }
+  });
+
+  const removeAll = (ids: string[]) => deleteUploads({ uploads, storage, events }, ids, OTHER_MEMBER);
+
+  it('says of each one named whether it was deleted, refused, or not found, removing the files in one request', async () => {
+    const report = await removeAll([ID, MINE, THEIRS_IN_REVIEW, UPLOADING, GONE, MINE]);
+
+    expect(report.deleted.map((upload) => upload.id)).toEqual([MINE]);
+    expect(report.forbidden).toEqual([ID]);
+    // Someone else's upload in Review is as good as not there; one still uploading isn't listed anywhere.
+    expect(report.notFound).toEqual([THEIRS_IN_REVIEW, UPLOADING, GONE]);
+    expect(storage.removals).toEqual([[`uploads/${MINE}.png`]]);
+    expect(events.events.map((event) => [event.type, event.uploadId])).toEqual([['upload.deleted', MINE]]);
+  });
+
+  it("touches no row when storage can't be reached, so nothing is reported deleted that isn't", async () => {
+    storage.unavailable = true;
+    await expect(removeAll([MINE])).rejects.toThrow('Storage is down');
+    expect(uploads.rows.has(MINE)).toBe(true);
     expect(events.events).toEqual([]);
   });
 });

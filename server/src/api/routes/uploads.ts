@@ -25,7 +25,7 @@ import {
 } from '@label-extractor/shared';
 import type { MemberStore } from '../../auth/members.ts';
 import type { FileStorage } from '../../infra/storage.ts';
-import type { EventLog, EventQueries } from '../../logs/store.ts';
+import type { EventLog, EventQueries, TransactionalEventLog } from '../../logs/store.ts';
 import { findVisible } from '../../uploads/access.ts';
 import { editResult } from '../../uploads/edit.ts';
 import { finaliseUpload } from '../../uploads/finalise.ts';
@@ -37,7 +37,7 @@ import { submitUploads } from '../../uploads/submit.ts';
 import { loadHistoryDetails, loadUploadHistory } from '../../uploads/history.ts';
 import { retryUpload } from '../../uploads/retry.ts';
 import { revertUpload } from '../../uploads/revert.ts';
-import { deleteUpload } from '../../uploads/delete.ts';
+import { deleteUpload, deleteUploads } from '../../uploads/delete.ts';
 import type { UploadIntake, UploadQueries, UploadRecord, UploadRemoval, UploadReviews, UploadVersions } from '../../uploads/store.ts';
 import { ApiError, notFound } from '../errors.ts';
 import { ACTIVITY_QUERY_HELP, pageOf, wordsAndTime } from '../paging.ts';
@@ -47,7 +47,7 @@ export interface UploadRoutesDeps {
   uploads: UploadQueries & UploadVersions & UploadIntake & UploadReviews & UploadRemoval;
   storage: FileStorage;
   /** The use cases record what they did to the activity log; each upload's history reads it back. */
-  events: EventLog & EventQueries;
+  events: EventLog & TransactionalEventLog & EventQueries;
   /** To name who uploaded each file, and who reviewed its fields. */
   members: Pick<MemberStore, 'emailsOf'>;
 }
@@ -188,12 +188,8 @@ export async function uploadRoutes(app: FastifyInstance, { uploads, storage, eve
   // Deleting several at once: each as DELETE /api/uploads/:id would, skipping any the asker may not.
   app.post('/api/uploads/delete', async (request): Promise<DeleteUploadsResponse> => {
     const { ids } = uploadIds(request.body);
-    const deleted: string[] = [];
-    for (const id of new Set(ids)) {
-      const result = await deleteUpload({ uploads, storage, events }, id, request.member!);
-      if (result.outcome === 'deleted') deleted.push(id);
-    }
-    return { deleted };
+    const { deleted } = await deleteUploads({ uploads, storage, events }, ids, request.member!);
+    return { deleted: deleted.map((upload) => upload.id) };
   });
 
   app.post('/api/uploads/submit', async (request): Promise<SubmitUploadsResponse> => {

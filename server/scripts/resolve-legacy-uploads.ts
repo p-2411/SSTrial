@@ -38,7 +38,7 @@ try {
   // 1. Rejected files that were kept.
   const rejected = await sql`select id, storage_path from uploads where error_code = 'FILE_CONTENT_MISMATCH'`;
   for (const row of rejected) {
-    await storage.remove(row.storage_path);
+    await storage.remove([row.storage_path]);
     await sql`delete from uploads where id = ${row.id} and error_code = 'FILE_CONTENT_MISMATCH'`;
   }
   logger.info({ count: rejected.length }, 'Deleted uploads kept after their file was rejected');
