@@ -162,9 +162,17 @@ function ProfileMenu() {
               <ChevronsUpDown className="ml-auto size-4 text-sidebar-foreground/60" aria-hidden />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
-          {/* Opens upwards, as wide as the button: it sits at the bottom of the screen. */}
-          <DropdownMenuContent side="top" align="start" className="w-(--radix-dropdown-menu-trigger-width)">
-            <DropdownMenuItem onSelect={() => (busy ? setConfirming(true) : void signOutNow())}>
+          {/* Opens upwards, as wide as the button: it sits at the bottom of the screen. Dark grey, a
+              shade lighter than the sidebar, so it reads as part of it rather than a white popup. */}
+          <DropdownMenuContent
+            side="top"
+            align="start"
+            className="w-(--radix-dropdown-menu-trigger-width) bg-sidebar-accent text-sidebar-accent-foreground ring-white/10"
+          >
+            <DropdownMenuItem
+              className="focus:bg-white/10 focus:text-white not-data-[variant=destructive]:focus:**:text-white"
+              onSelect={() => (busy ? setConfirming(true) : void signOutNow())}
+            >
               <LogOut aria-hidden />
               Sign out
             </DropdownMenuItem>

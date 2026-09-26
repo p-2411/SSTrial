@@ -32,6 +32,12 @@ function stage(file: File): StagedFile {
   };
 }
 
+/**
+ * The drop area's one height, whether it's inviting files or listing them: the invitation's own
+ * height (218px). Listed files scroll inside it, so the page below never jumps as files are added.
+ */
+const DROP_AREA_HEIGHT = 'h-[13.625rem]';
+
 /** The same file picked twice (dropped again, or chosen again) is only listed once. */
 const sameFile = (a: File, b: File) => a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
 
@@ -80,7 +86,8 @@ export const Dropzone = memo(function Dropzone({ onSubmit }: { onSubmit: (files:
       <div
         className={cn(
           'rounded-lg border border-dashed border-border bg-muted/50 transition-colors',
-          isEmpty ? 'flex flex-col items-center gap-3 px-6 py-8 text-center' : 'p-2',
+          DROP_AREA_HEIGHT,
+          isEmpty ? 'flex flex-col items-center justify-center gap-3 px-6 text-center' : 'overflow-y-auto p-2',
           isDragging && 'border-brand bg-brand-soft',
         )}
         onDragEnter={(event) => {
@@ -144,7 +151,7 @@ export const Dropzone = memo(function Dropzone({ onSubmit }: { onSubmit: (files:
       </div>
 
       {!isEmpty && (
-        <div className="flex justify-end gap-2">
+        <div className="flex justify-between gap-2">
           <Button variant="outline" onClick={choose}>
             Add more files
           </Button>
