@@ -11,10 +11,11 @@ export default defineConfig({
     alias: { '@': path.resolve(import.meta.dirname, 'src') },
   },
   server: {
-    port: 5173,
+    port: Number(process.env.WEB_PORT ?? 5173),
     // In development the API runs separately on :3000; proxying keeps the browser on one origin.
     // In production the API serves the built app itself, so no proxy (or CORS) is needed.
-    proxy: { '/api': 'http://localhost:3000' },
+    // WEB_PORT and API_PORT let a second copy (say, in a git worktree) run beside the first.
+    proxy: { '/api': `http://localhost:${process.env.API_PORT ?? 3000}` },
   },
   test: {
     environment: 'jsdom',
