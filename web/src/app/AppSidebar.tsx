@@ -62,7 +62,7 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupLabel className="text-sidebar-foreground/60">Label extraction</SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>
+            <SidebarMenu className="gap-1">
               <NavItem to={HOME_PATH} icon={Files} label="Uploads" active={onUploadsPage} />
             </SidebarMenu>
           </SidebarGroupContent>
@@ -72,7 +72,7 @@ export function AppSidebar() {
           <SidebarGroup>
             <SidebarGroupLabel className="text-sidebar-foreground/60">System</SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu>
+              <SidebarMenu className="gap-1">
                 <NavItem
                   to={STATUS_PATH}
                   icon={Activity}
