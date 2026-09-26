@@ -32,10 +32,11 @@ export function ProductInformationCard({ upload }: { upload: UploadDetail & { re
     review: upload.fieldReviews[field],
     onEdit: () => fields.edit(field),
     onCheck: () => fields.check(field),
+    checking: fields.checking === field,
   });
 
   return (
-    <Card role="region" aria-label="Product information" className={cn('gap-0 overflow-hidden py-0 ring-0', confidenceBorderClass(upload))}>
+    <Card role="region" aria-label="Product information" className={cn('gap-0 overflow-hidden border py-0 ring-0', confidenceBorderClass(upload))}>
       <CardHeader className="flex flex-row items-center justify-between gap-3 py-4">
         <CardTitle className="text-base font-semibold">Product information</CardTitle>
         {/* Heads the scores on the right. pr-7 lines it up with them: each row's edit button sits
